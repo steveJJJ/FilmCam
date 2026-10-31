@@ -97,6 +97,15 @@ object FilmStockMapper {
     private var printOptionsList: List<PrintOption> = emptyList()
 
     /**
+     * catalog 解析结果快照（纯数据，便于单元测试直接喂 JSON 文本校验）。
+     */
+    data class CatalogSnapshot(
+        val names: Map<String, String>,
+        val types: Map<String, String>,
+        val prints: List<PrintOption>,
+    )
+
+    /**
      * 读取 assets/resources/stock_catalog.json 的 films[]/prints[]，建立 id→name、
      * id→type 缓存，以及保序的 prints[] 列表。
      * 由 SpektraProcessor.ensureEngine 在拿到 Context 后调用一次。
@@ -105,43 +114,75 @@ object FilmStockMapper {
         if (displayNames != null) return
         synchronized(this) {
             if (displayNames != null) return
-            val names = HashMap<String, String>(64)
-            val types = HashMap<String, String>(32)
-            val prints = ArrayList<PrintOption>(16)
-            try {
+            val snapshot = try {
                 context.assets.open("resources/stock_catalog.json").use { input ->
-                    val text = input.bufferedReader(Charsets.UTF_8).readText()
-                    val root = JSONObject(text)
-                    root.optJSONArray("films")?.let { arr ->
-                        for (i in 0 until arr.length()) {
-                            val o = arr.getJSONObject(i)
-                            val id = o.optString("id")
-                            val name = o.optString("name")
-                            if (id.isNotEmpty() && name.isNotEmpty()) names[id] = name
-                            val type = o.optString("type")
-                            if (id.isNotEmpty() && type.isNotEmpty()) types[id] = type
-                        }
-                    }
-                    root.optJSONArray("prints")?.let { arr ->
-                        for (i in 0 until arr.length()) {
-                            val o = arr.getJSONObject(i)
-                            val id = o.optString("id")
-                            val name = o.optString("name")
-                            if (id.isNotEmpty()) {
-                                names[id] = name
-                                prints.add(PrintOption(id, name))
-                            }
-                        }
-                    }
+                    parseCatalog(input.bufferedReader(Charsets.UTF_8).readText())
                 }
             } catch (_: Throwable) {
                 // 读不到 catalog 就退化为返回 id 本身 / 空相纸表。
+                CatalogSnapshot(emptyMap(), emptyMap(), emptyList())
             }
-            displayNames = names
-            filmTypes = types
-            printOptionsList = prints
+            installCatalog(snapshot)
         }
     }
+
+    /**
+     * 纯函数：把 stock_catalog.json 文本解析成快照。
+     * 解析失败（非法 JSON）返回空快照，不抛异常——调用方按"无 catalog"降级。
+     */
+    fun parseCatalog(text: String): CatalogSnapshot {
+        val names = HashMap<String, String>(64)
+        val types = HashMap<String, String>(32)
+        val prints = ArrayList<PrintOption>(16)
+        try {
+            val root = JSONObject(text)
+            root.optJSONArray("films")?.let { arr ->
+                for (i in 0 until arr.length()) {
+                    val o = arr.getJSONObject(i)
+                    val id = o.optString("id")
+                    val name = o.optString("name")
+                    if (id.isNotEmpty() && name.isNotEmpty()) names[id] = name
+                    val type = o.optString("type")
+                    if (id.isNotEmpty() && type.isNotEmpty()) types[id] = type
+                }
+            }
+            root.optJSONArray("prints")?.let { arr ->
+                for (i in 0 until arr.length()) {
+                    val o = arr.getJSONObject(i)
+                    val id = o.optString("id")
+                    val name = o.optString("name")
+                    if (id.isNotEmpty()) {
+                        names[id] = name
+                        prints.add(PrintOption(id, name))
+                    }
+                }
+            }
+        } catch (_: Throwable) {
+            // 非法 JSON：返回空快照
+            return CatalogSnapshot(emptyMap(), emptyMap(), emptyList())
+        }
+        return CatalogSnapshot(names, types, prints)
+    }
+
+    /** 安装快照到进程内缓存（initialize 与单元测试共用）。 */
+    fun installCatalog(snapshot: CatalogSnapshot) {
+        displayNames = snapshot.names
+        filmTypes = snapshot.types
+        printOptionsList = snapshot.prints
+    }
+
+    /** 清空缓存（单元测试隔离用）。 */
+    fun clearCatalogForTest() {
+        displayNames = null
+        filmTypes = null
+        printOptionsList = emptyList()
+    }
+
+    /** ROLL_TABLE 的全部键（胶卷显示名），供一致性校验。 */
+    fun rollNames(): List<String> = ROLL_TABLE.keys.toList()
+
+    /** ROLL_TABLE 的完整映射快照（name -> filmId to printId），供一致性校验。 */
+    fun rollTable(): Map<String, Pair<String, String>> = ROLL_TABLE.toMap()
 
     /** 返回 film 的 type（"negative"/"positive"/...）；未初始化或未知 id 返回 null。 */
     fun filmTypeOf(filmStockId: String): String? {

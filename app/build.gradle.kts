@@ -55,6 +55,11 @@ android {
     buildFeatures {
         viewBinding = true
     }
+    testOptions {
+        unitTests {
+            isReturnDefaultValues = true
+        }
+    }
 }
 
 dependencies {
@@ -81,4 +86,9 @@ dependencies {
 
     // 图片加载（画廊缩略图，含内存/磁盘缓存）
     implementation("io.coil-kt:coil:2.7.0")
+
+    // 单元测试：纯 JVM（映射表 / 参数拼装 / 状态机），不依赖 Robolectric
+    testImplementation("junit:junit:4.13.2")
+    // Android 的 org.json 在 JVM 单测里是空桩，换成真实实现以便断言 JSON
+    testImplementation("org.json:json:20240303")
 }
