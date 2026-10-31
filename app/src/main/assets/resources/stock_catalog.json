@@ -1,0 +1,279 @@
+{
+ "schema_version": 1,
+ "films": [
+  {
+   "id": "cinestill_800t",
+   "name": "CineStill 800T",
+   "type": "negative",
+   "use": "still",
+   "support": "film",
+   "stage": "filming"
+  },
+  {
+   "id": "fujifilm_c200",
+   "name": "Fujifilm C200",
+   "type": "negative",
+   "use": "still",
+   "support": "film",
+   "stage": "filming"
+  },
+  {
+   "id": "fujifilm_neopan_acros_100_ii",
+   "name": "Fujifilm Neopan 100 Acros II",
+   "type": "negative",
+   "use": "still",
+   "support": "film",
+   "stage": "filming"
+  },
+  {
+   "id": "fujifilm_pro_400h",
+   "name": "Fujifilm Pro 400H",
+   "type": "negative",
+   "use": "still",
+   "support": "film",
+   "stage": "filming"
+  },
+  {
+   "id": "fujifilm_provia_100f",
+   "name": "Fujifilm Provia 100F",
+   "type": "positive",
+   "use": "still",
+   "support": "film",
+   "stage": "filming"
+  },
+  {
+   "id": "fujifilm_velvia_100",
+   "name": "Fujifilm Velvia 100",
+   "type": "positive",
+   "use": "still",
+   "support": "film",
+   "stage": "filming"
+  },
+  {
+   "id": "fujifilm_xtra_400",
+   "name": "Fujifilm X-Tra 400",
+   "type": "negative",
+   "use": "still",
+   "support": "film",
+   "stage": "filming"
+  },
+  {
+   "id": "ilford_hp5_plus_400",
+   "name": "Ilford HP5 Plus 400",
+   "type": "negative",
+   "use": "still",
+   "support": "film",
+   "stage": "filming"
+  },
+  {
+   "id": "kodak_ektachrome_100",
+   "name": "Kodak Ektachrome 100",
+   "type": "positive",
+   "use": "still",
+   "support": "film",
+   "stage": "filming"
+  },
+  {
+   "id": "kodak_ektar_100",
+   "name": "Kodak Ektar 100",
+   "type": "negative",
+   "use": "still",
+   "support": "film",
+   "stage": "filming"
+  },
+  {
+   "id": "kodak_gold_200",
+   "name": "Kodak Gold 200",
+   "type": "negative",
+   "use": "still",
+   "support": "film",
+   "stage": "filming"
+  },
+  {
+   "id": "kodak_kodachrome_64",
+   "name": "Kodak Kodachrome 64",
+   "type": "positive",
+   "use": "still",
+   "support": "film",
+   "stage": "filming"
+  },
+  {
+   "id": "kodak_portra_160",
+   "name": "Kodak Portra 160",
+   "type": "negative",
+   "use": "still",
+   "support": "film",
+   "stage": "filming"
+  },
+  {
+   "id": "kodak_portra_400",
+   "name": "Kodak Portra 400",
+   "type": "negative",
+   "use": "still",
+   "support": "film",
+   "stage": "filming"
+  },
+  {
+   "id": "kodak_portra_800",
+   "name": "Kodak Portra 800",
+   "type": "negative",
+   "use": "still",
+   "support": "film",
+   "stage": "filming"
+  },
+  {
+   "id": "kodak_portra_800_push1",
+   "name": "Kodak Portra 800 (Push 1)",
+   "type": "negative",
+   "use": "still",
+   "support": "film",
+   "stage": "filming"
+  },
+  {
+   "id": "kodak_portra_800_push2",
+   "name": "Kodak Portra 800 (Push 2)",
+   "type": "negative",
+   "use": "still",
+   "support": "film",
+   "stage": "filming"
+  },
+  {
+   "id": "kodak_tmax_100",
+   "name": "Kodak T-Max 100",
+   "type": "negative",
+   "use": "still",
+   "support": "film",
+   "stage": "filming"
+  },
+  {
+   "id": "kodak_tri_x_400",
+   "name": "Kodak Tri-X 400",
+   "type": "negative",
+   "use": "still",
+   "support": "film",
+   "stage": "filming"
+  },
+  {
+   "id": "kodak_ultramax_400",
+   "name": "Kodak Ultramax 400",
+   "type": "negative",
+   "use": "still",
+   "support": "film",
+   "stage": "filming"
+  },
+  {
+   "id": "kodak_verita_200d",
+   "name": "Kodak Verita 200D",
+   "type": "negative",
+   "use": "cine",
+   "support": "film",
+   "stage": "filming"
+  },
+  {
+   "id": "kodak_vision3_200t",
+   "name": "Kodak Vision3 200T",
+   "type": "negative",
+   "use": "cine",
+   "support": "film",
+   "stage": "filming"
+  },
+  {
+   "id": "kodak_vision3_250d",
+   "name": "Kodak Vision3 250D",
+   "type": "negative",
+   "use": "cine",
+   "support": "film",
+   "stage": "filming"
+  },
+  {
+   "id": "kodak_vision3_500t",
+   "name": "Kodak Vision3 500T",
+   "type": "negative",
+   "use": "cine",
+   "support": "film",
+   "stage": "filming"
+  },
+  {
+   "id": "kodak_vision3_50d",
+   "name": "Kodak Vision3 50D",
+   "type": "negative",
+   "use": "cine",
+   "support": "film",
+   "stage": "filming"
+  }
+ ],
+ "prints": [
+  {
+   "id": "fujifilm_crystal_archive_typeii",
+   "name": "Fujifilm Crystal Archive Type II",
+   "type": "negative",
+   "use": "still",
+   "support": "paper",
+   "stage": "printing"
+  },
+  {
+   "id": "ilford_multigrade_iv_rc",
+   "name": "Ilford Multigrade IV RC",
+   "type": "negative",
+   "use": "still",
+   "support": "paper",
+   "stage": "printing"
+  },
+  {
+   "id": "kodak_ektacolor_edge",
+   "name": "Kodak Ektacolor Edge",
+   "type": "negative",
+   "use": "still",
+   "support": "paper",
+   "stage": "printing"
+  },
+  {
+   "id": "kodak_endura_premier",
+   "name": "Kodak Professional Endura Premier",
+   "type": "negative",
+   "use": "still",
+   "support": "paper",
+   "stage": "printing"
+  },
+  {
+   "id": "kodak_portra_endura",
+   "name": "Kodak Professional Portra Endura",
+   "type": "negative",
+   "use": "still",
+   "support": "paper",
+   "stage": "printing"
+  },
+  {
+   "id": "kodak_supra_endura",
+   "name": "Kodak Professional Supra Endura",
+   "type": "negative",
+   "use": "still",
+   "support": "paper",
+   "stage": "printing"
+  },
+  {
+   "id": "kodak_ultra_endura",
+   "name": "Kodak Professional Ultra Endura",
+   "type": "negative",
+   "use": "still",
+   "support": "paper",
+   "stage": "printing"
+  },
+  {
+   "id": "kodak_2383",
+   "name": "Kodak Vision 2383",
+   "type": "negative",
+   "use": "cine",
+   "support": "film",
+   "stage": "printing"
+  },
+  {
+   "id": "kodak_2393",
+   "name": "Kodak Vision Premier 2393",
+   "type": "negative",
+   "use": "cine",
+   "support": "film",
+   "stage": "printing"
+  }
+ ]
+}

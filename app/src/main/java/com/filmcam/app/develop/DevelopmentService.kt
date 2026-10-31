@@ -1,0 +1,373 @@
+package com.filmcam.app.develop
+
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.app.Service
+import android.content.Context
+import android.content.Intent
+import android.content.pm.ServiceInfo
+import android.graphics.BitmapFactory
+import android.os.Build
+import android.os.Handler
+import android.os.IBinder
+import android.os.Looper
+import android.util.Log
+import app.spektralab.engine.FilmStockMapper
+import app.spektralab.engine.SpektraProcessor
+import com.filmcam.app.GalleryActivity
+import com.filmcam.app.R
+import com.filmcam.app.film.RollInfo
+import com.filmcam.app.film.UndevelopedFilmStore
+import java.io.File
+
+/**
+ * 暗房冲洗前台服务（规格 §6.3）。
+ *
+ *  - 通道 "development"，常驻进度通知（"显影中 n/36" + 进度条）
+ *  - 处理线程：逐帧 decode → processFrame → DateStamp → EXIF → writeDevelopedFrame
+ *  - 单帧失败不中断整卷（errorCount++，跳过）
+ *  - 卷已是 developing（上次中断残留）：从 index 1 重跑全部帧（writeDevelopedFrame 覆盖写，幂等）
+ *  - 完成 → finishRoll → releaseEngine → 通知"冲洗完成，可查看" → stopSelf
+ *    （DevelopmentState 保留完成态给活动读）
+ *  - 引擎在工作线程创建（ensureEngine 较慢，不放主线程）
+ */
+class DevelopmentService : Service() {
+
+    companion object {
+        private const val TAG = "DevelopmentService"
+        private const val CHANNEL_ID = "development"
+        private const val NOTIF_ID = 1
+        private const val ACTION_START = "com.filmcam.development.START"
+        private const val ACTION_STOP = "com.filmcam.development.STOP"
+
+        /** 由 DevelopController 调用：兼容 API 26+ startForegroundService。 */
+        fun start(ctx: Context, intent: Intent) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                ctx.startForegroundService(intent)
+            } else {
+                ctx.startService(intent)
+            }
+        }
+    }
+
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var worker: Thread? = null
+
+    /** onStartCommand 传入的真实 startId，用于 stopSelf(currentStartId)。 */
+    @Volatile
+    private var currentStartId: Int = 0
+
+    override fun onBind(intent: Intent?): IBinder? = null
+
+    override fun onCreate() {
+        super.onCreate()
+        ensureChannel()
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        val rollId = intent?.getStringExtra(DevelopController.EXTRA_ROLL_ID)
+            ?: return START_NOT_STICKY
+        currentStartId = startId
+
+        // 立即挂前台通知（API 34 必须带 type）
+        startForegroundWithType(
+            buildProgressNotification(0, 0, "准备中…")
+        )
+
+        // 防重入：若已有 worker 在跑同一卷，直接返回
+        if (worker?.isAlive == true && DevelopmentState.rollId == rollId) {
+            return START_NOT_STICKY
+        }
+
+        worker = Thread({ runDevelopment(rollId) }, "DevWorker-$rollId").also { it.start() }
+        return START_NOT_STICKY
+    }
+
+    private fun startForegroundWithType(notification: Notification) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            startForeground(
+                NOTIF_ID,
+                notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+            )
+        } else {
+            startForeground(NOTIF_ID, notification)
+        }
+    }
+
+    private fun ensureChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val nm = getSystemService(NotificationManager::class.java)
+            val ch = NotificationChannel(
+                CHANNEL_ID,
+                "暗房冲洗",
+                NotificationManager.IMPORTANCE_LOW
+            ).apply {
+                description = "胶片冲洗进度常驻通知"
+                setShowBadge(false)
+            }
+            nm.createNotificationChannel(ch)
+        }
+    }
+
+    // ---------- 主冲洗循环 ----------
+
+    private fun runDevelopment(rollId: String) {
+        try {
+            // 1) 定位卷（status 会自动变 developing）
+            val roll: RollInfo = UndevelopedFilmStore.undevelopedRolls()
+                .firstOrNull { it.rollId == rollId }
+                ?: run {
+                    Log.w(TAG, "未找到卷 $rollId（可能已冲洗），退出")
+                    finishWithError("未找到胶卷")
+                    return
+                }
+
+            // 幂等：卷已是 developing 也从 index 1 重跑（writeDevelopedFrame 覆盖写）
+            UndevelopedFilmStore.markDeveloping(rollId)
+
+            // 2) 初始化共享状态
+            DevelopmentState.reset()
+            DevelopmentState.rollId = roll.rollId
+            DevelopmentState.total = roll.shotCount
+            DevelopmentState.done = 0
+            DevelopmentState.currentIndex = 0
+            DevelopmentState.phase = DevelopmentState.PHASE_DEVELOPING
+            DevelopmentState.errorCount = 0
+            notifyStateToMain()
+
+            // 3) 在工作线程创建引擎（ensureEngine 较慢）
+            try {
+                SpektraProcessor.ensureEngine(applicationContext)
+            } catch (e: Throwable) {
+                Log.e(TAG, "引擎初始化失败", e)
+                finishWithError("引擎初始化失败: ${e.message}")
+                return
+            }
+
+            // 冲洗开始时读一次设置；帧循环内不做动态重发（grain/halation/glare 是普通参数字段）
+            val devSettings = FilmStockMapper.readDevSettings(this, roll.filmStockId)
+            val resolved = FilmStockMapper.resolvePrintStock(
+                roll.filmStockId, roll.printStockId, devSettings.paperOverride
+            )
+            if (resolved.fellBack) {
+                android.widget.Toast.makeText(
+                    this,
+                    "所选相纸不适用于该胶卷（反转片不配相纸），已回退默认相纸",
+                    android.widget.Toast.LENGTH_SHORT
+                ).show()
+            }
+            val effective = devSettings.copy(paperOverride = resolved.paperId)
+            val paramsJson = FilmStockMapper.buildParamsJson(roll.filmStockId, roll.printStockId, effective)
+            val filmDisplayName = FilmStockMapper.stockDisplayName(roll.filmStockId)
+            val tmpJpeg = File(cacheDir, "develop_tmp.jpg")
+
+            // 4) 逐帧
+            var firstError: String? = null
+            for (index in 1..roll.shotCount) {
+                if (Thread.currentThread().isInterrupted) {
+                    Log.w(TAG, "冲洗被中断: $rollId")
+                    return
+                }
+
+                DevelopmentState.currentIndex = index
+                updateProgressNotification(index - 1, roll.shotCount, "显影中 $index/${roll.shotCount}")
+                notifyStateToMain()
+
+                try {
+                    processOneFrame(roll, index, paramsJson, filmDisplayName, tmpJpeg)
+                    DevelopmentState.done = index
+                } catch (e: Throwable) {
+                    Log.e(TAG, "帧 $index 失败，跳过", e)
+                    DevelopmentState.errorCount++
+                    if (firstError == null) {
+                        firstError = e.message ?: e.javaClass.simpleName
+                    }
+                }
+                notifyStateToMain()
+            }
+
+            // 5) 收尾：有任何帧失败就走错误分支，绝不静默报"完成"
+            // 延迟释放引擎：用户可能马上又冲洗下一卷，30 秒内复用避免重新初始化
+            SpektraProcessor.scheduleReleaseEngine()
+            val nm = getSystemService(NotificationManager::class.java)
+            if (DevelopmentState.errorCount > 0) {
+                DevelopmentState.phase = DevelopmentState.PHASE_ERROR
+                DevelopmentState.lastError = firstError
+                // 不调 finishRoll：卷保持 undeveloped/developing，用户可再次冲洗重试
+                nm.notify(
+                    NOTIF_ID,
+                    buildErrorNotification(
+                        "${DevelopmentState.errorCount}/${roll.shotCount} 帧未完成：" +
+                            (firstError?.take(120) ?: "未知错误")
+                    )
+                )
+            } else {
+                UndevelopedFilmStore.finishRoll(rollId)
+                DevelopmentState.phase = DevelopmentState.PHASE_DONE
+                nm.notify(NOTIF_ID, buildDoneNotification(roll))
+            }
+            notifyStateToMain()
+            stopSelf(currentStartId)
+        } catch (e: Throwable) {
+            Log.e(TAG, "冲洗整体异常", e)
+            finishWithError(e.message ?: "未知错误")
+        }
+    }
+
+    private fun processOneFrame(
+        roll: RollInfo,
+        index: Int,
+        paramsJson: String,
+        filmDisplayName: String,
+        tmpJpeg: File,
+    ) {
+        // openFrameStream → 全分辨率 decode
+        val stream = UndevelopedFilmStore.openFrameStream(roll.rollId, index)
+            ?: throw IllegalStateException("openFrameStream 返回 null: $roll/$index")
+        // RGB_565：解码内存从 48MB → 24MB（12MP），bitmapToFloatRgb 不依赖 alpha 通道
+        val decodeOpts = BitmapFactory.Options().apply {
+            inPreferredConfig = android.graphics.Bitmap.Config.RGB_565
+        }
+        val bmp = stream.use { BitmapFactory.decodeStream(it, null, decodeOpts) }
+            ?: throw IllegalStateException("decodeStream 失败: $roll/$index")
+
+        var writtenOk = false
+        try {
+            // 引擎冲洗到临时 JPEG（全分辨率）
+            val result = SpektraProcessor.processFrame(
+                applicationContext, bmp, paramsJson, tmpJpeg.absolutePath
+            )
+            if (!result.ok) {
+                throw IllegalStateException("processFrame 失败: ${result.message}")
+            }
+
+            val takenAt = try {
+                UndevelopedFilmStore.frameTakenAt(roll.rollId, index)
+            } catch (_: Throwable) {
+                System.currentTimeMillis()
+            }
+            val iso = UndevelopedFilmStore.frameIso(roll.rollId, index)
+
+            // 日期戳（就地重写到 tmpJpeg）
+            DateStampRenderer.apply(applicationContext, tmpJpeg, takenAt)
+            // EXIF（用引擎实际输出尺寸；DateTimeOriginal 按帧拍摄时刻 + 胶卷元数据）
+            ContaxExif.write(
+                tmpJpeg, iso, result.width, result.height, takenAt,
+                filmDisplayName = filmDisplayName,
+                filmStockId = roll.filmStockId,
+                printStockId = roll.printStockId,
+                rollId = roll.rollId,
+                paramsJson = paramsJson,
+            )
+
+            // 落盘前校验临时 JPEG 非空
+            check(tmpJpeg.exists() && tmpJpeg.length() > 0) {
+                "冲洗后临时 JPEG 为空: ${tmpJpeg.absolutePath}"
+            }
+
+            // 落地为成片
+            val uri = UndevelopedFilmStore.writeDevelopedFrame(roll.rollId, index, tmpJpeg)
+            Log.d(TAG, "帧 $index 落盘完成 uri=$uri")
+            writtenOk = true
+        } finally {
+            bmp.recycle()
+            // 只有成功落地后才删 tmpJpeg；失败时保留以便诊断或手动重试
+            if (writtenOk) {
+                tmpJpeg.delete()
+            }
+        }
+    }
+
+    private fun finishWithError(msg: String) {
+        DevelopmentState.phase = DevelopmentState.PHASE_ERROR
+        DevelopmentState.lastError = msg
+        notifyStateToMain()
+        val nm = getSystemService(NotificationManager::class.java)
+        nm.notify(NOTIF_ID, buildErrorNotification(msg.take(500)))
+        // 错误路径立即释放引擎（可能是引擎初始化失败，保留无意义）
+        try { SpektraProcessor.releaseEngine() } catch (_: Throwable) {}
+        stopSelf(currentStartId)
+    }
+
+    private fun notifyStateToMain() {
+        mainHandler.post { DevelopmentState.notifyListeners() }
+    }
+
+    // ---------- 通知 ----------
+
+    private fun buildProgressNotification(done: Int, total: Int, text: String): Notification {
+        val tapIntent = PendingIntent.getActivity(
+            this, 0,
+            Intent(this, GalleryActivity::class.java),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+        val b = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            Notification.Builder(this, CHANNEL_ID)
+        } else {
+            @Suppress("DEPRECATION")
+            Notification.Builder(this)
+        }
+        return b
+            .setContentTitle("暗房冲洗")
+            .setContentText(text)
+            .setSmallIcon(R.drawable.ic_develop)
+            .setOngoing(true)
+            .setProgress(if (total > 0) total else 1, done, total <= 0)
+            .setContentIntent(tapIntent)
+            .build()
+    }
+
+    private fun updateProgressNotification(done: Int, total: Int, text: String) {
+        val nm = getSystemService(NotificationManager::class.java)
+        nm.notify(NOTIF_ID, buildProgressNotification(done, total, text))
+    }
+
+    private fun buildDoneNotification(roll: RollInfo): Notification {
+        val tapIntent = PendingIntent.getActivity(
+            this, 0,
+            Intent(this, GalleryActivity::class.java),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+        val name = runCatching { FilmStockMapper.stockDisplayName(roll.filmStockId) }
+            .getOrDefault(roll.filmStockId)
+        val b = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            Notification.Builder(this, CHANNEL_ID)
+        } else {
+            @Suppress("DEPRECATION")
+            Notification.Builder(this)
+        }
+        return b
+            .setContentTitle("冲洗完成，可查看")
+            .setContentText("$name · ${roll.shotCount} 张")
+            .setSmallIcon(R.drawable.ic_develop_done)
+            .setOngoing(false)
+            .setAutoCancel(true)
+            .setContentIntent(tapIntent)
+            .build()
+    }
+
+    private fun buildErrorNotification(msg: String): Notification {
+        val b = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            Notification.Builder(this, CHANNEL_ID)
+        } else {
+            @Suppress("DEPRECATION")
+            Notification.Builder(this)
+        }
+        return b
+            .setContentTitle("冲洗失败")
+            .setContentText(msg)
+            .setSmallIcon(R.drawable.ic_develop_error)
+            .setOngoing(false)
+            .setAutoCancel(true)
+            .build()
+    }
+
+    override fun onDestroy() {
+        worker?.interrupt()
+        worker = null
+        super.onDestroy()
+    }
+}

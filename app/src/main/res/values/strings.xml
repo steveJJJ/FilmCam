@@ -1,0 +1,10 @@
+<resources>
+    <string name="app_name">FilmCam</string>
+
+    <!-- 成片信息面板 -->
+    <string name="info_group_shooting">拍摄参数</string>
+    <string name="info_group_develop">冲洗参数</string>
+    <string name="info_group_engine">引擎</string>
+    <string name="info_tap_hint">点击照片查看胶卷信息</string>
+    <string name="info_no_exif">此照片无胶卷信息</string>
+</resources>

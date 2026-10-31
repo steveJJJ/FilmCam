@@ -1,0 +1,28 @@
+SPEKTRALAB ENGINE RESOURCES — LICENSING NOTICE
+
+The film and print stock profiles and related engine resources bundled in
+this project under app/src/main/assets/resources/ (including but not limited
+to profiles/*.json, stock_catalog.json, print_luts.json,
+neutral_print_filters.json, paper_grades.json, spektrafilm_constants.bin,
+vulkan/*.spv and the DI/ *.cube files) are licensed under the
+
+  Creative Commons Attribution-ShareAlike 4.0 International (CC BY-SA 4.0)
+  https://creativecommons.org/licenses/by-sa/4.0/
+
+Attribution: SpektraLab film profiles and engine resources by JamesQiu2005
+and the SpektraLab project (https://github.com/JamesQiu2005/SpektraLab).
+
+Summary of rights and obligations:
+  - You are free to share (copy and redistribute) and adapt (remix,
+    transform, build upon) the licensed material for any purpose, including
+    commercially.
+  - You must give appropriate credit, provide a link to the license, and
+    indicate if changes were made.
+  - If you remix, transform, or build upon the material, you must distribute
+    your contributions under the same license as the original (CC BY-SA 4.0).
+
+Additional bundled licenses (in assets/resources/):
+  - Imprint-fonts-LICENSE.txt
+  - Imprint-mono-font-DejaVu-LICENSE.txt
+  - stb-LICENSE.txt
+  - Product-profiles-NOTICE.md

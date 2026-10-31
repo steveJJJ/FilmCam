@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 暗房红光安全灯氛围：深红径向渐变 + 边缘暗角 -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <gradient
+                android:type="radial"
+                android:gradientRadius="900"
+                android:startColor="#3A0E0E"
+                android:centerColor="#2A0808"
+                android:endColor="#0A0202"
+                android:centerX="0.5"
+                android:centerY="0.45" />
+        </shape>
+    </item>
+    <!-- 暗角叠加：四角更深 -->
+    <item>
+        <shape android:shape="rectangle">
+            <gradient
+                android:type="radial"
+                android:gradientRadius="700"
+                android:startColor="#00000000"
+                android:endColor="#CC000000"
+                android:centerX="0.5"
+                android:centerY="0.5" />
+        </shape>
+    </item>
+</layer-list>

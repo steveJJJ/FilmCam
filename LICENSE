@@ -1,0 +1,33 @@
+FilmCam — Android Film Camera App
+Copyright (C) 2026 FilmCam contributors
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+Full text: https://www.gnu.org/licenses/gpl-3.0.html
+
+------------------------------------------------------------------------
+
+Third-party components integrated into this project:
+
+1. SpektraLab physical film engine (native library libspektrafilm_engine.so,
+   JNI bridge and Kotlin facade under app/src/main/java/app/spektralab/engine/)
+   — Copyright (C) JamesQiu2005 / SpektraLab contributors
+   — Licensed under GPL-3.0-or-later
+   — Upstream: https://github.com/JamesQiu2005/SpektraLab
+
+2. Film / print stock profiles (app/src/main/assets/resources/profiles/,
+   stock_catalog.json, print_luts.json, neutral_print_filters.json,
+   spektrafilm_constants.bin and other engine resources)
+   — Licensed under CC BY-SA 4.0
+   — See LICENSE-SPEKTRAFILM.txt

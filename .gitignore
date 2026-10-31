@@ -1,0 +1,23 @@
+# Gradle 构建目录与缓存
+.gradle/
+build/
+app/build/
+
+# Android Studio / IntelliJ
+.idea/
+*.iml
+.kotlin/
+
+# 本地环境配置（含本机 SDK 路径，绝不入库）
+local.properties
+
+# 构建产物
+*.apk
+*.aab
+captures/
+.externalNativeBuild/
+.cxx/
+
+# 系统文件
+.DS_Store
+Thumbs.db

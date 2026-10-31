@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#000">
+
+    <androidx.viewpager2.widget.ViewPager2
+        android:id="@+id/viewPager"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <!-- 成片胶卷信息面板（覆盖层，默认收起） -->
+    <LinearLayout
+        android:id="@+id/panelInfo"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:orientation="vertical"
+        android:background="#E60A0000"
+        android:paddingStart="18dp"
+        android:paddingEnd="18dp"
+        android:paddingTop="12dp"
+        android:paddingBottom="18dp"
+        android:visibility="gone">
+
+        <!-- 顶部提示条 -->
+        <View
+            android:layout_width="36dp"
+            android:layout_height="3dp"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginBottom="10dp"
+            android:background="#8B1A1A" />
+
+        <!-- 胶卷名（主标题） -->
+        <TextView
+            android:id="@+id/tvFilmName"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="#FFD7C4"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            tools:text="Kodak Portra 400" />
+
+        <!-- 胶卷编号 -->
+        <TextView
+            android:id="@+id/tvRollId"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:textColor="#FF9A86"
+            android:textSize="12sp"
+            tools:text="胶卷编号 roll_1769853120456" />
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:layout_marginTop="12dp"
+            android:layout_marginBottom="10dp"
+            android:background="#3D6B1414" />
+
+        <ScrollView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:scrollbars="none">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <!-- 拍摄参数组 -->
+                <TextView
+                    style="@style/InfoGroupTitle"
+                    android:text="拍摄参数" />
+
+                <TextView
+                    android:id="@+id/tvShooting"
+                    style="@style/InfoRow"
+                    tools:text="CONTAX T3 · 35mm f/2.8 · ISO 400" />
+
+                <TextView
+                    android:id="@+id/tvShotTime"
+                    style="@style/InfoRow"
+                    tools:text="拍摄于 2026:10:31 11:53" />
+
+                <!-- 冲洗参数组 -->
+                <TextView
+                    style="@style/InfoGroupTitle"
+                    android:text="冲洗参数" />
+
+                <TextView
+                    android:id="@+id/tvPrintStock"
+                    style="@style/InfoRow"
+                    tools:text="相纸 kodak_portra_endura" />
+
+                <TextView
+                    android:id="@+id/tvDevParams"
+                    style="@style/InfoRow"
+                    tools:text="曝光 1.00 · 颗粒 1.00 · 辉光 1.00 · 眩光 3.00" />
+
+                <!-- 引擎信息组 -->
+                <TextView
+                    style="@style/InfoGroupTitle"
+                    android:text="引擎" />
+
+                <TextView
+                    android:id="@+id/tvEngine"
+                    style="@style/InfoRow"
+                    tools:text="FilmCam + SpektraLab Engine · kodak_portra_400" />
+
+                <TextView
+                    android:id="@+id/tvDims"
+                    style="@style/InfoRow"
+                    tools:text="3060 × 4080" />
+
+            </LinearLayout>
+        </ScrollView>
+
+    </LinearLayout>
+
+</FrameLayout>
