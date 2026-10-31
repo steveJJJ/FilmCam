@@ -7,6 +7,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.view.View
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.SeekBar
 import android.widget.TextView
@@ -147,18 +148,41 @@ class AboutActivity : AppCompatActivity() {
     /** 赞赏区下方的 PayPal 入口（供海外用户），点击在浏览器打开 PayPal 页面。 */
     private fun bindAppreciation() {
         val chip = findViewById<TextView>(R.id.tvPaypal)
-        val url = getString(R.string.appreciate_paypal_url).trim()
-        if (url.isEmpty()) {
+        val paypal = getString(R.string.appreciate_paypal_url).trim()
+        if (paypal.isEmpty()) {
             chip.visibility = View.GONE
-            return
+        } else {
+            chip.setOnClickListener { openExternal(chip, paypal) }
         }
-        chip.setOnClickListener {
-            val started = runCatching {
-                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-            }.isSuccess
-            if (!started) {
-                Toast.makeText(this, "没有可用的浏览器", Toast.LENGTH_SHORT).show()
+
+        // 微信赞赏：有「收款链接」就直达付款页，否则退化为拉起微信 App
+        val qr = findViewById<ImageView>(R.id.ivAppreciate)
+        val wechat = getString(R.string.appreciate_wechat_url).trim()
+        qr.setOnClickListener {
+            if (wechat.isNotEmpty()) {
+                openExternal(qr, wechat)
+            } else {
+                val launch = packageManager.getLaunchIntentForPackage("com.tencent.mm")
+                if (launch != null) {
+                    launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    val started = runCatching { startActivity(launch) }.isSuccess
+                    if (!started) {
+                        Toast.makeText(this, R.string.appreciate_wechat_launch_fail, Toast.LENGTH_SHORT).show()
+                    }
+                } else {
+                    Toast.makeText(this, R.string.appreciate_wechat_launch_fail, Toast.LENGTH_SHORT).show()
+                }
             }
+        }
+    }
+
+    /** 用系统浏览器打开外部链接，失败时给出提示。 */
+    private fun openExternal(view: View, url: String) {
+        val started = runCatching {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+        }.isSuccess
+        if (!started) {
+            Toast.makeText(this, "没有可用的浏览器", Toast.LENGTH_SHORT).show()
         }
     }
 

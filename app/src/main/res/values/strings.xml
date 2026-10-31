@@ -9,6 +9,11 @@
     <string name="about_paypal">PayPal 赞赏</string>
     <!-- PayPal 赞赏页；留空时不展示入口 -->
     <string name="appreciate_paypal_url" translatable="false">https://paypal.me/Stevejjjjjj</string>
+    <!-- 微信：赞赏码本身没有可跳转链接，此处留做「收款链接」（微信 → 收付款 → 二维码收款 →
+         收款小账本 → 收款链接 → 创建 → 复制链接）。填入后点击赞赏码直达付款页；
+         留空则退化为拉起微信 App，由用户在微信内识别赞赏码。 -->
+    <string name="appreciate_wechat_url" translatable="false"></string>
+    <string name="appreciate_wechat_launch_fail">没有检测到微信，请安装后重试</string>
     <string name="about_feedback">问题反馈</string>
     <string name="feedback_subject">FILMCAM 问题反馈 %1$s / 设备 %2$s %3$s / 系统 Android %4$s (API %5$d)</string>
     <string name="feedback_body">遇到的问题：
