@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <!-- 银色金属渐变背景 -->
+    <linearGradient id="silver" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f4f4f2"/>
+      <stop offset="0.45" stop-color="#e2e2df"/>
+      <stop offset="0.55" stop-color="#d6d6d3"/>
+      <stop offset="1" stop-color="#c2c2bf"/>
+    </linearGradient>
+    <!-- 拉丝纹理 -->
+    <pattern id="brushed" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(90)">
+      <rect width="8" height="8" fill="none"/>
+      <line x1="0" y1="0" x2="0" y2="8" stroke="#ffffff" stroke-opacity="0.35" stroke-width="1"/>
+      <line x1="4" y1="0" x2="4" y2="8" stroke="#9a9a97" stroke-opacity="0.18" stroke-width="1"/>
+    </pattern>
+    <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.55"/>
+      <stop offset="0.5" stop-color="#ffffff" stop-opacity="0"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0.06"/>
+    </linearGradient>
+    <!-- 蒙版：抹掉 T3 轮廓的末端封口线，形成开口双层效果 -->
+    <mask id="open-ends">
+      <rect x="0" y="0" width="1024" height="1024" fill="white"/>
+      <!-- T：顶横杠左端封口 -->
+      <rect x="322" y="530" width="36" height="80" fill="black"/>
+      <!-- T：顶横杠右端封口 -->
+      <rect x="506" y="530" width="36" height="80" fill="black"/>
+      <!-- T：竖笔底端封口 -->
+      <rect x="404" y="742" width="70" height="36" fill="black"/>
+      <!-- 3：上弧左端开口 -->
+      <rect x="536" y="528" width="46" height="76" fill="black"/>
+      <!-- 3：中部左 junction 开口 -->
+      <rect x="536" y="622" width="40" height="76" fill="black"/>
+      <!-- 3：下弧左端开口 -->
+      <rect x="536" y="698" width="46" height="76" fill="black"/>
+    </mask>
+    <style>
+      .contax {
+        font-family: "Arial", "Helvetica Neue", Helvetica, sans-serif;
+        font-weight: 400;
+        letter-spacing: 0.32em;
+        fill: #3c3c3e;
+      }
+      .t3 {
+        font-family: "Arial", "Helvetica Neue", Helvetica, sans-serif;
+        font-weight: 800;
+        fill: none;
+        stroke: #e0356b;
+        stroke-width: 6;
+        letter-spacing: 0.06em;
+      }
+    </style>
+  </defs>
+
+  <!-- 背景 -->
+  <rect x="0" y="0" width="1024" height="1024" rx="180" fill="url(#silver)"/>
+  <rect x="0" y="0" width="1024" height="1024" rx="180" fill="url(#brushed)"/>
+  <rect x="0" y="0" width="1024" height="1024" rx="180" fill="url(#sheen)"/>
+  <rect x="6" y="6" width="1012" height="1012" rx="176" fill="none" stroke="#ffffff" stroke-opacity="0.7" stroke-width="3"/>
+  <rect x="10" y="10" width="1004" height="1004" rx="172" fill="none" stroke="#8a8a88" stroke-opacity="0.35" stroke-width="2"/>
+
+  <!-- CONTAX 主字样（细体） -->
+  <text x="512" y="520" text-anchor="middle" class="contax" font-size="150">CONTAX</text>
+
+  <!-- T3 开口双层描边字（玫红） -->
+  <g mask="url(#open-ends)">
+    <text x="530" y="760" text-anchor="middle" class="t3" font-size="300">T3</text>
+  </g>
+</svg>
