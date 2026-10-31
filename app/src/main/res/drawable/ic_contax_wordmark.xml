@@ -1,13 +1,50 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- CONTAX official wordmark (Wikimedia Commons "Logotipo da Contax" vector path).
-     Chrome-silver fill mimics the etched metal logo on the real body.
-     viewport 500x61, ratio 8.2:1. -->
+<!--
+  CONTAX 机身铭牌字标（按康泰时 T3 标准版顶盖复刻）
+
+  真机考据：T3 标准版顶盖用无衬线方块大写字母（block lettering），
+  花体 script 字标只出现在 70 周年纪念版黑色款上——本图为标准版样式。
+  规格：几何无衬线、等线宽 11/字高 72、宽字面 64、字距 20，铬银蚀刻填充。
+-->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="250dp"
-    android:height="30.5dp"
+    android:width="130dp"
+    android:height="22.88dp"
     android:viewportWidth="500"
-    android:viewportHeight="61">
+    android:viewportHeight="88">
     <path
         android:fillColor="#C9C5BC"
-        android:pathData="m418.25 0 30.247 30.501 -30.245 30.499h21.123l19.684 -19.849 19.686 19.849h21.123l-30.245 -30.499 30.247 -30.501h-21.123l-19.684 19.849 -19.684 -19.849zm-58.445 0 -35.948 60.999h19.203l26.235 -44.518 26.235 44.518h19.203l-35.948 -60.999zm-102.84 0 0 12.965h25.919l0 48.034h16.801l0 -48.034h26.4l0 -12.965zm-158.41 0c-7.1829 0 -12.965 5.782 -12.965 12.965v35.063c0 7.1829 5.782 12.967 12.965 12.967h50.883c7.1829 0 12.965 -5.7842 12.965 -12.967l0 -35.063c0 -7.1829 -5.782 -12.965 -12.965 -12.965zm5.7908 12.965h39.303c1.3463 0 2.4315 1.083 2.4315 2.4293v30.209c0 1.3463 -1.0852 2.4293 -2.4314 2.4293h-39.303c-1.3463 0 -2.4315 -1.083 -2.4315 -2.4293l0 -30.209c0 -1.3463 1.0852 -2.4293 2.4314 -2.4293zm-91.244 -12.965c-7.1829 0 -12.965 5.782 -12.965 12.965l0 35.065c0 7.1829 5.782 12.965 12.965 12.965l63.847 0 0 -12.969 -57.148 0c-1.3463 0 -2.4293 -1.083 -2.4293 -2.4293l0 -30.209c0 -1.3463 1.083 -2.4293 2.4294 -2.4293h57.148l0 -0.006 0 -12.959zm157.93 0 0 60.995h16.32l0 -48.03h41.734c1.3463 0 2.4315 1.083 2.4315 2.4293l0 45.601h16.326l0 -48.03c0 -7.1829 -5.782 -12.965 -12.965 -12.965h-47.527z" />
+        android:pathData="M59.7 15.63A32 36 0 1 0 59.7 72.37L52.93 63.7A21 25 0 1 1 52.93 24.3Z" />
+    <path
+        android:fillColor="#C9C5BC"
+        android:pathData="M92 44a32 36 0 1 0 64 0a32 36 0 1 0 -64 0ZM103 44a21 25 0 1 1 42 0a21 25 0 1 1 -42 0Z" />
+    <path
+        android:fillColor="#C9C5BC"
+        android:pathData="M176 8h11v72h-11Z" />
+    <path
+        android:fillColor="#C9C5BC"
+        android:pathData="M229 8h11v72h-11Z" />
+    <path
+        android:fillColor="#C9C5BC"
+        android:pathData="M176 8 187 8 240 80 229 80Z" />
+    <path
+        android:fillColor="#C9C5BC"
+        android:pathData="M260 8h64v11h-64Z" />
+    <path
+        android:fillColor="#C9C5BC"
+        android:pathData="M286.5 19h11v61h-11Z" />
+    <path
+        android:fillColor="#C9C5BC"
+        android:pathData="M376 8 408 80 344 80Z" />
+    <path
+        android:fillColor="#C9C5BC"
+        android:pathData="M376 20.04 354.24 69 397.76 69Z" />
+    <path
+        android:fillColor="#C9C5BC"
+        android:pathData="M360.89 46 391.11 46 386.22 57 365.78 57Z" />
+    <path
+        android:fillColor="#C9C5BC"
+        android:pathData="M428 8 439 8 492 80 481 80Z" />
+    <path
+        android:fillColor="#C9C5BC"
+        android:pathData="M481 8 492 8 439 80 428 80Z" />
 </vector>
