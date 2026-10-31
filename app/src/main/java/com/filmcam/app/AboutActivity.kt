@@ -167,23 +167,30 @@ class AboutActivity : AppCompatActivity() {
         val memInfo = ActivityManager.MemoryInfo()
         (getSystemService(ACTIVITY_SERVICE) as ActivityManager).getMemoryInfo(memInfo)
         val availMb = (memInfo.availMem / (1024 * 1024)).toInt()
+        val totalMb = (memInfo.totalMem / (1024 * 1024)).toInt()
 
         val verLabel = "v$verName"
         val intent = Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:$email")).apply {
-            putExtra(Intent.EXTRA_SUBJECT, getString(R.string.feedback_subject, verLabel))
+            putExtra(
+                Intent.EXTRA_SUBJECT, getString(
+                    R.string.feedback_subject,
+                    verLabel, Build.MANUFACTURER, Build.MODEL,
+                    Build.VERSION.RELEASE, Build.VERSION.SDK_INT
+                )
+            )
             putExtra(
                 Intent.EXTRA_TEXT, getString(
                     R.string.feedback_body,
                     verLabel, verCode, Build.MANUFACTURER, Build.MODEL,
                     Build.VERSION.RELEASE, Build.VERSION.SDK_INT,
                     metrics.widthPixels, metrics.heightPixels, metrics.densityDpi,
-                    availMb
+                    availMb, totalMb
                 )
             )
         }
         val started = runCatching { startActivity(intent) }.isSuccess
         if (!started) {
-            Toast.makeText(this, "没有可用的邮件应用", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, R.string.feedback_no_mail_app, Toast.LENGTH_SHORT).show()
         }
     }
 
