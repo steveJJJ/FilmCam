@@ -39,9 +39,9 @@ object FilmRollRepository {
             tag = "反转"
         ),
         FilmRoll(
-            name = "ETERNA",
-            iconResId = R.drawable.ic_film_eterna,
-            description = "电影感，低对比柔和",
+            name = "VISION3 250D",
+            iconResId = R.drawable.ic_film_vision3_250d,
+            description = "柯达电影卷，日光平衡柔和",
             tag = "电影"
         ),
         FilmRoll(
@@ -57,9 +57,9 @@ object FilmRollRepository {
             tag = "黑白"
         ),
         FilmRoll(
-            name = "CN800",
-            iconResId = R.drawable.ic_film_cn800,
-            description = "高感胶片，夜色氛围",
+            name = "CINESTILL 800T",
+            iconResId = R.drawable.ic_film_cinestill800t,
+            description = "钨丝灯平衡，夜色霓虹",
             tag = "彩色"
         ),
         // ---- 引擎 catalog 全量胶卷（与 FilmStockMapper.ROLL_TABLE 一一对应）----

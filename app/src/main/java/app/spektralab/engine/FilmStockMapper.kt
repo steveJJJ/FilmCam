@@ -46,10 +46,15 @@ object FilmStockMapper {
         // 旧键保留作兼容别名（老代码路径若仍传旧名不至于崩溃）。
         "KODACHROME 64"    to ("kodak_kodachrome_64"         to "kodak_endura_premier"),
         "CLASSIC CHROME"   to ("kodak_kodachrome_64"         to "kodak_endura_premier"),
+        // 早期误用了别的品牌名（Eterna 是富士电影卷、CN800 是乐魔的型号），
+        // 引擎实际 profile 分别是柯达 Vision3 250D 与 CineStill 800T——已更正；
+        // 旧键保留作兼容别名。
+        "VISION3 250D"     to ("kodak_vision3_250d"          to "kodak_2383"),
         "ETERNA"           to ("kodak_vision3_250d"          to "kodak_2383"),
         "TRI-X 400"        to ("kodak_tri_x_400"             to "ilford_multigrade_iv_rc"),
         "HP5 PLUS"         to ("ilford_hp5_plus_400"         to "ilford_multigrade_iv_rc"),
-        "CN800"            to ("cinestill_800t"               to "kodak_endura_premier"),
+        "CINESTILL 800T"   to ("cinestill_800t"              to "kodak_endura_premier"),
+        "CN800"            to ("cinestill_800t"              to "kodak_endura_premier"),
         // ---- 2025-11 扩充：引擎 catalog 全量 25 支胶卷 ----
         // 配对依据（三项交叉核对）：
         //   1) stock_catalog.json 的 type/use 字段（negative / positive / use=cine）

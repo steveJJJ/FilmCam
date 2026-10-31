@@ -12,7 +12,7 @@ import java.util.List;
 public class GenSheet {
     static final String[] ROLLS = {
         "ic_film_portra400", "ic_film_ektar100", "ic_film_gold200", "ic_film_superia400",
-        "ic_film_kodachrome64", "ic_film_eterna", "ic_film_trix400", "ic_film_hp5", "ic_film_cn800",
+        "ic_film_kodachrome64", "ic_film_vision3_250d", "ic_film_trix400", "ic_film_hp5", "ic_film_cinestill800t",
         "ic_film_portra160", "ic_film_portra800", "ic_film_portra800p1", "ic_film_portra800p2",
         "ic_film_ultramax400", "ic_film_c200", "ic_film_pro400h", "ic_film_tmax100", "ic_film_acros100",
         "ic_film_provia100f", "ic_film_velvia100", "ic_film_ektachrome100", "ic_film_verita200d",
@@ -20,7 +20,7 @@ public class GenSheet {
     };
     static final String[] NAMES = {
         "PORTRA 400", "EKTAR 100", "GOLD 200", "SUPERIA 400", "KODACHROME 64",
-        "ETERNA", "TRI-X 400", "HP5 PLUS", "CN800", "PORTRA 160", "PORTRA 800",
+        "VISION3 250D", "TRI-X 400", "HP5 PLUS", "CINESTILL 800T", "PORTRA 160", "PORTRA 800",
         "PORTRA 800 PUSH 1", "PORTRA 800 PUSH 2", "ULTRAMAX 400", "C200", "PRO 400H",
         "T-MAX 100", "NEOPAN ACROS 100 II", "PROVIA 100F", "VELVIA 100",
         "EKTACHROME 100", "VERITA 200D", "VISION3 50D", "VISION3 200T", "VISION3 500T",
