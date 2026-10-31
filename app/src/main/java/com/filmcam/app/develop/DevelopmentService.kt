@@ -14,6 +14,7 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.util.Log
+import app.spektralab.engine.EngineResources
 import app.spektralab.engine.FilmStockMapper
 import app.spektralab.engine.SpektraProcessor
 import com.filmcam.app.GalleryActivity
@@ -147,8 +148,12 @@ class DevelopmentService : Service() {
             DevelopmentState.total = roll.shotCount
             DevelopmentState.done = 0
             DevelopmentState.currentIndex = 0
-            DevelopmentState.phase = DevelopmentState.PHASE_DEVELOPING
             DevelopmentState.errorCount = 0
+            // 先进入「准备」阶段：首次冲洗要把 30MB 引擎资源从 assets 拷到 filesDir
+            // 并创建引擎（约 10s），此前这段静默进行，UI 停在「显影中 0/36」，
+            // 用户会以为 App 卡死。
+            DevelopmentState.preparingFirstTime = !EngineResources.isPrepared(this)
+            DevelopmentState.phase = DevelopmentState.PHASE_PREPARING
             notifyStateToMain()
 
             // 3) 在工作线程创建引擎（ensureEngine 较慢）
@@ -159,6 +164,9 @@ class DevelopmentService : Service() {
                 finishWithError("引擎初始化失败: ${e.message}")
                 return
             }
+
+            DevelopmentState.phase = DevelopmentState.PHASE_DEVELOPING
+            notifyStateToMain()
 
             // 冲洗开始时读一次设置；帧循环内不做动态重发（grain/halation/glare 是普通参数字段）
             val devSettings = FilmStockMapper.readDevSettings(this, roll.filmStockId)

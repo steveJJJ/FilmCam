@@ -40,7 +40,8 @@
             android:id="@+id/rvGallery"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:padding="2dp" />
+            android:clipToPadding="false"
+            android:padding="1dp" />
 
         <TextView
             android:id="@+id/tvEmpty"

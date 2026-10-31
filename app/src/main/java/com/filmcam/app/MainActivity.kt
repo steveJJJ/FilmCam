@@ -156,6 +156,8 @@ class MainActivity : AppCompatActivity() {
         updateFilmInfo()
 
         // 点屏对焦 + 上下滑调曝光（GCam 风格）
+        // 滑动过程只在 EV 整数档位真正变化时才下发相机参数（最多 6 次），
+        // 落盘统一放到抬手时做一次，避免每移动一像素就重建请求 + 写 SharedPreferences。
         var touchStartY = 0f
         var touchStartEv = 0
         binding.glSurfaceView.setOnTouchListener { _, event ->
@@ -166,10 +168,16 @@ class MainActivity : AppCompatActivity() {
                 }
                 android.view.MotionEvent.ACTION_MOVE -> {
                     val delta = (touchStartY - event.rawY) / 100f
-                    exposureComp = (touchStartEv + delta.toInt()).coerceIn(-3, 3)
-                    binding.tvEvValue.text = exposureComp.toString()
-                    cameraController?.setExposureComp(exposureComp)
-                    saveSettings()
+                    val newEv = (touchStartEv + delta.toInt()).coerceIn(-3, 3)
+                    if (newEv != exposureComp) {
+                        exposureComp = newEv
+                        cameraController?.setExposureComp(exposureComp)
+                        showEvIndicator(exposureComp)
+                    }
+                }
+                android.view.MotionEvent.ACTION_UP,
+                android.view.MotionEvent.ACTION_CANCEL -> {
+                    if (exposureComp != touchStartEv) saveSettings()
                 }
             }
             true
@@ -181,6 +189,7 @@ class MainActivity : AppCompatActivity() {
             if (exposureComp > 3) exposureComp = -3
             binding.tvEvValue.text = exposureComp.toString()
             cameraController?.setExposureComp(exposureComp)
+            showEvIndicator(exposureComp)
             saveSettings()
         }
         binding.btnEvMinus.setOnClickListener {
@@ -188,6 +197,7 @@ class MainActivity : AppCompatActivity() {
             if (exposureComp < -3) exposureComp = 3
             binding.tvEvValue.text = exposureComp.toString()
             cameraController?.setExposureComp(exposureComp)
+            showEvIndicator(exposureComp)
             saveSettings()
         }
 
@@ -464,7 +474,62 @@ class MainActivity : AppCompatActivity() {
         if (exposureComp > 3) exposureComp = -3
         applyExposure()
         updateLcd()
+        showEvIndicator(exposureComp)
         saveSettings()
+    }
+
+    // ===== 曝光补偿浮层反馈 =====
+    // 原来 EV 数字是一个 0dp 的隐藏控件，用户滑动取景器时屏幕上没有任何变化，
+    // 无法判断是否调到了、调到了多少。这里改成滑动/按键时在屏幕中上部浮出
+    // 数值 + 7 点刻度，1.4s 后自动淡出。
+
+    private var evHideTask: Runnable? = null
+
+    private fun showEvIndicator(value: Int) {
+        val v = value.coerceIn(-3, 3)
+        binding.tvEvIndicator.text = when {
+            v > 0 -> "EV  +$v"
+            v < 0 -> "EV  -${-v}"
+            else -> "EV   0"
+        }
+        ensureEvTicks()
+        for (i in 0 until binding.evTicks.childCount) {
+            val dot = binding.evTicks.getChildAt(i)
+            val active = (i - EV_TICK_CENTER) == v
+            dot.alpha = if (active) 1f else 0.28f
+            dot.scaleX = if (active) 1.6f else 1f
+            dot.scaleY = if (active) 1.6f else 1f
+        }
+        val overlay = binding.evOverlay
+        overlay.animate().cancel()
+        overlay.visibility = android.view.View.VISIBLE
+        overlay.animate().alpha(1f).setDuration(120).start()
+
+        evHideTask?.let { overlay.removeCallbacks(it) }
+        val hide = Runnable {
+            overlay.animate().alpha(0f).setDuration(240)
+                .withEndAction { overlay.visibility = android.view.View.GONE }
+                .start()
+        }
+        evHideTask = hide
+        overlay.postDelayed(hide, 1400)
+    }
+
+    /** 首次调用时构建 7 个刻度点（-3..+3） */
+    private fun ensureEvTicks() {
+        if (binding.evTicks.childCount > 0) return
+        val dm = resources.displayMetrics
+        val dotPx = (6 * dm.density).toInt()
+        val gapPx = (5 * dm.density).toInt()
+        for (i in 0..6) {
+            val dot = android.view.View(this)
+            val lp = android.widget.LinearLayout.LayoutParams(dotPx, dotPx)
+            lp.marginStart = gapPx
+            lp.marginEnd = gapPx
+            dot.layoutParams = lp
+            dot.setBackgroundResource(R.drawable.bg_ev_tick)
+            binding.evTicks.addView(dot)
+        }
     }
 
     /**
@@ -889,5 +954,8 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         private const val REQ_CODE = 1001
+
+        /** 曝光刻度点里 0 档的位置（共 7 点：-3..+3） */
+        private const val EV_TICK_CENTER = 3
     }
 }

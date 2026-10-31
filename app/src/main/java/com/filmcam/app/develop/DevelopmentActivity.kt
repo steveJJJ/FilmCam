@@ -182,7 +182,14 @@ class DevelopmentActivity : AppCompatActivity(), SensorEventListener {
         val cur = st.currentIndex.coerceAtLeast(0)
         progressBar.max = 100
         progressBar.progress = if (total > 0) (done * 100 / total) else 0
-        tvProgress.text = "显影中 $done/$total"
+        // 准备阶段（首次要拷 30MB 引擎资源 + 建引擎，约 10s）：给出明确文案，
+        // 否则 UI 会停在「显影中 0/36」像卡死。
+        tvProgress.text = when {
+            st.phase == DevelopmentState.PHASE_PREPARING && st.preparingFirstTime ->
+                "首次冲洗，正在准备显影液…"
+            st.phase == DevelopmentState.PHASE_PREPARING -> "正在准备…"
+            else -> "显影中 $done/$total"
+        }
 
         // 胶卷条
         stripAdapter.shotCount = info?.shotCount ?: total

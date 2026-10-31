@@ -42,7 +42,12 @@ class GalleryActivity : AppCompatActivity() {
         layoutUndeveloped = findViewById(R.id.layoutUndeveloped)
         rvUndeveloped = findViewById(R.id.rvUndeveloped)
 
-        rvGallery.layoutManager = GridLayoutManager(this, 3)
+        // 列数按屏宽自适应：每格最小约 104dp，手机 3 列、大屏/折叠屏展开可到 6 列。
+        // 原来固定 3 列 + 400px 行高，在 2K 屏上是细扁条，在折叠屏上又过大。
+        val dm = resources.displayMetrics
+        val minItemPx = (104f * dm.density).toInt().coerceAtLeast(1)
+        val spanCount = (dm.widthPixels / minItemPx).coerceIn(3, 6)
+        rvGallery.layoutManager = GridLayoutManager(this, spanCount)
         rvUndeveloped.layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
     }
 
@@ -172,13 +177,16 @@ class GalleryActivity : AppCompatActivity() {
         inner class ViewHolder(val iv: ImageView) : RecyclerView.ViewHolder(iv)
 
         override fun onCreateViewHolder(parent: android.view.ViewGroup, viewType: Int): ViewHolder {
-            val iv = ImageView(parent.context).apply {
+            // 正方形容器：宽度由 GridLayoutManager 均分，高度自动等于宽度。
+            // 原先写死 400px，在 2K 屏上缩成细扁条、在折叠屏上过大。
+            val gap = (2 * parent.resources.displayMetrics.density).toInt().coerceAtLeast(1)
+            val iv = com.filmcam.app.ui.SquareImageView(parent.context).apply {
                 layoutParams = RecyclerView.LayoutParams(
                     RecyclerView.LayoutParams.MATCH_PARENT,
-                    400
+                    RecyclerView.LayoutParams.WRAP_CONTENT
                 )
                 scaleType = ImageView.ScaleType.CENTER_CROP
-                setPadding(2, 2, 2, 2)
+                setPadding(gap, gap, gap, gap)
             }
             val holder = ViewHolder(iv)
             // 点击事件只设置一次，位置取 holder 的 bindingAdapterPosition 避免复用错乱

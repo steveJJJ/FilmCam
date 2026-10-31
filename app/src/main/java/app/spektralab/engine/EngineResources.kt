@@ -45,6 +45,25 @@ object EngineResources {
     }
 
     /**
+     * 引擎资源是否已就绪（首次安装或版本升级后为 false）。
+     *
+     * 只读 marker 判断，不触发拷贝。冲洗前用它区分「首次准备 ~10s」与「秒开」，
+     * 避免用户在 0/36 卡住时以为 App 卡死。
+     */
+    fun isPrepared(context: Context): Boolean {
+        val appContext = context.applicationContext
+        val marker = File(File(appContext.filesDir, ASSET_ROOT), MARKER_FILE)
+        if (!marker.isFile) return false
+        return try {
+            val versionCode = appContext.packageManager
+                .getPackageInfo(appContext.packageName, 0).versionCode
+            marker.readText().trim() == versionCode.toString()
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    /**
      * 确保引擎资源就绪，返回 resourcesDir 的绝对路径。
      * 缓存命中（marker 存在且版本号一致）则直接返回；否则递归全量拷贝。
      */

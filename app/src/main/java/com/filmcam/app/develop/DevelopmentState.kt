@@ -8,6 +8,7 @@ package com.filmcam.app.develop
  */
 object DevelopmentState {
 
+    const val PHASE_PREPARING = "preparing"
     const val PHASE_DEVELOPING = "developing"
     const val PHASE_DONE = "done"
     const val PHASE_ERROR = "error"
@@ -18,6 +19,12 @@ object DevelopmentState {
     @Volatile var currentIndex: Int = 0
     @Volatile var phase: String = PHASE_DEVELOPING
     @Volatile var errorCount: Int = 0
+
+    /**
+     * 本次冲洗是否需要首次准备（拷贝引擎资源 + 建引擎，约 10 秒）。
+     * 用于把「首次冲洗」和「后续冲洗」的准备文案区分开，避免用户以为卡死。
+     */
+    @Volatile var preparingFirstTime: Boolean = false
 
     /** 第一帧失败的错误消息（用于 UI/通知展示）；无错误时为 null。 */
     @Volatile var lastError: String? = null
@@ -36,6 +43,7 @@ object DevelopmentState {
         phase = PHASE_DEVELOPING
         errorCount = 0
         lastError = null
+        preparingFirstTime = false
     }
 
     fun addListener(l: () -> Unit) {
