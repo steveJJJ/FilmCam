@@ -948,17 +948,17 @@ class MainActivity : AppCompatActivity() {
         } catch (_: Exception) {}
     }
 
-    /** 点屏对焦的取景框动画：白色圆环在点击处收拢，短暂停留后淡出 */
+    /** 点屏对焦指示：康泰时 T3 取景器中央的方形 AF 框（细线四角括号），收拢停留后淡出 */
     private fun showFocusRing(fx: Float, fy: Float) {
         val sizeDp = 88
         val density = resources.displayMetrics.density
         val size = (sizeDp * density).toInt()
         val ring = android.view.View(this).apply {
-            background = android.graphics.drawable.GradientDrawable().apply {
-                shape = android.graphics.drawable.GradientDrawable.RING
-                setColor(android.graphics.Color.TRANSPARENT)
-                setStroke((3 * density).toInt(), 0xFFFFFFFF.toInt())
-            }
+            background = FocusBracketDrawable(
+                stroke = 2f * density,
+                color = android.graphics.Color.WHITE,
+                cornerLen = size * 0.30f
+            )
         }
         val params = android.widget.FrameLayout.LayoutParams(size, size)
         binding.root.addView(ring, params)
@@ -977,6 +977,51 @@ class MainActivity : AppCompatActivity() {
                     }
                 }, 650)
             }
+    }
+
+    /**
+     * 康泰时 T3 取景器中央 AF 框：四个细线直角括号围成的方框，
+     * 不画整条边线，与旁轴取景器的测距区标记一致。
+     */
+    private class FocusBracketDrawable(
+        private val stroke: Float,
+        private val color: Int,
+        private val cornerLen: Float
+    ) : android.graphics.drawable.Drawable() {
+        private val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+            style = android.graphics.Paint.Style.STROKE
+            strokeWidth = stroke
+            setColor(color)
+            strokeCap = android.graphics.Paint.Cap.BUTT
+        }
+
+        override fun draw(canvas: android.graphics.Canvas) {
+            val b = bounds
+            val r = stroke / 2f
+            val l = b.left + r
+            val t = b.top + r
+            val ri = b.right - r
+            val bo = b.bottom - r
+            val c = cornerLen
+            // 左上
+            canvas.drawLine(l, t, l + c, t, paint)
+            canvas.drawLine(l, t, l, t + c, paint)
+            // 右上
+            canvas.drawLine(ri - c, t, ri, t, paint)
+            canvas.drawLine(ri, t, ri, t + c, paint)
+            // 左下
+            canvas.drawLine(l, bo, l + c, bo, paint)
+            canvas.drawLine(l, bo - c, l, bo, paint)
+            // 右下
+            canvas.drawLine(ri - c, bo, ri, bo, paint)
+            canvas.drawLine(ri, bo - c, ri, bo, paint)
+        }
+
+        override fun setAlpha(alpha: Int) { paint.alpha = alpha }
+        override fun getOpacity() = android.graphics.PixelFormat.TRANSLUCENT
+        override fun setColorFilter(colorFilter: android.graphics.ColorFilter?) {
+            paint.colorFilter = colorFilter
+        }
     }
 
     /** glSurfaceView 相对 binding.root 的偏移（对焦环定位用） */
