@@ -157,18 +157,36 @@
             android:layout_gravity="center"
             android:background="@drawable/bg_shutter" />
 
-        <!-- 右：暗房（未冲洗卷 + 已冲洗成片） -->
-        <ImageView
+        <!-- 右：暗房（未冲洗卷 + 已冲洗成片）——机身蚀刻字牌：放大机小图标 + DARKROOM -->
+        <LinearLayout
             android:id="@+id/btnGallery"
             android:layout_width="56dp"
             android:layout_height="56dp"
+            android:orientation="vertical"
+            android:gravity="center"
             android:background="@drawable/bg_darkroom"
-            android:src="@drawable/ic_darkroom"
-            android:padding="10dp"
-            android:scaleType="fitCenter"
             android:clickable="true"
             android:focusable="true"
-            android:contentDescription="暗房" />
+            android:contentDescription="暗房">
+
+            <ImageView
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:src="@drawable/ic_darkroom"
+                android:scaleType="fitCenter"
+                android:contentDescription="@null" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="3dp"
+                android:text="DARKROOM"
+                android:fontFamily="sans-serif-medium"
+                android:textColor="#C9C5BC"
+                android:textSize="7sp"
+                android:letterSpacing="0.14"
+                android:includeFontPadding="false" />
+        </LinearLayout>
     </LinearLayout>
 
     <!-- 隐藏胶卷文字（保留 id，避免破坏逻辑） -->
