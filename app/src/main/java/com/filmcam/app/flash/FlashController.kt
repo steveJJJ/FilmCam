@@ -28,7 +28,7 @@ class FlashController(
     private var bleFlash: FotorGearFlash? = null
 
     // ---- BUILT_IN 模式：通过 CameraX 控制 ----
-    // MainActivity 设置这个回调，桥接到 CameraController.enableFlash()
+    // MainActivity 设置这个回调，桥接到 Camera2Controller.enableFlash()
     var onBuiltInFlash: ((Boolean) -> Unit)? = null
 
     override fun startScan() {
