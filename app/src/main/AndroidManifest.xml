@@ -32,12 +32,6 @@
 
          largeHeap：冲洗一帧需要 12MP ARGB 位图（48MB）+ 引擎 float 缓冲（143MB），
          标准堆上限在多数机型为 192-256MB，必 OOM。图像处理类 App 的标准做法。 -->
-    <!-- Android 11(API 30)+ 包可见性：未在 <queries> 声明的包对本 App 不可见，
-         getLaunchIntentForPackage("com.tencent.mm") 会返回 null，导致拉起微信失败。 -->
-    <queries>
-        <package android:name="com.tencent.mm" />
-    </queries>
-
     <application
         android:allowBackup="false"
         android:largeHeap="true"
