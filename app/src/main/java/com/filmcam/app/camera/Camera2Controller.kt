@@ -49,6 +49,9 @@ class Camera2Controller(private val context: Context) {
     // 复刻康泰时 T3 35mm 视角：主摄等效约23mm，裁切至35mm ≈ 1.52x
     private var zoomRatio = 1.52f
 
+    /** 预览流实际尺寸（start 时确定），点屏对焦坐标映射用 */
+    private var previewSize: Size = Size(1920, 1440)
+
     fun setExposureComp(comp: Int) {
         exposureComp = comp
         previewRequestBuilder?.let {
@@ -97,6 +100,7 @@ class Camera2Controller(private val context: Context) {
             ?: map?.getOutputSizes(SurfaceTexture::class.java)?.minByOrNull { it.width * it.height }
             ?: Size(1920, 1440)
         surfaceTexture.setDefaultBufferSize(previewSize.width, previewSize.height)
+        this.previewSize = previewSize
         runCatching {
             java.io.File(context.applicationInfo.dataDir, "files").let { d ->
                 java.io.File(d, "filmcam_diag.txt").appendText("previewSize=$previewSize\n")
@@ -224,6 +228,65 @@ class Camera2Controller(private val context: Context) {
         previewRequestBuilder?.let {
             applyManualSettings(it)
             captureSession?.setRepeatingRequest(it.build(), null, backgroundHandler)
+        }
+    }
+
+    /**
+     * 点屏对焦：把预览视图坐标映射到传感器 active array 坐标，
+     * 设置 AF/AE 测光区并触发一次 AF 扫焦。
+     *
+     * 坐标映射（sensorOrientation=90 的竖屏相机）：
+     *   屏幕 u=x/W、v=y/H → sensor x = v、sensor y = u（含 zoom 裁切区域）。
+     *
+     * @param onFocused 对焦流程触发后约 700ms 回调（近似扫焦完成，用于震动反馈）
+     * @return false 表示无法点屏对焦（会话未就绪 / 模拟失焦开启 / 设备不支持）
+     */
+    fun focusAt(
+        viewX: Float, viewY: Float, viewW: Int, viewH: Int,
+        onFocused: (() -> Unit)? = null,
+    ): Boolean {
+        if (defocusDistance != null) return false   // 模拟失焦优先，不响应点屏
+        val session = captureSession ?: return false
+        val builder = previewRequestBuilder ?: return false
+        if (viewW <= 0 || viewH <= 0) return false
+        return try {
+            val manager = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
+            val chars = manager.getCameraCharacteristics(cameraId)
+            val active = chars.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE)
+                ?: return false
+
+            // zoom 裁切区域（API 30+ 用 CONTROL_ZOOM_RATIO，等价于 active 中心裁切 1/Z）
+            val z = if (android.os.Build.VERSION.SDK_INT >= 30) zoomRatio else 1f
+            val cropW = active.width() / z
+            val cropH = active.height() / z
+            val cropX = active.left + (active.width() - cropW) / 2f
+            val cropY = active.top + (active.height() - cropH) / 2f
+
+            val u = (viewX / viewW).coerceIn(0f, 1f)
+            val v = (viewY / viewH).coerceIn(0f, 1f)
+            val sx = (cropX + v * cropW).toInt()
+            val sy = (cropY + u * cropH).toInt()
+            val half = (minOf(cropW, cropH) * 0.1f).toInt().coerceAtLeast(16)
+            val region = android.hardware.camera2.params.MeteringRectangle(
+                (sx - half).coerceAtLeast(active.left),
+                (sy - half).coerceAtLeast(active.top),
+                half * 2, half * 2, 1000
+            )
+
+            builder.set(CaptureRequest.CONTROL_AF_REGIONS, arrayOf(region))
+            builder.set(CaptureRequest.CONTROL_AE_REGIONS, arrayOf(region))
+            // 先取消上一次未完的触发，再启动一次扫焦
+            builder.set(CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_CANCEL)
+            session.capture(builder.build(), null, backgroundHandler)
+            builder.set(CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_START)
+            session.capture(builder.build(), null, backgroundHandler)
+            builder.set(CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_IDLE)
+            session.setRepeatingRequest(builder.build(), null, backgroundHandler)
+
+            onFocused?.let { cb -> backgroundHandler?.postDelayed({ runCatching { cb() } }, 700) }
+            true
+        } catch (_: Exception) {
+            false
         }
     }
 

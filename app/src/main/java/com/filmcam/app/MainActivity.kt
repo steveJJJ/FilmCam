@@ -136,6 +136,9 @@ class MainActivity : AppCompatActivity() {
         // 恢复上次退出时保存的设置
         restoreSettings()
 
+        // 首次进入引导（只弹一次）
+        binding.glSurfaceView.postDelayed({ maybeShowFirstRunGuide() }, 500)
+
         // 闪光灯模式切换
         binding.tvFlashStatus.setOnClickListener { cycleFlashMode() }
 
@@ -157,15 +160,23 @@ class MainActivity : AppCompatActivity() {
         // 点屏对焦 + 上下滑调曝光（GCam 风格）
         // 滑动过程只在 EV 整数档位真正变化时才下发相机参数（最多 6 次），
         // 落盘统一放到抬手时做一次，避免每移动一像素就重建请求 + 写 SharedPreferences。
+        // 位移小于阈值视为点按 → 触发点屏对焦（对焦框动画 + 成功震动）。
+        var touchStartX = 0f
         var touchStartY = 0f
         var touchStartEv = 0
+        var touchMoved = false
         binding.glSurfaceView.setOnTouchListener { _, event ->
             when (event.action) {
                 android.view.MotionEvent.ACTION_DOWN -> {
+                    touchStartX = event.rawX
                     touchStartY = event.rawY
                     touchStartEv = exposureComp
+                    touchMoved = false
                 }
                 android.view.MotionEvent.ACTION_MOVE -> {
+                    if (Math.abs(event.rawX - touchStartX) > 24f ||
+                        Math.abs(event.rawY - touchStartY) > 24f
+                    ) touchMoved = true
                     val delta = (touchStartY - event.rawY) / 100f
                     val newEv = (touchStartEv + delta.toInt()).coerceIn(-3, 3)
                     if (newEv != exposureComp) {
@@ -177,6 +188,20 @@ class MainActivity : AppCompatActivity() {
                 android.view.MotionEvent.ACTION_UP,
                 android.view.MotionEvent.ACTION_CANCEL -> {
                     if (exposureComp != touchStartEv) saveSettings()
+                    if (event.action == android.view.MotionEvent.ACTION_UP &&
+                        !touchMoved && exposureComp == touchStartEv
+                    ) {
+                        // 点按：点屏对焦
+                        val glLoc = IntArray(2)
+                        binding.glSurfaceView.getLocationOnScreen(glLoc)
+                        val fx = event.rawX - glLoc[0]
+                        val fy = event.rawY - glLoc[1]
+                        val focused = cameraController?.focusAt(
+                            fx, fy,
+                            binding.glSurfaceView.width, binding.glSurfaceView.height
+                        ) { vibrate(15) } ?: false
+                        if (focused) showFocusRing(fx, fy)
+                    }
                 }
             }
             true
@@ -276,6 +301,57 @@ class MainActivity : AppCompatActivity() {
                 activeRollId()?.let { DevelopController.startDevelopment(this, it) }
             }
             .setNegativeButton("稍后", null)
+            .show()
+    }
+
+    /**
+     * 回卷动画：胶卷拍满后模拟手动回卷——胶卷图标逆时针快速旋转
+     * + 过卷声，营造"这卷拍完了，卷回去送冲"的仪式感。结束后回调。
+     */
+    private fun showRewindAnimation(onEnd: () -> Unit) {
+        if (isCapturing) return
+        isCapturing = true
+        binding.developingOverlay.visibility = android.view.View.VISIBLE
+        binding.ivDeveloping.setImageResource(currentRoll.iconResId)
+        binding.ivDeveloping.visibility = android.view.View.VISIBLE
+        binding.tvDevelopingText.text = "REWIND FILM..."
+        binding.tvDevelopingText.visibility = android.view.View.VISIBLE
+
+        playAdvanceSound()
+        vibrate(40, 30)
+
+        android.animation.ObjectAnimator.ofFloat(binding.ivDeveloping, "rotation", 0f, -720f).apply {
+            duration = 1600
+            interpolator = android.view.animation.AccelerateDecelerateInterpolator()
+            addListener(object : android.animation.Animator.AnimatorListener {
+                override fun onAnimationEnd(a: android.animation.Animator) {
+                    binding.developingOverlay.visibility = android.view.View.GONE
+                    binding.ivDeveloping.rotation = 0f
+                    isCapturing = false
+                    onEnd()
+                }
+                override fun onAnimationStart(a: android.animation.Animator) {}
+                override fun onAnimationCancel(a: android.animation.Animator) {}
+                override fun onAnimationRepeat(a: android.animation.Animator) {}
+            })
+            start()
+        }
+    }
+
+    /** 首次进入引导：一句话讲清胶片机的核心玩法 */
+    private fun maybeShowFirstRunGuide() {
+        val prefs = getSharedPreferences("filmcam", MODE_PRIVATE)
+        if (prefs.getBoolean("guide_shown", false)) return
+        prefs.edit().putBoolean("guide_shown", true).apply()
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("FILMCAM")
+            .setMessage(
+                "像使用真实胶卷一样拍照：\n\n" +
+                    "· 点按屏幕对焦，上下滑动调整曝光\n" +
+                    "· 一卷 36 张，拍完去暗房冲洗\n" +
+                    "· 冲洗前看不到成片——胶片的惊喜就在这里"
+            )
+            .setPositiveButton("开拍", null)
             .show()
     }
 
@@ -800,9 +876,9 @@ class MainActivity : AppCompatActivity() {
     private var isCapturing = false
 
     private fun triggerShutter() {
-        // 拍满 36 张：拒绝拍照，弹窗引导冲洗
+        // 拍满 36 张：先播回卷动画，再弹窗引导冲洗
         if (currentShotCount() >= FILM_MAX) {
-            promptDevelopFullRoll()
+            showRewindAnimation { promptDevelopFullRoll() }
             return
         }
         // SELF 自拍模式：先 3 秒倒计时再拍
@@ -839,6 +915,79 @@ class MainActivity : AppCompatActivity() {
         handler.postDelayed(runnable, 1000)
     }
 
+    /** 触感反馈（统一入口，兼容 API 26/31+）。amp=-1 用系统默认强度 */
+    private fun vibrate(ms: Long, amp: Int = -1) {
+        try {
+            val vibrator = if (android.os.Build.VERSION.SDK_INT >= 31) {
+                (getSystemService(android.content.Context.VIBRATOR_MANAGER_SERVICE)
+                    as? android.os.VibratorManager)?.defaultVibrator
+            } else {
+                @Suppress("DEPRECATION")
+                getSystemService(android.content.Context.VIBRATOR_SERVICE) as? android.os.Vibrator
+            }
+            if (android.os.Build.VERSION.SDK_INT >= 26) {
+                val effect = if (amp > 0) {
+                    android.os.VibrationEffect.createOneShot(ms, amp)
+                } else {
+                    android.os.VibrationEffect.createOneShot(ms, android.os.VibrationEffect.DEFAULT_AMPLITUDE)
+                }
+                vibrator?.vibrate(effect)
+            } else {
+                @Suppress("DEPRECATION")
+                vibrator?.vibrate(ms)
+            }
+        } catch (_: Exception) {}
+    }
+
+    /** 播放 T3 过卷声（res/raw/t3_advance.wav，素材已就位） */
+    private fun playAdvanceSound() {
+        try {
+            if (advanceSoundId != 0) {
+                advanceSoundPool?.play(advanceSoundId, 1f, 1f, 1, 0, 1f)
+            }
+        } catch (_: Exception) {}
+    }
+
+    /** 点屏对焦的取景框动画：白色圆环在点击处收拢，短暂停留后淡出 */
+    private fun showFocusRing(fx: Float, fy: Float) {
+        val sizeDp = 88
+        val density = resources.displayMetrics.density
+        val size = (sizeDp * density).toInt()
+        val ring = android.view.View(this).apply {
+            background = android.graphics.drawable.GradientDrawable().apply {
+                shape = android.graphics.drawable.GradientDrawable.RING
+                setColor(android.graphics.Color.TRANSPARENT)
+                setStroke((3 * density).toInt(), 0xFFFFFFFF.toInt())
+            }
+        }
+        val params = android.widget.FrameLayout.LayoutParams(size, size)
+        binding.root.addView(ring, params)
+        ring.post {
+            ring.translationX = fx + glLocInRoot()[0] - size / 2f
+            ring.translationY = fy + glLocInRoot()[1] - size / 2f
+        }
+        ring.scaleX = 1.5f
+        ring.scaleY = 1.5f
+        ring.alpha = 0.2f
+        ring.animate().scaleX(1f).scaleY(1f).alpha(1f).setDuration(160)
+            .withEndAction {
+                ring.postDelayed({
+                    ring.animate().alpha(0f).setDuration(280).withEndAction {
+                        binding.root.removeView(ring)
+                    }
+                }, 650)
+            }
+    }
+
+    /** glSurfaceView 相对 binding.root 的偏移（对焦环定位用） */
+    private fun glLocInRoot(): IntArray {
+        val glLoc = IntArray(2)
+        binding.glSurfaceView.getLocationInWindow(glLoc)
+        val rootLoc = IntArray(2)
+        binding.root.getLocationInWindow(rootLoc)
+        return intArrayOf(glLoc[0] - rootLoc[0], glLoc[1] - rootLoc[1])
+    }
+
     /** 快门反馈：播放真实 T3 快门声 + 振动（过卷声暂不播放，待找到素材后加入） */
     private fun playShutterFeedback() {
         // 真实 T3 快门声（res/raw/t3_shutter.wav）
@@ -848,15 +997,7 @@ class MainActivity : AppCompatActivity() {
             }
         } catch (_: Exception) {}
         // 快门振动（30ms 轻微触感）
-        try {
-            val vibrator = getSystemService(android.content.Context.VIBRATOR_SERVICE) as? android.os.Vibrator
-            if (android.os.Build.VERSION.SDK_INT >= 26) {
-                vibrator?.vibrate(android.os.VibrationEffect.createOneShot(30, android.os.VibrationEffect.DEFAULT_AMPLITUDE))
-            } else {
-                @Suppress("DEPRECATION")
-                vibrator?.vibrate(30)
-            }
-        } catch (_: Exception) {}
+        vibrate(30)
     }
 
     private fun doCapture() {
@@ -900,24 +1041,13 @@ class MainActivity : AppCompatActivity() {
         // 过卷等待动画：持续旋转直到处理+保存完成（胶片相机拍完需等冲洗，动画连贯不跳变）
         startDevelopingAnimation()
 
-        // 过卷声音暂不播放（待找到真实 T3 过卷素材后在此加入，advance 声源已预留）
+        // 过卷声音（真实 T3 自动过卷音，与过卷动画同步）
+        playAdvanceSound()
 
         // 微弱震动（过卷期间低幅触感，模拟机械过卷）
-        try {
-            val vibrator = getSystemService(android.content.Context.VIBRATOR_SERVICE) as? android.os.Vibrator
-            if (android.os.Build.VERSION.SDK_INT >= 26) {
-                vibrator?.vibrate(android.os.VibrationEffect.createOneShot(60, 40))
-                binding.ivDeveloping.postDelayed({
-                    vibrator?.vibrate(android.os.VibrationEffect.createOneShot(50, 30))
-                }, 160)
-                binding.ivDeveloping.postDelayed({
-                    vibrator?.vibrate(android.os.VibrationEffect.createOneShot(50, 30))
-                }, 260)
-            } else {
-                @Suppress("DEPRECATION")
-                vibrator?.vibrate(40)
-            }
-        } catch (_: Exception) {}
+        vibrate(60, 40)
+        binding.ivDeveloping.postDelayed({ vibrate(50, 30) }, 160)
+        binding.ivDeveloping.postDelayed({ vibrate(50, 30) }, 260)
 
         // 480ms 后文案切到 PROCESSING...；真正的完成收尾由 onPhotoCaptured 回调 finally 里做
         binding.ivDeveloping.postDelayed({
