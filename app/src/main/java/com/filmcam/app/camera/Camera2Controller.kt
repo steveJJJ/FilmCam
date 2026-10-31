@@ -262,8 +262,16 @@ class Camera2Controller(private val context: Context) {
             val cropX = active.left + (active.width() - cropW) / 2f
             val cropY = active.top + (active.height() - cropH) / 2f
 
+            // 预览画面 letterbox 几何：内容 3:4 满宽居中 + 上移 0.08（与
+            // LutGLSurfaceView shader / ViewfinderFrameView 同一公式）。
+            // 先把 view 坐标换算到画面内容坐标，再映射传感器，点哪对哪。
+            val screenAspect = viewW.toFloat() / viewH
+            val s = screenAspect / com.filmcam.app.ui.ViewfinderFrameView.CONTENT_ASPECT
+            val contentTop = (0.5f - s * (0.5f - com.filmcam.app.ui.ViewfinderFrameView.PREVIEW_OFFSET_Y)) * viewH
+            val contentH = s * viewH
+
             val u = (viewX / viewW).coerceIn(0f, 1f)
-            val v = (viewY / viewH).coerceIn(0f, 1f)
+            val v = ((viewY - contentTop) / contentH).coerceIn(0f, 1f)
             val sx = (cropX + v * cropW).toInt()
             val sy = (cropY + u * cropH).toInt()
             val half = (minOf(cropW, cropH) * 0.1f).toInt().coerceAtLeast(16)
