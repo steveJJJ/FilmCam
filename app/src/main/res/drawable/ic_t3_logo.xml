@@ -1,20 +1,31 @@
-<!-- T3 字标：按真机银版顶盖铭牌字形重绘（2026-10-31 参考图提取）
-     —— 正体 T（横杠+居中竖笔）+ 双碗形 3，亮红 #E73C41（参考图取样）。
-     viewport 210x100，字面高 100，笔画宽约 12，与 CONTAX 细体同屏使用 -->
+<!-- T3 字标：按真机银版顶盖铭牌字形重绘（2026-10-31 参考图 run-length 提取）
+     —— 正体 T + 双层 3：顶层左对齐平顶横杠 → 右侧斜下闭合上环（左短竖+中横）→ 下环。
+     亮红 #E73C41（参考图取样）。viewport 210x100，字面高 100，与 CONTAX 细体同屏使用 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="40dp"
     android:height="19dp"
     android:viewportWidth="210"
     android:viewportHeight="100">
-    <!-- T：横杠 4..64，竖笔居中 28..40 -->
+    <!-- T：横杠 4..68（厚 22），竖笔居中 26..46 -->
     <path
         android:fillColor="#E73C41"
-        android:pathData="M4,0 L64,0 L64,12 L40,12 L40,100 L28,100 L28,12 L4,12 Z" />
-    <!-- 3：双碗形，中横在 y≈50，上碗略小、下碗略大，首尾端点在左侧 -->
+        android:pathData="M4,0 L68,0 L68,22 L46,22 L46,100 L26,100 L26,22 L4,22 Z" />
+    <!-- 3 顶层：左对齐平顶横杠（x 118..168，厚 24） -->
+    <path
+        android:fillColor="#E73C41"
+        android:pathData="M118,0 L168,0 L168,24 L118,24 Z" />
+    <!-- 3 上环：自横杠右端斜下，右侧鼓出至最右，收至中横回到左侧（y≈50 闭合） -->
     <path
         android:strokeColor="#E73C41"
-        android:strokeWidth="12"
+        android:strokeWidth="17"
         android:strokeLineCap="round"
         android:fillColor="#00000000"
-        android:pathData="M122,16 C132,7 150,5 165,6 C184,7 197,16 197,29 C197,42 186,49 168,51 C188,53 199,63 197,78 C195,93 174,98 155,94 C140,91 130,87 126,78" />
+        android:pathData="M160,14 C190,26 200,40 186,50 C174,58 146,59 131,52" />
+    <!-- 3 下环：自中腰右侧下鼓，底部扫向左，尾端收在左下 -->
+    <path
+        android:strokeColor="#E73C41"
+        android:strokeWidth="17"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M140,52 C174,52 198,62 196,78 C194,92 172,99 152,95 C143,93 136,88 133,80" />
 </vector>
