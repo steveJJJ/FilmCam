@@ -107,34 +107,16 @@
         </LinearLayout>
     </LinearLayout>
 
-    <!-- 机身正面铭牌：按真机黑版 T3 —— 细体银色 CONTAX + 正体铜红 T3（T3 略大），
-         置于取景框下沿与底部按键之间的空白带、水平居中 -->
-    <LinearLayout
+    <!-- 机身正面铭牌：CONTAX T3 完整 logo（透明白底 PNG，置取景框下沿与底部按键之间） -->
+    <ImageView
         android:id="@+id/brandLogo"
         android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
+        android:layout_height="22dp"
+        android:adjustViewBounds="true"
         android:layout_gravity="bottom|center_horizontal"
         android:layout_marginBottom="136dp"
-        android:orientation="horizontal"
-        android:baselineAligned="true">
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="CONTAX"
-            android:fontFamily="sans-serif-light"
-            android:textColor="#C9C5BC"
-            android:textSize="15sp"
-            android:letterSpacing="0.22"
-            android:includeFontPadding="false" />
-
-        <ImageView
-            android:layout_width="wrap_content"
-            android:layout_height="19dp"
-            android:adjustViewBounds="true"
-            android:src="@drawable/ic_t3_logo"
-            android:contentDescription="T3" />
-    </LinearLayout>
+        android:src="@drawable/ic_t3_logo"
+        android:contentDescription="CONTAX T3" />
 
     <!-- ===== 底部控制条：胶卷 / 快门 / 暗房（快门为最大触控目标，间距 8dp 网格） ===== -->
     <LinearLayout
