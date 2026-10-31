@@ -32,6 +32,7 @@ class AboutActivity : AppCompatActivity() {
         })
 
         buildOssCredits()
+        buildSelfLicense()
 
         val tvVersion = findViewById<TextView>(R.id.tvVersion)
         tvVersion.text = versionText
@@ -137,6 +138,94 @@ class AboutActivity : AppCompatActivity() {
             }
             container.addView(row)
         }
+    }
+
+    /**
+     * 本项目自身的许可证卡片（置于开源致谢之后）。
+     * 因为打包了 GPL-3.0 的 SpektraLab 引擎，本 App 同样以 GPL-3.0-or-later 分发；
+     * 仓库未公开时用「源码在索取时提供」履行义务，一旦在 strings.xml 填入
+     * app_source_email，这里会自动变成可点击的 mailto 索取入口。
+     */
+    private fun buildSelfLicense() {
+        val container = findViewById<LinearLayout>(R.id.selfLicenseCard)
+        val density = resources.displayMetrics.density
+        val pad = (14 * density).toInt()
+
+        container.background = GradientDrawable().apply {
+            setColor(0xFF161616.toInt())
+            cornerRadius = 12f * density
+            setStroke((0.8f * density).toInt().coerceAtLeast(1), 0xFF2E2E2E.toInt())
+        }
+        container.setPadding(pad, pad, pad, pad)
+
+        container.addView(TextView(this).apply {
+            text = getString(R.string.about_self_title)
+            setTextColor(0xFFD8D4CC.toInt())
+            textSize = 12.5f
+        })
+        container.addView(TextView(this).apply {
+            text = getString(R.string.about_self_body)
+            setTextColor(0xFF7C7C80.toInt())
+            textSize = 10.5f
+            letterSpacing = 0.03f
+            setLineSpacing(0f, 1.45f)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = (5 * density).toInt() }
+        })
+
+        val email = getString(R.string.app_source_email).trim()
+        if (email.isNotEmpty()) {
+            container.addView(TextView(this).apply {
+                text = "索取源码：$email"
+                setTextColor(0xFF9A8C6A.toInt())
+                textSize = 10.5f
+                letterSpacing = 0.03f
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { topMargin = (6 * density).toInt() }
+                val a = intArrayOf(android.R.attr.selectableItemBackground)
+                val ta = obtainStyledAttributes(a)
+                foreground = ta.getDrawable(0)
+                ta.recycle()
+                isClickable = true
+                setOnClickListener {
+                    runCatching {
+                        startActivity(
+                            Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:$email")).putExtra(
+                                Intent.EXTRA_SUBJECT, "FILMCAM 源码索取"
+                            )
+                        )
+                    }
+                }
+            })
+        }
+
+        // GPL 全文链接
+        container.addView(TextView(this).apply {
+            text = "GNU GPL-3.0 全文"
+            setTextColor(0xFF7C7C80.toInt())
+            textSize = 10.5f
+            letterSpacing = 0.03f
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = (8 * density).toInt() }
+            val a = intArrayOf(android.R.attr.selectableItemBackground)
+            val ta = obtainStyledAttributes(a)
+            foreground = ta.getDrawable(0)
+            ta.recycle()
+            isClickable = true
+            setOnClickListener {
+                runCatching {
+                    startActivity(
+                        Intent(Intent.ACTION_VIEW, Uri.parse("https://www.gnu.org/licenses/gpl-3.0.html"))
+                    )
+                }
+            }
+        })
     }
 
     private fun showHiddenSettings() {
