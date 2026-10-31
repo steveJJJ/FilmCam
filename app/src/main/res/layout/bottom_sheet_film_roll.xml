@@ -4,7 +4,10 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:background="#1a1a1a"
-    android:padding="16dp">
+    android:paddingStart="16dp"
+    android:paddingEnd="16dp"
+    android:paddingTop="16dp"
+    android:paddingBottom="48dp">
 
     <TextView
         android:id="@+id/tvSheetTitle"
@@ -23,6 +26,8 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         app:layout_constraintTop_toBottomOf="@id/tvSheetTitle"
-        android:layout_marginTop="8dp" />
+        android:layout_marginTop="8dp"
+        android:clipToPadding="false"
+        android:overScrollMode="never" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>

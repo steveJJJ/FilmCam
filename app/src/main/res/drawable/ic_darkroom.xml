@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 暗房图标：顶部红色安全灯 + 光晕光锥，下方两条晾挂的底片条（帧窗深红） -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+
+    <!-- 安全灯光晕（两层半透明红） -->
+    <path
+        android:fillColor="#22FF5252"
+        android:pathData="M24,14.5 m-11,0 a11,11 0 1,1 22,0 a11,11 0 1,1 -22,0" />
+    <path
+        android:fillColor="#38FF5252"
+        android:pathData="M24,14.5 m-6.5,0 a6.5,6.5 0 1,1 13,0 a6.5,6.5 0 1,1 -13,0" />
+
+    <!-- 吊杆 -->
+    <path
+        android:fillColor="#E53935"
+        android:pathData="M23.2,2 h1.6 v5.2 h-1.6 Z" />
+
+    <!-- 灯罩 -->
+    <path
+        android:fillColor="#E53935"
+        android:pathData="M14.5,15.5 L33.5,15.5 L27.6,7.2 L20.4,7.2 Z" />
+
+    <!-- 灯泡（暖白） -->
+    <path
+        android:fillColor="#FFCCBC"
+        android:pathData="M24,15.5 m-3.2,0 a3.2,3.2 0 1,1 6.4,0 a3.2,3.2 0 1,1 -6.4,0" />
+
+    <!-- 光锥 -->
+    <path
+        android:fillColor="#17FF5252"
+        android:pathData="M17.5,18.5 L30.5,18.5 L38,45 L10,45 Z" />
+
+    <!-- 底片夹 ×2 -->
+    <path
+        android:fillColor="#9E9E9E"
+        android:pathData="M17.6,24.6 h2.2 v3 h-2.2 Z" />
+    <path
+        android:fillColor="#9E9E9E"
+        android:pathData="M28.2,24.6 h2.2 v3 h-2.2 Z" />
+
+    <!-- 底片条 1 -->
+    <path
+        android:fillColor="#C62828"
+        android:pathData="M15.5,27 h7 a1.2,1.2 0 0 1 1.2,1.2 v15.6 a1.2,1.2 0 0 1 -1.2,1.2 h-7 a1.2,1.2 0 0 1 -1.2,-1.2 v-15.6 a1.2,1.2 0 0 1 1.2,-1.2 Z" />
+    <!-- 底片条 1 帧窗 -->
+    <path
+        android:fillColor="#7F1616"
+        android:pathData="M16.8,29.5 h5.6 v5 h-5.6 Z" />
+    <path
+        android:fillColor="#7F1616"
+        android:pathData="M16.8,37.5 h5.6 v5 h-5.6 Z" />
+
+    <!-- 底片条 2 -->
+    <path
+        android:fillColor="#C62828"
+        android:pathData="M25.5,27 h7 a1.2,1.2 0 0 1 1.2,1.2 v15.6 a1.2,1.2 0 0 1 -1.2,1.2 h-7 a1.2,1.2 0 0 1 -1.2,-1.2 v-15.6 a1.2,1.2 0 0 1 1.2,-1.2 Z" />
+    <!-- 底片条 2 帧窗 -->
+    <path
+        android:fillColor="#7F1616"
+        android:pathData="M26.8,29.5 h5.6 v5 h-5.6 Z" />
+    <path
+        android:fillColor="#7F1616"
+        android:pathData="M26.8,37.5 h5.6 v5 h-5.6 Z" />
+</vector>

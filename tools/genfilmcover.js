@@ -39,12 +39,15 @@ const SPECS = [
   ['ic_film_kodachrome64',   KODAK({ brandColor: '#cc1c05', topColor: '#fcd601', bodyColor: '#d8262c', name: 'KODACHROME', number: '64', perfs: true })],
   // --- 其他 ---
   ['ic_film_hp5',            IL({ bodyColor: '#151515', name: 'HP5 PLUS', number: '400' })],
-  ['ic_film_cinestill800t',  CS({ bodyColor: '#141414', name: 'TUNGSTEN', number: '800T' })],
+  // 盒身色取官方 filmcover 预设 #c8102e（红）：曾用 #141414 与 ILFORD HP5 撞成同色黑盒
+  ['ic_film_cinestill800t',  CS({ bodyColor: '#c8102e', name: 'TUNGSTEN', number: '800T' })],
 ];
 
 const TEMPLATE = process.argv[2] || 'kodak';   // kodak | box | cine | cinebox
 const SIZE = parseInt(process.argv[3] || '512', 10);
 const OUT = process.argv[4] || '/tmp/fc/out-' + TEMPLATE;
+/** 第 5 参：只生成文件名包含该子串的胶卷（重生成单支时用，避免整批覆盖） */
+const ONLY = process.argv[5] || '';
 
 function get(url) {
   return new Promise((res, rej) => {
@@ -82,9 +85,13 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   });
 
   await send('Runtime.enable', {});
+  // 过滤要在模板外算好——模板字符串里再嵌 ${} 会破坏 JS 解析
+  const specsJson = JSON.stringify(
+    SPECS.filter(([f]) => !ONLY || f.includes(ONLY)).map(([f, d]) => [f, d])
+  );
   const expr = `(async () => {
     await document.fonts.ready;
-    const SPECS = ${JSON.stringify(SPECS.map(([f, d]) => [f, d]))};
+    const SPECS = ${specsJson};
     const out = [];
     for (const [file, data] of SPECS) {
       const cv = document.createElement('canvas');

@@ -1,218 +1,280 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<!-- 冲洗参数：暗房放大机控制面板风格。
+     深色面板 + 红灯分组标题（显影/放大）+ 琥珀色 LCD 数值。
+     注意：所有 id 与 MainActivity.showDevParamsDialog 强耦合，不可改名。 -->
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:orientation="vertical"
-    android:paddingStart="20dp"
-    android:paddingEnd="20dp"
-    android:paddingTop="16dp"
-    android:paddingBottom="8dp">
+    android:overScrollMode="never">
 
-    <!-- 胶卷选择（整行可点，按胶卷记忆一组冲洗参数） -->
-    <LinearLayout
-        android:id="@+id/rowDevRoll"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
-        android:background="?android:attr/selectableItemBackground"
-        android:clickable="true"
-        android:focusable="true"
-        android:paddingTop="6dp"
-        android:paddingBottom="6dp">
-
-        <TextView
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="胶卷"
-            android:textColor="#FFFFFF"
-            android:textSize="14sp" />
-
-        <TextView
-            android:id="@+id/tvDevRollValue"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="—"
-            android:textColor="#FFC100"
-            android:textSize="14sp" />
-    </LinearLayout>
-
-    <!-- 颗粒强度 -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center_vertical">
+        android:orientation="vertical"
+        android:paddingStart="20dp"
+        android:paddingEnd="20dp"
+        android:paddingTop="8dp"
+        android:paddingBottom="12dp">
 
-        <TextView
-            android:layout_width="0dp"
+        <!-- 当前胶卷（整行可点，按胶卷记忆一组冲洗参数） -->
+        <LinearLayout
+            android:id="@+id/rowDevRoll"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="颗粒强度"
-            android:textColor="#FFFFFF"
-            android:textSize="14sp" />
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:background="?android:attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true"
+            android:paddingTop="12dp"
+            android:paddingBottom="12dp">
 
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="胶卷"
+                android:textColor="#9A9A9E"
+                android:textSize="13sp"
+                android:letterSpacing="0.06" />
+
+            <TextView
+                android:id="@+id/tvDevRollValue"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="—"
+                android:textColor="#FFC100"
+                android:textSize="14sp"
+                android:fontFamily="monospace" />
+        </LinearLayout>
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="#26262A" />
+
+        <!-- 分组：显影（暗房红灯语义） -->
         <TextView
-            android:id="@+id/tvDevGrainValue"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="1.00"
-            android:textColor="#FFC100"
-            android:textSize="14sp"
-            android:fontFamily="monospace" />
-    </LinearLayout>
+            android:layout_marginTop="16dp"
+            android:text="显影 · DEVELOP"
+            android:textColor="#C0392B"
+            android:textSize="10sp"
+            android:textStyle="bold"
+            android:letterSpacing="0.22" />
 
-    <SeekBar
-        android:id="@+id/sbDevGrain"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:max="200" />
-
-    <!-- 辉光强度 -->
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
-        android:layout_marginTop="8dp">
-
-        <TextView
-            android:layout_width="0dp"
+        <!-- 颗粒强度 -->
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="辉光强度"
-            android:textColor="#FFFFFF"
-            android:textSize="14sp" />
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingTop="10dp">
 
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="颗粒强度"
+                android:textColor="#E8E4DA"
+                android:textSize="14sp" />
+
+            <TextView
+                android:id="@+id/tvDevGrainValue"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="1.00"
+                android:textColor="#FFC100"
+                android:textSize="14sp"
+                android:fontFamily="monospace" />
+        </LinearLayout>
+
+        <SeekBar
+            android:id="@+id/sbDevGrain"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:max="200"
+            android:progressTint="#FFC100"
+            android:progressBackgroundTint="#3A3A40"
+            android:thumbTint="#F0F0F4" />
+
+        <!-- 辉光强度 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingTop="10dp">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="辉光强度"
+                android:textColor="#E8E4DA"
+                android:textSize="14sp" />
+
+            <TextView
+                android:id="@+id/tvDevHalationValue"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="1.00"
+                android:textColor="#FFC100"
+                android:textSize="14sp"
+                android:fontFamily="monospace" />
+        </LinearLayout>
+
+        <SeekBar
+            android:id="@+id/sbDevHalation"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:max="200"
+            android:progressTint="#FFC100"
+            android:progressBackgroundTint="#3A3A40"
+            android:thumbTint="#F0F0F4" />
+
+        <!-- 眩光强度 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingTop="10dp">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="眩光强度"
+                android:textColor="#E8E4DA"
+                android:textSize="14sp" />
+
+            <TextView
+                android:id="@+id/tvDevGlareValue"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="3.00"
+                android:textColor="#FFC100"
+                android:textSize="14sp"
+                android:fontFamily="monospace" />
+        </LinearLayout>
+
+        <SeekBar
+            android:id="@+id/sbDevGlare"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:max="600"
+            android:progressTint="#FFC100"
+            android:progressBackgroundTint="#3A3A40"
+            android:thumbTint="#F0F0F4" />
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:layout_marginTop="16dp"
+            android:background="#26262A" />
+
+        <!-- 分组：放大 -->
         <TextView
-            android:id="@+id/tvDevHalationValue"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="1.00"
-            android:textColor="#FFC100"
-            android:textSize="14sp"
-            android:fontFamily="monospace" />
-    </LinearLayout>
+            android:layout_marginTop="16dp"
+            android:text="放大 · PRINT"
+            android:textColor="#C0392B"
+            android:textSize="10sp"
+            android:textStyle="bold"
+            android:letterSpacing="0.22" />
 
-    <SeekBar
-        android:id="@+id/sbDevHalation"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:max="200" />
-
-    <!-- 眩光强度 -->
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
-        android:layout_marginTop="8dp">
-
-        <TextView
-            android:layout_width="0dp"
+        <!-- 放大机曝光 -->
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="眩光强度"
-            android:textColor="#FFFFFF"
-            android:textSize="14sp" />
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingTop="10dp">
 
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="放大机曝光"
+                android:textColor="#E8E4DA"
+                android:textSize="14sp" />
+
+            <TextView
+                android:id="@+id/tvDevExposureValue"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="1.00"
+                android:textColor="#FFC100"
+                android:textSize="14sp"
+                android:fontFamily="monospace" />
+        </LinearLayout>
+
+        <SeekBar
+            android:id="@+id/sbDevExposure"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:max="150"
+            android:progressTint="#FFC100"
+            android:progressBackgroundTint="#3A3A40"
+            android:thumbTint="#F0F0F4" />
+
+        <!-- 相纸选择（整行可点） -->
+        <LinearLayout
+            android:id="@+id/rowDevPaper"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingTop="14dp"
+            android:paddingBottom="6dp"
+            android:background="?android:attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="相纸选择"
+                android:textColor="#E8E4DA"
+                android:textSize="14sp" />
+
+            <TextView
+                android:id="@+id/tvDevPaperValue"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="自动（按胶卷默认）"
+                android:textColor="#FFC100"
+                android:textSize="14sp"
+                android:fontFamily="monospace" />
+        </LinearLayout>
+
+        <!-- 相纸配对说明 -->
         <TextView
-            android:id="@+id/tvDevGlareValue"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="10dp"
+            android:text="自动 = 按胶卷品牌的官方推荐相纸搭配（如柯达负片印 Portra Endura、电影卷印 Kodak 2383），点上方可手动覆盖"
+            android:textColor="#77777C"
+            android:textSize="10sp"
+            android:lineSpacingMultiplier="1.3" />
+
+        <!-- 恢复默认 -->
+        <Button
+            android:id="@+id/btnDevReset"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="3.00"
+            android:layout_gravity="end"
+            style="?attr/borderlessButtonStyle"
             android:textColor="#FFC100"
-            android:textSize="14sp"
-            android:fontFamily="monospace" />
+            android:textSize="13sp" />
+
     </LinearLayout>
-
-    <SeekBar
-        android:id="@+id/sbDevGlare"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:max="600" />
-
-    <!-- 放大机曝光 -->
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
-        android:layout_marginTop="8dp">
-
-        <TextView
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="放大机曝光"
-            android:textColor="#FFFFFF"
-            android:textSize="14sp" />
-
-        <TextView
-            android:id="@+id/tvDevExposureValue"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="1.00"
-            android:textColor="#FFC100"
-            android:textSize="14sp"
-            android:fontFamily="monospace" />
-    </LinearLayout>
-
-    <SeekBar
-        android:id="@+id/sbDevExposure"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:max="150" />
-
-    <!-- 相纸选择（整行可点） -->
-    <LinearLayout
-        android:id="@+id/rowDevPaper"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
-        android:layout_marginTop="8dp"
-        android:background="?android:attr/selectableItemBackground"
-        android:clickable="true"
-        android:focusable="true"
-        android:paddingTop="6dp"
-        android:paddingBottom="6dp">
-
-        <TextView
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="相纸选择"
-            android:textColor="#FFFFFF"
-            android:textSize="14sp" />
-
-        <TextView
-            android:id="@+id/tvDevPaperValue"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="自动（按胶卷默认）"
-            android:textColor="#FFC100"
-            android:textSize="14sp" />
-    </LinearLayout>
-
-    <!-- 相纸配对说明 -->
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="-2dp"
-        android:layout_marginBottom="6dp"
-        android:text="自动 = 按胶卷品牌的官方推荐相纸搭配（如柯达负片印 Portra Endura、电影卷印 Kodak 2383），点上方可手动覆盖"
-        android:textColor="#888888"
-        android:textSize="10sp" />
-
-    <!-- 恢复默认 -->
-    <Button
-        android:id="@+id/btnDevReset"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_gravity="end"
-        android:layout_marginTop="8dp"
-        android:text="恢复默认" />
-
-</LinearLayout>
+</ScrollView>

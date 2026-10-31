@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 设置键图标：三条调节滑杆（替代 emoji ⚙） -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- 滑轨 ×3 -->
+    <path
+        android:fillColor="#2A2A30"
+        android:pathData="M3,5.4 h18 v1.6 h-18 Z" />
+    <path
+        android:fillColor="#2A2A30"
+        android:pathData="M3,11.2 h18 v1.6 h-18 Z" />
+    <path
+        android:fillColor="#2A2A30"
+        android:pathData="M3,17 h18 v1.6 h-18 Z" />
+    <!-- 滑钮 ×3 -->
+    <path
+        android:fillColor="#2A2A30"
+        android:pathData="M15,6.2 m-2.7,0 a2.7,2.7 0 1,1 5.4,0 a2.7,2.7 0 1,1 -5.4,0" />
+    <path
+        android:fillColor="#2A2A30"
+        android:pathData="M8.5,12 m-2.7,0 a2.7,2.7 0 1,1 5.4,0 a2.7,2.7 0 1,1 -5.4,0" />
+    <path
+        android:fillColor="#2A2A30"
+        android:pathData="M16.5,17.8 m-2.7,0 a2.7,2.7 0 1,1 5.4,0 a2.7,2.7 0 1,1 -5.4,0" />
+</vector>

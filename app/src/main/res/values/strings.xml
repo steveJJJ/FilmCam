@@ -1,6 +1,10 @@
 <resources>
     <string name="app_name">FilmCam</string>
 
+    <!-- 关于页 -->
+    <string name="about_intro">把手机变成一台康泰时 T3。\n\n取景器里看到的是真实的光学世界；快门按下一卷 36 张的胶卷；拍完送进暗房冲洗，出片由胶片引擎按这一卷的配方显影。\n\n冲洗之前，谁也不知道拍到的是什么——这就是胶片的乐趣。</string>
+    <string name="percent_fmt">%1$d%%</string>
+
     <!-- 成片信息面板 -->
     <string name="info_group_shooting">拍摄参数</string>
     <string name="info_group_develop">冲洗参数</string>

@@ -60,6 +60,7 @@ class MainActivity : AppCompatActivity() {
     private var dateStampEnabled = true
     private var exposureComp = 0  // 曝光补偿 -3 ~ +3
     private var softFocusEnabled = false  // 模拟失焦：拍摄时对焦故意不准
+    private var softFocusProb = 0         // 模拟失焦概率 0-100（工程师模式可调；0=关）
     private var filmRollMode = false  // 胶卷模式开关（旧设置保留兼容，计数改由 UndevelopedFilmStore 权威）
     private var debugInstantDevelop = false  // 调试：拍完立即后台冲洗出片
     private val FILM_MAX = 36  // 一卷36张
@@ -240,6 +241,8 @@ class MainActivity : AppCompatActivity() {
         dateStampEnabled = prefs.getBoolean("dateStamp", true)
         exposureComp = prefs.getInt("ev", 0)
         softFocusEnabled = prefs.getBoolean("softFocus", false)
+        // 失焦概率缺省：开过模拟失焦的老用户 → 40%（旧版硬编码值）；否则 0
+        softFocusProb = prefs.getInt("softFocus_prob", if (softFocusEnabled) 40 else 0)
         filmRollMode = prefs.getBoolean("filmRollMode", false)
         // 旧 filmCount 键仅作迁移保留读取，不再作为权威（张数一律读 UndevelopedFilmStore.shotCount）
         @Suppress("UNUSED_VARIABLE") val legacyFilmCount = prefs.getInt("filmCount", 0)
@@ -271,24 +274,22 @@ class MainActivity : AppCompatActivity() {
         prefs.apply()
     }
 
-    /** 设置弹窗 */
+    /** 设置弹窗：只留普通用户项；调试与模拟失焦收进「关于页 → 版本号连点 10 次」的工程师模式 */
     private fun showSettings() {
         val items = arrayOf(
             "日期水印: ${if (dateStampEnabled) "开" else "关"}",
-            "模拟失焦: ${if (softFocusEnabled) "开" else "关"}",
-            "调试: 跳过冲洗立即出片: ${if (debugInstantDevelop) "开" else "关"}",
-            "冲洗参数: 颗粒/辉光/眩光"
+            "冲洗参数: 颗粒/辉光/眩光",
+            "关于 FILMCAM"
         )
-        androidx.appcompat.app.AlertDialog.Builder(this)
+        androidx.appcompat.app.AlertDialog.Builder(this, R.style.DarkDialog)
             .setTitle("设置")
             .setItems(items) { _, which ->
                 when (which) {
                     0 -> { dateStampEnabled = !dateStampEnabled; saveSettings() }
-                    1 -> { softFocusEnabled = !softFocusEnabled; saveSettings() }
-                    2 -> { debugInstantDevelop = !debugInstantDevelop; saveSettings() }
-                    3 -> showDevParamsDialog()
+                    1 -> showDevParamsDialog()
+                    2 -> startActivity(android.content.Intent(this, AboutActivity::class.java))
                 }
-                if (which != 3) showSettings()
+                if (which == 0) showSettings()
             }
             .setNegativeButton("关闭", null)
             .show()
@@ -296,7 +297,7 @@ class MainActivity : AppCompatActivity() {
 
     /** 胶卷拍满：引导去暗房冲洗 */
     private fun promptDevelopFullRoll() {
-        androidx.appcompat.app.AlertDialog.Builder(this)
+        androidx.appcompat.app.AlertDialog.Builder(this, R.style.DarkDialog)
             .setTitle("胶卷已拍完")
             .setMessage("这一卷 36 张已拍完，去暗房冲洗出片")
             .setPositiveButton("去冲洗") { _, _ ->
@@ -345,7 +346,7 @@ class MainActivity : AppCompatActivity() {
         val prefs = getSharedPreferences("filmcam", MODE_PRIVATE)
         if (prefs.getBoolean("guide_shown", false)) return
         prefs.edit().putBoolean("guide_shown", true).apply()
-        androidx.appcompat.app.AlertDialog.Builder(this)
+        androidx.appcompat.app.AlertDialog.Builder(this, R.style.DarkDialog)
             .setTitle("FILMCAM")
             .setMessage(
                 "像使用真实胶卷一样拍照：\n\n" +
@@ -429,7 +430,7 @@ class MainActivity : AppCompatActivity() {
                 items[i] = "$disp ($id)"
             }
             val checked = ids.indexOf(selRollId).coerceAtLeast(0)
-            androidx.appcompat.app.AlertDialog.Builder(this)
+            androidx.appcompat.app.AlertDialog.Builder(this, R.style.DarkDialog)
                 .setTitle("选择胶卷")
                 .setSingleChoiceItems(items, checked) { d, which ->
                     selRollId = ids[which] ?: ""
@@ -484,7 +485,7 @@ class MainActivity : AppCompatActivity() {
             items[0] = "自动（按胶卷默认）"
             paperOptions.forEachIndexed { i, opt -> items[i + 1] = opt.name }
             val checked = if (current.isEmpty()) 0 else (paperOptions.indexOfFirst { it.id == current } + 1).coerceAtLeast(0)
-            androidx.appcompat.app.AlertDialog.Builder(this)
+            androidx.appcompat.app.AlertDialog.Builder(this, R.style.DarkDialog)
                 .setTitle("相纸选择")
                 .setSingleChoiceItems(items, checked) { d, which ->
                     val id = if (which == 0) "" else paperOptions[which - 1].id
@@ -508,7 +509,7 @@ class MainActivity : AppCompatActivity() {
             syncUi()
         }
 
-        androidx.appcompat.app.AlertDialog.Builder(this)
+        androidx.appcompat.app.AlertDialog.Builder(this, R.style.DarkDialog)
             .setTitle("冲洗参数")
             .setView(view)
             .setPositiveButton("确定") { d, _ ->
@@ -1056,8 +1057,9 @@ class MainActivity : AppCompatActivity() {
         // 闪光灯按键触发，立即拍照
         binding.glSurfaceView.post {
             try {
-                // 模拟失焦：开启时随机概率触发对焦不准（约40%）
-                val defocus = softFocusEnabled && java.util.Random().nextFloat() < 0.4f
+                // 模拟失焦：工程师模式设定的概率触发对焦不准（0-100%，0=关闭）
+                val defocus = softFocusEnabled &&
+                    java.util.Random().nextInt(100) < softFocusProb
                 cameraController?.takePicture(defocus)
             } catch (e: Exception) {
                 Toast.makeText(this, "拍照错误: ${e.message}", Toast.LENGTH_LONG).show()
