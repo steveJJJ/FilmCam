@@ -1,7 +1,10 @@
 # FilmCam
 
 Android 胶片相机 App —— 光学取景器拍摄、整卷 36 张、暗房冲洗的真实胶卷工作流。
-色彩由 Vulkan 引擎 **SpektraFilm**（来自 [SpektraLab](https://github.com/SAINTTaiYi/SpektraLab-Android) 的调色引擎）按真实胶片 profile 渲染。
+色彩由 Vulkan 引擎 **SpektraFilm** 按真实胶片 profile 渲染。引擎源自
+[steveJJJ/SpektraLab-Android](https://github.com/steveJJJ/SpektraLab-Android)（Android Vulkan 移植，GPL-3.0-or-later）→
+上游 [JamesQiu2005/SpektraLab](https://github.com/JamesQiu2005/SpektraLab)；胶片模型与实测配置来自
+[Andrea Volpato 的 spektrafilm](https://github.com/andreavolpato/spektrafilm)（CC BY-SA 4.0）。
 
 ## 功能
 
@@ -51,7 +54,7 @@ app/src/main/java/
 └── tools/                         # 图标/封面生成脚本（Node + CDP / Java2D）
 ```
 
-资源：`app/src/main/assets/resources/` 为 SpektraFilm 引擎数据（25 film profiles、9 print profiles、stock_catalog 等），**许可证见 LICENSE-SPEKTRAFILM.txt**；项目代码为 GPL，见 LICENSE。
+资源：`app/src/main/assets/resources/` 为 SpektraFilm 引擎数据（25 film profiles、9 print profiles、stock_catalog 等），**许可证见 LICENSE-SPEKTRAFILM.txt**；项目代码为 GPL-3.0-or-later，第三方组件署名见 LICENSE 末尾的 Third-party 说明。
 
 ## 已知硬件（FG-COB-FLASH）
 

@@ -9,8 +9,21 @@ vulkan/*.spv and the DI/ *.cube files) are licensed under the
   Creative Commons Attribution-ShareAlike 4.0 International (CC BY-SA 4.0)
   https://creativecommons.org/licenses/by-sa/4.0/
 
-Attribution: SpektraLab film profiles and engine resources by JamesQiu2005
-and the SpektraLab project (https://github.com/JamesQiu2005/SpektraLab).
+Attribution:
+  - SpektraLab film profiles and engine resources by JamesQiu2005 and the
+    SpektraLab project (https://github.com/JamesQiu2005/SpektraLab).
+  - The underlying film models, the 28 measured stock configurations and the
+    enlargement LUTs are derived from "spektrafilm" by Andrea Volpato
+    (https://github.com/andreavolpato/spektrafilm), also CC BY-SA 4.0.
+  - Distributed to Android through "SpektraLab for Android" by steveJJJ
+    (https://github.com/steveJJJ/SpektraLab-Android).
+
+Changes made to the material:
+  - Only the film / paper stocks used by this app are bundled; unused
+    profiles were removed.
+  - Chinese display names were added for the shipped stocks, alongside the
+    original identifiers.
+  - No numerical values of the stock models were altered.
 
 Summary of rights and obligations:
   - You are free to share (copy and redistribute) and adapt (remix,

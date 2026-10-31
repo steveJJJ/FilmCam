@@ -20,14 +20,33 @@ Full text: https://www.gnu.org/licenses/gpl-3.0.html
 
 Third-party components integrated into this project:
 
-1. SpektraLab physical film engine (native library libspektrafilm_engine.so,
-   JNI bridge and Kotlin facade under app/src/main/java/app/spektralab/engine/)
+1. SpektraLab for Android — the Vulkan backend port, JNI bridge, native
+   build scripts and buildable Android project this app is derived from
+   (forked/adapted as app/src/main/java/app/spektralab/engine/ and
+   app/src/main/jniLibs/arm64-v8a/libspektrafilm_engine.so)
+   — Copyright (C) steveJJJ
+   — Licensed under GPL-3.0-or-later
+   — Upstream: https://github.com/steveJJJ/SpektraLab-Android
+     (originally published as SAINTTaiYi/SpektraLab-Android)
+   — Modified: trimmed to the expose-develop pipeline used here; UI,
+     camera layer, EXIF writing and package structure changed.
+
+2. SpektraLab physical film / paper simulation engine (the upstream core
+   model behind libspektrafilm_engine.so)
    — Copyright (C) JamesQiu2005 / SpektraLab contributors
    — Licensed under GPL-3.0-or-later
    — Upstream: https://github.com/JamesQiu2005/SpektraLab
 
-2. Film / print stock profiles (app/src/main/assets/resources/profiles/,
+3. spektrafilm — film models, 28 measured stock configurations and the
+   enlargement LUTs wrapped by the engine's default resources
+   — Copyright (C) Andrea Volpato
+   — Licensed under CC BY-SA 4.0
+   — Upstream: https://github.com/andreavolpato/spektrafilm
+
+4. Film / print stock profiles (app/src/main/assets/resources/profiles/,
    stock_catalog.json, print_luts.json, neutral_print_filters.json,
    spektrafilm_constants.bin and other engine resources)
    — Licensed under CC BY-SA 4.0
    — See LICENSE-SPEKTRAFILM.txt
+   — Modified: only the stocks used by this app are kept; Chinese display
+     names added.
