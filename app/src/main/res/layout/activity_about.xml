@@ -29,6 +29,33 @@
                 android:textColor="#E8E4DA"
                 android:textSize="17sp"
                 android:textStyle="bold" />
+
+            <Space
+                android:layout_width="0dp"
+                android:layout_height="1dp"
+                android:layout_weight="1" />
+
+            <!-- 问题反馈：点击唤起邮件客户端，自动带上版本与设备信息 -->
+            <TextView
+                android:id="@+id/tvFeedback"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_feedback_chip"
+                android:clickable="true"
+                android:contentDescription="问题反馈"
+                android:drawableStart="@drawable/ic_feedback_mail"
+                android:drawableTint="#C9C5BC"
+                android:drawablePadding="5dp"
+                android:gravity="center_vertical"
+                android:includeFontPadding="false"
+                android:letterSpacing="0.06"
+                android:paddingStart="11dp"
+                android:paddingTop="5dp"
+                android:paddingEnd="12dp"
+                android:paddingBottom="5dp"
+                android:text="@string/about_feedback"
+                android:textColor="#C9C5BC"
+                android:textSize="11.5sp" />
         </LinearLayout>
 
         <ImageView

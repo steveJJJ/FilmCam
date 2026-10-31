@@ -1,8 +1,10 @@
 package com.filmcam.app
 
+import android.app.ActivityManager
 import android.content.Intent
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.view.View
 import android.widget.LinearLayout
@@ -33,6 +35,7 @@ class AboutActivity : AppCompatActivity() {
 
         buildOssCredits()
         buildSelfLicense()
+        bindFeedback()
 
         val tvVersion = findViewById<TextView>(R.id.tvVersion)
         tvVersion.text = versionText
@@ -137,6 +140,50 @@ class AboutActivity : AppCompatActivity() {
                 })
             }
             container.addView(row)
+        }
+    }
+
+    /**
+     * 标题栏右端的「问题反馈」入口：唤起邮件客户端，并预填 App 版本与设备信息，
+     * 便于拿到能直接复现的诊断数据。收件人来自 strings.xml 的 app_feedback_email。
+     */
+    private fun bindFeedback() {
+        findViewById<TextView>(R.id.tvFeedback).setOnClickListener { sendFeedback() }
+    }
+
+    private fun sendFeedback() {
+        val email = getString(R.string.app_feedback_email).trim()
+        if (email.isEmpty()) {
+            Toast.makeText(this, R.string.feedback_email_missing, Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val pi = runCatching { packageManager.getPackageInfo(packageName, 0) }.getOrNull()
+        val verName = pi?.versionName ?: "?"
+        val verCode = pi?.let { info ->
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) info.longVersionCode.toInt() else info.versionCode
+        } ?: 0
+        val metrics = resources.displayMetrics
+        val memInfo = ActivityManager.MemoryInfo()
+        (getSystemService(ACTIVITY_SERVICE) as ActivityManager).getMemoryInfo(memInfo)
+        val availMb = (memInfo.availMem / (1024 * 1024)).toInt()
+
+        val verLabel = "v$verName"
+        val intent = Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:$email")).apply {
+            putExtra(Intent.EXTRA_SUBJECT, getString(R.string.feedback_subject, verLabel))
+            putExtra(
+                Intent.EXTRA_TEXT, getString(
+                    R.string.feedback_body,
+                    verLabel, verCode, Build.MANUFACTURER, Build.MODEL,
+                    Build.VERSION.RELEASE, Build.VERSION.SDK_INT,
+                    metrics.widthPixels, metrics.heightPixels, metrics.densityDpi,
+                    availMb
+                )
+            )
+        }
+        val started = runCatching { startActivity(intent) }.isSuccess
+        if (!started) {
+            Toast.makeText(this, "没有可用的邮件应用", Toast.LENGTH_SHORT).show()
         }
     }
 

@@ -6,6 +6,26 @@
     <string name="percent_fmt">%1$d%%</string>
     <string name="about_self_title">FILMCAM 以 GNU GPL-3.0-or-later 开源分发</string>
     <string name="about_self_body">本项目使用了 GPL-3.0 的 SpektraLab 胶片模拟引擎，因而同样以 GPL-3.0-or-later 分发：你可以自由使用、修改与再分发，再分发时须开放源码并保留同一许可与署名。\n源码仓库尚未公开，依据许可条款，源码在索取时提供。</string>
+    <string name="about_feedback">问题反馈</string>
+    <string name="feedback_subject">FILMCAM 问题反馈 %1$s</string>
+    <string name="feedback_body">遇到的问题：（请简单描述，例如冲洗到第几张卡住、点了哪里没反应）
+
+复现步骤：
+1.
+2.
+
+期望的结果：
+
+—— 以下信息自动生成，保留有助于定位问题 ——
+App 版本：%1$s (%2$d)
+设备：%3$s %4$s
+系统：Android %5$s (API %6$d)
+屏幕：%7$dx%8$d @%9$ddpi
+可用内存：%10$d MB
+</string>
+    <string name="feedback_email_missing">反馈邮箱尚未配置</string>
+    <!-- 接收问题反馈的邮箱；留空时点击会提示未配置 -->
+    <string name="app_feedback_email" translatable="false"></string>
     <!-- 留空则关于页不显示索取入口；填入邮箱后自动变成可点击的 mailto 链接 -->
     <string name="app_source_email" translatable="false"></string>
     <string name="about_oss_summary">FILMCAM 站在这些开源项目与素材作者的作品上——感谢各位开发者的慷慨分享。\n冲洗引擎代码依 GPL-3.0-or-later 使用，胶片/相纸配方与引擎资源依 CC BY-SA 4.0 使用；点击查看具体许可与来源。</string>
