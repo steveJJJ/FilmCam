@@ -208,7 +208,6 @@ class MainActivity : AppCompatActivity() {
         // 旧 filmCount 键仅作迁移保留读取，不再作为权威（张数一律读 UndevelopedFilmStore.shotCount）
         @Suppress("UNUSED_VARIABLE") val legacyFilmCount = prefs.getInt("filmCount", 0)
         debugInstantDevelop = prefs.getBoolean("debug_instant_develop", false)
-        binding.glSurfaceView.photoGrainEnabled = prefs.getBoolean("grain", true)
         flash.mode = try {
             FlashMode.valueOf(prefs.getString("flashMode", FlashMode.OFF.name) ?: FlashMode.OFF.name)
         } catch (_: Exception) { FlashMode.OFF }
@@ -228,7 +227,6 @@ class MainActivity : AppCompatActivity() {
         prefs.putBoolean("filmRollMode", filmRollMode)
         // 旧 filmCount 键不再写入；权威张数来自 UndevelopedFilmStore
         prefs.putBoolean("debug_instant_develop", debugInstantDevelop)
-        prefs.putBoolean("grain", binding.glSurfaceView.photoGrainEnabled)
         prefs.putString("flashMode", flash.mode.name)
         prefs.putInt("rollIndex", FilmRollRepository.rolls.indexOf(currentRoll))
         prefs.apply()
@@ -239,7 +237,6 @@ class MainActivity : AppCompatActivity() {
         val items = arrayOf(
             "日期水印: ${if (dateStampEnabled) "开" else "关"}",
             "模拟失焦: ${if (softFocusEnabled) "开" else "关"}",
-            "胶片颗粒: ${if (binding.glSurfaceView.photoGrainEnabled) "开" else "关"}",
             "调试: 跳过冲洗立即出片: ${if (debugInstantDevelop) "开" else "关"}",
             "冲洗参数: 颗粒/辉光/眩光"
         )
@@ -249,11 +246,10 @@ class MainActivity : AppCompatActivity() {
                 when (which) {
                     0 -> { dateStampEnabled = !dateStampEnabled; saveSettings() }
                     1 -> { softFocusEnabled = !softFocusEnabled; saveSettings() }
-                    2 -> { binding.glSurfaceView.photoGrainEnabled = !binding.glSurfaceView.photoGrainEnabled; saveSettings() }
-                    3 -> { debugInstantDevelop = !debugInstantDevelop; saveSettings() }
-                    4 -> showDevParamsDialog()
+                    2 -> { debugInstantDevelop = !debugInstantDevelop; saveSettings() }
+                    3 -> showDevParamsDialog()
                 }
-                if (which != 4) showSettings()
+                if (which != 3) showSettings()
             }
             .setNegativeButton("关闭", null)
             .show()

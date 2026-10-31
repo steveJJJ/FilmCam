@@ -62,65 +62,6 @@ class LutGLSurfaceView @JvmOverloads constructor(
         queueEvent { renderer?.grainStrength = strength }
     }
 
-
-    // 更逼真胶片颗粒：分形相关噪声（预生成纹理，仅用于拍照输出，不影响预览取景器）
-    private var photoGrainStrength = 0.06f   // 拍照颗粒强度，可调
-    // 拍照颗粒总开关（独立于预览 shader）
-    var photoGrainEnabled = true
-    private var grainTex: IntArray? = null
-    private val grainTexSize = 512
-
-    /** 懒生成分形颗粒纹理：3 octave 值噪声 fbm，RGB 独立，含低频"颗粒簇"+高频细化 */
-    private fun ensureGrainTexture() {
-        if (grainTex != null) return
-        val seed = 1337
-        val freqBase = 64f
-        val arr = IntArray(grainTexSize * grainTexSize)
-        for (y in 0 until grainTexSize) {
-            for (x in 0 until grainTexSize) {
-                val fx = x.toFloat() / grainTexSize * freqBase
-                val fy = y.toFloat() / grainTexSize * freqBase
-                val r = grainFbm(fx, fy, seed)
-                val g = grainFbm(fx, fy, seed + 101)
-                val b = grainFbm(fx, fy, seed + 1009)
-                val r255 = (((r - 0.44f) * 510f).toInt() + 128).coerceIn(0, 255)
-                val g255 = (((g - 0.44f) * 510f).toInt() + 128).coerceIn(0, 255)
-                val b255 = (((b - 0.44f) * 510f).toInt() + 128).coerceIn(0, 255)
-                arr[y * grainTexSize + x] = (r255 shl 16) or (g255 shl 8) or b255
-            }
-        }
-        grainTex = arr
-    }
-
-    private fun grainNoise(ix: Int, iy: Int, seed: Int): Float {
-        var n = ix * 374761393 + iy * 668265263 + seed * 69069
-        n = (n xor (n shr 13)) * 1274126177
-        n = n xor (n shr 16)
-        return (n and 0xFFFFFF).toFloat() / 0xFFFFFF.toFloat()
-    }
-
-    private fun grainFbm(x: Float, y: Float, seed: Int): Float {
-        var v = 0f
-        var amp = 0.5f
-        var freq = 1f
-        for (o in 0 until 3) {
-            val ix = (x * freq).toInt()
-            val iy = (y * freq).toInt()
-            val fx = x * freq - ix
-            val fy = y * freq - iy
-            val a = grainNoise(ix, iy, seed)
-            val b = grainNoise(ix + 1, iy, seed)
-            val c = grainNoise(ix, iy + 1, seed)
-            val d = grainNoise(ix + 1, iy + 1, seed)
-            val ux = fx * fx * (3f - 2f * fx)
-            val uy = fy * fy * (3f - 2f * fy)
-            v += (a + (b - a) * ux + (c - a) * uy + (a - b - c + d) * ux * uy) * amp
-            freq *= 2.37f
-            amp *= 0.5f
-        }
-        return v
-    }
-
     private var pendingCapture: ((android.graphics.Bitmap?) -> Unit)? = null
 
     /** 读取当前 GL 帧并回调 Bitmap */
