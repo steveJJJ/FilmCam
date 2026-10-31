@@ -107,7 +107,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
-            android:text="扫码赞赏，感谢支持独立开发"
+            android:text="扫码赞赏，感谢支持独立开发；海外朋友可走 PayPal"
             android:textColor="#8A8A8E"
             android:textSize="11sp" />
 
@@ -117,6 +117,26 @@
             android:layout_marginTop="16dp"
             android:src="@drawable/appreciate_code"
             android:contentDescription="赞赏码" />
+
+        <!-- 海外赞赏：点击打开 PayPal 页面 -->
+        <TextView
+            android:id="@+id/tvPaypal"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:background="@drawable/bg_feedback_chip"
+            android:clickable="true"
+            android:contentDescription="PayPal 赞赏"
+            android:gravity="center"
+            android:includeFontPadding="false"
+            android:letterSpacing="0.06"
+            android:paddingStart="18dp"
+            android:paddingTop="9dp"
+            android:paddingEnd="18dp"
+            android:paddingBottom="9dp"
+            android:text="@string/about_paypal"
+            android:textColor="#C9C5BC"
+            android:textSize="12sp" />
 
         <!-- 开源致谢：条目由 strings.xml 的 oss_credits 驱动，代码动态渲染 -->
         <TextView

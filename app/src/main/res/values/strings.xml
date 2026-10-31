@@ -6,6 +6,9 @@
     <string name="percent_fmt">%1$d%%</string>
     <string name="about_self_title">FILMCAM 以 GNU GPL-3.0-or-later 开源分发</string>
     <string name="about_self_body">本项目使用了 GPL-3.0 的 SpektraLab 胶片模拟引擎，因而同样以 GPL-3.0-or-later 分发：你可以自由使用、修改与再分发，再分发时须开放源码并保留同一许可与署名。\n源码仓库尚未公开，依据许可条款，源码在索取时提供。</string>
+    <string name="about_paypal">海外朋友赞赏 · PayPal</string>
+    <!-- PayPal 赞赏页；留空时不展示入口 -->
+    <string name="appreciate_paypal_url" translatable="false">https://paypal.me/Stevejjjjjj</string>
     <string name="about_feedback">问题反馈</string>
     <string name="feedback_subject">FILMCAM 问题反馈 %1$s / 设备 %2$s %3$s / 系统 Android %4$s (API %5$d)</string>
     <string name="feedback_body">遇到的问题：

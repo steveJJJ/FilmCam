@@ -36,6 +36,7 @@ class AboutActivity : AppCompatActivity() {
         buildOssCredits()
         buildSelfLicense()
         bindFeedback()
+        bindAppreciation()
 
         val tvVersion = findViewById<TextView>(R.id.tvVersion)
         tvVersion.text = versionText
@@ -140,6 +141,24 @@ class AboutActivity : AppCompatActivity() {
                 })
             }
             container.addView(row)
+        }
+    }
+
+    /** 赞赏区下方的 PayPal 入口（供海外用户），点击在浏览器打开 PayPal 页面。 */
+    private fun bindAppreciation() {
+        val chip = findViewById<TextView>(R.id.tvPaypal)
+        val url = getString(R.string.appreciate_paypal_url).trim()
+        if (url.isEmpty()) {
+            chip.visibility = View.GONE
+            return
+        }
+        chip.setOnClickListener {
+            val started = runCatching {
+                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+            }.isSuccess
+            if (!started) {
+                Toast.makeText(this, "没有可用的浏览器", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
