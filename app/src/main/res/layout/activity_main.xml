@@ -11,13 +11,6 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
-    <!-- 取景网格（已按需求隐藏） -->
-    <com.filmcam.app.ui.GridOverlayView
-        android:id="@+id/gridOverlay"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:visibility="gone" />
-
     <!-- 康泰时 T3 取景器常驻标记：四角亮框 + 视差角标 + 中央 AF 圆线 -->
     <com.filmcam.app.ui.ViewfinderFrameView
         android:id="@+id/viewfinderFrame"

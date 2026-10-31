@@ -14,10 +14,14 @@ import javax.microedition.khronos.egl.EGLConfig
 import javax.microedition.khronos.opengles.GL10
 
 /**
- * OpenGL ES 3.0 滤镜渲染表面
+ * OpenGL ES 3.0 取景器渲染表面
+ *
+ * 设计取向：**模拟康泰时 T3 的光学取景器**——取景器里看到的就是镜头真实捕捉到的
+ * 画面，不加任何胶片色调、颗粒、暗角或构图网格。胶片的色彩只发生在"冲洗"环节
+ * （Vulkan 引擎侧），与取景无关，这与真机上"取景器看实景、出片才见胶片味"一致。
  *
  * 架构：
- *   CameraX 帧 → SurfaceTexture(OES 外部纹理) → 片元着色器（3D LUT 查表 + center-crop）→ 屏幕
+ *   Camera2 帧 → SurfaceTexture(OES 外部纹理) → 片元着色器（直通 + center-crop）→ 屏幕
  *
  * 比例处理：
  *   相机传感器输出 4:3 横屏，通过 SurfaceTexture transform matrix 旋转到竖屏，
@@ -42,16 +46,6 @@ class LutGLSurfaceView @JvmOverloads constructor(
         renderMode = RENDERMODE_WHEN_DIRTY
     }
 
-    /** 设置临时色调（后续替换真实 LUT 后删掉） */
-    fun setTint(r: Float, g: Float, b: Float) {
-        queueEvent { renderer?.tintR = r; renderer?.tintG = g; renderer?.tintB = b }
-    }
-
-    /** 设置胶片颗粒强度 0.0~1.0 */
-    fun setGrain(strength: Float) {
-        queueEvent { renderer?.grainStrength = strength }
-    }
-
     inner class LutRenderer : GLSurfaceView.Renderer {
 
         private var program = 0
@@ -61,10 +55,6 @@ class LutGLSurfaceView @JvmOverloads constructor(
             private set
         var surfaceHeight = 0
             private set
-        var tintR: Float = 1.0f
-        var tintG: Float = 1.0f
-        var tintB: Float = 1.0f
-        var grainStrength: Float = 0.03f  // 轻微颗粒
 
         // transform matrix (from SurfaceTexture, handles rotation)
         private val texMatrix = FloatArray(16)
@@ -136,14 +126,15 @@ class LutGLSurfaceView @JvmOverloads constructor(
                 Log.i("LutRenderer", "frame#$loggedFrames texMatrix=${texMatrix.joinToString(",") { "%.3f".format(it) }}")
                 diagAppend("frame#$loggedFrames texMatrix=${texMatrix.joinToString(",") { "%.3f".format(it) }}")
             }
-            renderTo(surfaceWidth, surfaceHeight, applyPostFX = false, offsetY = -0.08f)  // 预览原相机，画面上移一点
+            renderTo(surfaceWidth, surfaceHeight, offsetY = -0.08f)  // 画面上移一点，贴近 T3 取景视野
         }
 
         /** 在指定分辨率下渲染一帧。
          *  注意：shader 里不能残留未绑定纹理的 sampler 声明——部分真机驱动
          *  （Adreno/麒麟）会因 sampler3D 无有效绑定直接让整次 draw 失败（黑屏），
-         *  模拟器软件渲染则不受影响。LUT 调色已移交 Vulkan 冲洗引擎。 */
-        fun renderTo(viewW: Int, viewH: Int, applyPostFX: Boolean = true, offsetY: Float = 0f) {
+         *  模拟器软件渲染则不受影响。胶片调色已完全移交 Vulkan 冲洗引擎，
+         *  取景器侧保持直通，不再保留任何后处理分支。 */
+        fun renderTo(viewW: Int, viewH: Int, offsetY: Float = 0f) {
             val st = surfaceTexture ?: return
             GLES30.glViewport(0, 0, viewW, viewH)
             GLES30.glUseProgram(program)
@@ -164,14 +155,6 @@ class LutGLSurfaceView @JvmOverloads constructor(
             GLES30.glUniform1f(GLES30.glGetUniformLocation(program, "uContentAspect"),
                 contentAspect)
             GLES30.glUniform1f(GLES30.glGetUniformLocation(program, "uOffsetY"), offsetY)
-            GLES30.glUniform3f(GLES30.glGetUniformLocation(program, "uTint"),
-                tintR, tintG, tintB)
-            GLES30.glUniform1f(GLES30.glGetUniformLocation(program, "uGrain"),
-                grainStrength)
-
-            // 后处理效果开关（halation/grain/vignette）
-            GLES30.glUniform1f(GLES30.glGetUniformLocation(program, "uPostFX"),
-                if (applyPostFX) 1f else 0f)
 
             vertexBuffer.position(0)
             val posLoc = GLES30.glGetAttribLocation(program, "aPosition")
@@ -229,7 +212,9 @@ class LutGLSurfaceView @JvmOverloads constructor(
         }
         """.trimIndent()
 
-        // 片元着色器：halation + 胶片颗粒 + 暗角（LUT 调色在冲洗引擎侧做）
+        // 片元着色器：纯直通。
+        // 取景器刻意不做任何胶片化处理（无 LUT / 无 halation / 无颗粒 / 无暗角），
+        // 复刻康泰时 T3 光学取景器"所见即实景"的观感；胶片色彩只在冲洗环节产生。
         private val FRAGMENT_SHADER = """#version 300 es
         #extension GL_OES_EGL_image_external_essl3 : require
         precision mediump float;
@@ -240,18 +225,8 @@ class LutGLSurfaceView @JvmOverloads constructor(
         uniform float uScreenAspect;
         uniform float uContentAspect;
         uniform float uOffsetY;
-        uniform vec3 uTint;
-        uniform float uGrain;
-        uniform float uPostFX;
         in vec2 vTexCoord;
         out vec4 fragColor;
-
-        // 高质量 hash 噪声
-        float hash(vec2 p) {
-            vec3 p3 = fract(vec3(p.xyx) * 0.1031);
-            p3 += dot(p3, p3.yzx + 33.33);
-            return fract((p3.x + p3.y) * p3.z);
-        }
 
         void main() {
             float s = uScreenAspect / uContentAspect;
@@ -263,33 +238,7 @@ class LutGLSurfaceView @JvmOverloads constructor(
             }
 
             vec2 uv = (uTexMatrix * vec4(vTexCoord.x, contentY, 0.0, 1.0)).xy;
-            vec4 color = texture(uTexture, uv);
-
-            if (uPostFX > 0.5) {
-                // Halation：高光红色溢出
-                float lum = dot(color.rgb, vec3(0.299, 0.587, 0.114));
-                float highlight = smoothstep(0.7, 1.0, lum);
-                color.r += highlight * highlight * 0.15;
-                color.g += highlight * highlight * 0.05;
-            }
-            color.rgb *= uTint;
-
-            if (uPostFX > 0.5) {
-                // 胶片颗粒
-                float grainNoise = hash(gl_FragCoord.xy * 0.5) - 0.5;
-                float lum2 = dot(color.rgb, vec3(0.299, 0.587, 0.114));
-                float grainAmount = uGrain * (0.3 + lum2 * 0.7);
-                color.rgb += grainNoise * grainAmount;
-
-                // 暗角
-                vec2 centered = vTexCoord - 0.5;
-                centered.x *= uScreenAspect / uContentAspect;
-                float dist = length(centered);
-                float vignette = 1.0 - smoothstep(0.3, 0.8, dist) * 0.3;
-                color.rgb *= vignette;
-            }
-
-            fragColor = color;
+            fragColor = texture(uTexture, uv);
         }
         """.trimIndent()
     }

@@ -8,8 +8,6 @@ import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import android.util.Log
-import org.json.JSONArray
-import org.json.JSONObject
 import java.io.File
 import java.io.InputStream
 
@@ -27,6 +25,11 @@ data class RollInfo(
     val frames: List<Int>
 )
 
+// 内部记录复用纯数据层 RollRegistry（不触碰 Context，可单测）。
+// Kotlin 不允许嵌套 typealias，故定义在文件顶层。
+private typealias RollRec = RollRegistry.RollRec
+private typealias FrameRec = RollRegistry.FrameRec
+
 /**
  * 未冲洗胶卷存储（拍摄侧实现，冲洗侧只调冻结 API）。
  *
@@ -42,12 +45,13 @@ object UndevelopedFilmStore {
     private const val TAG = "UndevelopedFilmStore"
     private const val PREFS_NAME = "filmcam_rolls"
     private const val KEY_REGISTRY = "roll_registry_v1"
-    private const val MAX_SHOTS = 36
     private const val DIR_UNDEVELOPED = ".FilmCamUndeveloped"
 
-    const val STATUS_SHOOTING = "shooting"
-    const val STATUS_DEVELOPING = "developing"
-    const val STATUS_DEVELOPED = "developed"
+    // 状态常量与上限统一来自纯数据层 RollRegistry，避免两处定义漂移
+    private const val MAX_SHOTS = RollRegistry.MAX_SHOTS
+    const val STATUS_SHOOTING = RollRegistry.STATUS_SHOOTING
+    const val STATUS_DEVELOPING = RollRegistry.STATUS_DEVELOPING
+    const val STATUS_DEVELOPED = RollRegistry.STATUS_DEVELOPED
 
     @Volatile
     private var appContext: Context? = null
@@ -55,7 +59,7 @@ object UndevelopedFilmStore {
     /** 进程内缓存，避免每次 API 调用都从 SharedPreferences 反序列化 JSON。
      *  冲洗循环每帧调 openFrameStream → loadAll，36 帧 = 36 次解析 → 缓存后仅首次解析。 */
     @Volatile
-    private var cachedRolls: MutableList<RollRec>? = null
+    private var cachedRolls: MutableList<RollRegistry.RollRec>? = null
 
     /** 进程启动时由 MainActivity 调用一次，缓存 applicationContext（冻结业务 API 不带 context 参数）。 */
     fun init(context: Context) {
@@ -65,38 +69,6 @@ object UndevelopedFilmStore {
     private fun requireContext(): Context =
         appContext ?: throw IllegalStateException("UndevelopedFilmStore.init(context) 尚未调用")
 
-    // ---------- 内部记录（含 handle/takenAtMs/iso，不对外暴露） ----------
-
-    private data class FrameRec(
-        val index: Int,
-        val handle: String,          // MediaStore uri 字符串（API29+）或文件绝对路径（API26-28）
-        val takenAtMs: Long,
-        val iso: Int?,
-        /** 像素需要顺时针旋转的角度（0/90/180/270）。拍摄侧直传字节不做像素旋转，
-         *  方向随帧记录，由冲洗侧统一旋转。旧记录缺省 0（旧链路已物理旋转过）。 */
-        val orientation: Int = 0
-    )
-
-    private data class RollRec(
-        val rollId: String,
-        val filmStockId: String,
-        val printStockId: String,
-        val createdAtMs: Long,
-        var status: String,
-        val frames: MutableList<FrameRec>
-    ) {
-        fun toInfo(): RollInfo =
-            RollInfo(
-                rollId = rollId,
-                filmStockId = filmStockId,
-                printStockId = printStockId,
-                createdAtMs = createdAtMs,
-                status = status,
-                shotCount = frames.size,
-                frames = frames.map { it.index }
-            )
-    }
-
     private fun prefs(): SharedPreferences =
         requireContext().getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
@@ -105,41 +77,11 @@ object UndevelopedFilmStore {
         cachedRolls?.let { return it }
         synchronized(this) {
             cachedRolls?.let { return it }
-            val out = mutableListOf<RollRec>()
             val raw = prefs().getString(KEY_REGISTRY, null)
-            if (!raw.isNullOrEmpty()) {
-                try {
-                    val arr = JSONArray(raw)
-                    for (i in 0 until arr.length()) {
-                        val o = arr.getJSONObject(i)
-                        val frames = mutableListOf<FrameRec>()
-                        val fa = o.optJSONArray("frames") ?: JSONArray()
-                        for (j in 0 until fa.length()) {
-                            val f = fa.getJSONObject(j)
-                            frames.add(
-                                FrameRec(
-                                    index = f.getInt("index"),
-                                    handle = f.getString("handle"),
-                                    takenAtMs = f.getLong("takenAtMs"),
-                                    iso = if (f.isNull("iso")) null else f.getInt("iso"),
-                                    orientation = f.optInt("orientation", 0)
-                                )
-                            )
-                        }
-                        out.add(
-                            RollRec(
-                                rollId = o.getString("rollId"),
-                                filmStockId = o.getString("filmStockId"),
-                                printStockId = o.getString("printStockId"),
-                                createdAtMs = o.getLong("createdAtMs"),
-                                status = o.getString("status"),
-                                frames = frames
-                            )
-                        )
-                    }
-                } catch (e: Exception) {
-                    Log.e(TAG, "loadAll 解析失败", e)
-                }
+            // 解析容错在 RollRegistry 内部（坏项跳过、整段损坏返回空），这里只留一条现场日志
+            val out = RollRegistry.deserialize(raw)
+            if (!raw.isNullOrEmpty() && out.isEmpty()) {
+                Log.e(TAG, "loadAll 解析结果为空，登记可能已损坏（长度 ${raw.length}）")
             }
             cachedRolls = out
             return out
@@ -149,28 +91,7 @@ object UndevelopedFilmStore {
     /** persist 后同步更新进程内缓存。 */
     private fun persist(rolls: List<RollRec>) {
         cachedRolls = rolls.toMutableList()
-        val arr = JSONArray()
-        for (r in rolls) {
-            val o = JSONObject()
-            o.put("rollId", r.rollId)
-            o.put("filmStockId", r.filmStockId)
-            o.put("printStockId", r.printStockId)
-            o.put("createdAtMs", r.createdAtMs)
-            o.put("status", r.status)
-            val fa = JSONArray()
-            for (f in r.frames) {
-                val fo = JSONObject()
-                fo.put("index", f.index)
-                fo.put("handle", f.handle)
-                fo.put("takenAtMs", f.takenAtMs)
-                if (f.iso == null) fo.put("iso", JSONObject.NULL) else fo.put("iso", f.iso)
-                fo.put("orientation", f.orientation)
-                fa.put(fo)
-            }
-            o.put("frames", fa)
-            arr.put(o)
-        }
-        prefs().edit().putString(KEY_REGISTRY, arr.toString()).apply()
+        prefs().edit().putString(KEY_REGISTRY, RollRegistry.serialize(rolls)).apply()
     }
 
     private fun findRec(rolls: MutableList<RollRec>, rollId: String): RollRec =
@@ -181,13 +102,13 @@ object UndevelopedFilmStore {
 
     /** status==shooting 的活动卷 */
     fun currentRoll(): RollInfo? = synchronized(this) {
-        loadAll().firstOrNull { it.status == STATUS_SHOOTING }?.toInfo()
+        loadAll().firstOrNull { RollRegistry.isShooting(it) }?.toInfo()
     }
 
     /** 开始新卷。已有活动卷时抛 IllegalStateException。 */
     fun startRoll(filmStockId: String, printStockId: String): RollInfo = synchronized(this) {
         val rolls = loadAll()
-        if (rolls.any { it.status == STATUS_SHOOTING }) {
+        if (rolls.any { RollRegistry.isShooting(it) }) {
             throw IllegalStateException("已有活动卷（shooting），不能同时开第二卷")
         }
         val roll = RollRec(
@@ -218,8 +139,8 @@ object UndevelopedFilmStore {
     ): Int = synchronized(this) {
         val rolls = loadAll()
         val roll = findRec(rolls, rollId)
-        check(roll.status == STATUS_SHOOTING) { "卷状态非 shooting: ${roll.status}" }
-        if (roll.frames.size >= MAX_SHOTS) {
+        check(RollRegistry.isShooting(roll)) { "卷状态非 shooting: ${roll.status}" }
+        if (RollRegistry.isFull(roll)) {
             throw IllegalStateException("胶卷已拍满 $MAX_SHOTS 张，请先冲洗")
         }
         val index = roll.frames.size + 1
@@ -306,14 +227,13 @@ object UndevelopedFilmStore {
 
     /** status in (shooting, developing) 的卷 */
     fun undevelopedRolls(): List<RollInfo> = synchronized(this) {
-        loadAll().filter { it.status == STATUS_SHOOTING || it.status == STATUS_DEVELOPING }
-            .map { it.toInfo() }
+        loadAll().filter { RollRegistry.isUndeveloped(it) }.map { it.toInfo() }
     }
 
     fun markDeveloping(rollId: String) = synchronized(this) {
         val rolls = loadAll()
         val roll = findRec(rolls, rollId)
-        if (roll.status == STATUS_SHOOTING) {
+        if (RollRegistry.isShooting(roll)) {
             roll.status = STATUS_DEVELOPING
             persist(rolls)
         }

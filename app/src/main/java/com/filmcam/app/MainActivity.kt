@@ -101,10 +101,7 @@ class MainActivity : AppCompatActivity() {
         // 胶卷图标（预览不做 LUT 调色：光学取景器看不到成片效果，是产品设计）
         binding.tvFilmName.setImageResource(currentRoll.iconResId)
 
-        // 颗粒先关掉，拍照时再加
-        binding.glSurfaceView.setGrain(0f)
-
-        // 等待 GL 线程就绪，拿到 SurfaceTexture 后启动 CameraX
+        // 等待 GL 线程就绪，拿到 SurfaceTexture 后启动 Camera2
         binding.glSurfaceView.onSurfaceTextureReady = { surfaceTexture ->
             runOnUiThread { startCamera(surfaceTexture) }
         }
