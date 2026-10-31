@@ -150,6 +150,7 @@ class LutGLSurfaceView @JvmOverloads constructor(
         }
 
         override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
+            diagAppend("surfaceCreated view=${width}x${height} measuredW=${measuredWidth} measuredH=${measuredHeight}")
             val ids = IntArray(1)
             GLES30.glGenTextures(1, ids, 0)
             oesTexId = ids[0]
@@ -175,12 +176,31 @@ class LutGLSurfaceView @JvmOverloads constructor(
             surfaceWidth = width
             surfaceHeight = height
             GLES30.glViewport(0, 0, width, height)
+            Log.i("LutRenderer", "surfaceChanged: ${width}x${height}")
+            diagAppend("surfaceChanged: ${width}x${height}")
+        }
+
+        private var loggedFrames = 0
+
+        /** 华为用户版屏蔽三方应用 logcat，诊断信息写文件 */
+        private fun diagAppend(line: String) {
+            try {
+                val ctx = context.applicationContext ?: return
+                java.io.File(ctx.filesDir, "filmcam_diag.txt")
+                    .appendText("${System.currentTimeMillis() % 100000} $line\n")
+            } catch (_: Throwable) {}
         }
 
         override fun onDrawFrame(gl: GL10?) {
             val st = surfaceTexture ?: return
             st.updateTexImage()
             st.getTransformMatrix(texMatrix)
+            // 诊断：前 2 帧输出纹理矩阵，用于排查不同设备上的几何问题
+            if (loggedFrames < 2) {
+                loggedFrames++
+                Log.i("LutRenderer", "frame#$loggedFrames texMatrix=${texMatrix.joinToString(",") { "%.3f".format(it) }}")
+                diagAppend("frame#$loggedFrames texMatrix=${texMatrix.joinToString(",") { "%.3f".format(it) }}")
+            }
             renderTo(surfaceWidth, surfaceHeight, applyLut = false, applyPostFX = false, offsetY = -0.08f)  // 预览原相机，画面上移一点
             executePendingCapture()
         }

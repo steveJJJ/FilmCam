@@ -91,6 +91,11 @@ class Camera2Controller(private val context: Context) {
         val previewSize = map?.getOutputSizes(SurfaceTexture::class.java)
             ?.maxByOrNull { it.width * it.height } ?: Size(3840, 2880)
         surfaceTexture.setDefaultBufferSize(previewSize.width, previewSize.height)
+        runCatching {
+            java.io.File(context.applicationInfo.dataDir, "files").let { d ->
+                java.io.File(d, "filmcam_diag.txt").appendText("previewSize=$previewSize\n")
+            }
+        }
 
         // 全分辨率拍照（JPEG 最大尺寸）
         val jpegSizes = map?.getOutputSizes(ImageFormat.JPEG)
@@ -98,6 +103,7 @@ class Camera2Controller(private val context: Context) {
         imageReader = ImageReader.newInstance(maxJpeg.width, maxJpeg.height, ImageFormat.JPEG, 2)
         // 读取传感器方向
         val sensorOrientation = chars.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 90
+        android.util.Log.i("Camera2", "previewSize=$previewSize sensorOrientation=$sensorOrientation")
 
         // 归一化到 0/90/180/270（Activity 锁竖屏，无需再叠加设备旋转）
         val rotationDegrees = (((sensorOrientation % 360) + 360) % 360) / 90 * 90
