@@ -76,8 +76,21 @@ class DevelopmentService : Service() {
             buildProgressNotification(0, 0, "准备中…")
         )
 
-        // 防重入：若已有 worker 在跑同一卷，直接返回
-        if (worker?.isAlive == true && DevelopmentState.rollId == rollId) {
+        // 防重入：
+        //  - 同一卷重复请求 → 直接忽略（正在跑的 worker 会持续刷新进度通知）
+        //  - 另一卷正在冲洗 → 拒绝并发。单帧峰值内存上百 MB，两卷并发必 OOM，
+        //    且两者会争用同一个引擎实例与同一块临时文件。
+        val running = worker
+        if (running?.isAlive == true) {
+            if (DevelopmentState.rollId == rollId) {
+                return START_NOT_STICKY
+            }
+            Log.w(TAG, "已有卷在冲洗（${DevelopmentState.rollId}），拒绝并发请求: $rollId")
+            updateProgressNotification(
+                DevelopmentState.done,
+                DevelopmentState.total,
+                "另一卷冲洗中，请等待完成"
+            )
             return START_NOT_STICKY
         }
 
@@ -162,7 +175,8 @@ class DevelopmentService : Service() {
             val effective = devSettings.copy(paperOverride = resolved.paperId)
             val paramsJson = FilmStockMapper.buildParamsJson(roll.filmStockId, roll.printStockId, effective)
             val filmDisplayName = FilmStockMapper.stockDisplayName(roll.filmStockId)
-            val tmpJpeg = File(cacheDir, "develop_tmp.jpg")
+            // 临时文件名带 rollId：即使并发（例如被系统重新拉起）也不会互相覆写同一个文件
+            val tmpJpeg = File(cacheDir, "develop_${roll.rollId}.jpg")
 
             // 4) 逐帧
             var firstError: String? = null

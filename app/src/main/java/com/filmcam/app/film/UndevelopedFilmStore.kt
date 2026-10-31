@@ -224,9 +224,15 @@ object UndevelopedFilmStore {
             }
             val uri = ctx.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
                 ?: throw java.io.IOException("MediaStore insert pending 失败")
-            ctx.contentResolver.openOutputStream(uri)?.use { out ->
-                out.write(jpegBytes)
-            } ?: throw java.io.IOException("MediaStore openOutputStream 失败: $uri")
+            try {
+                ctx.contentResolver.openOutputStream(uri)?.use { out ->
+                    out.write(jpegBytes)
+                } ?: throw java.io.IOException("MediaStore openOutputStream 失败: $uri")
+            } catch (e: Exception) {
+                // 写入失败必须回收这条 pending 行：否则残留一条永远不可见、也不会被清理的孤儿记录
+                runCatching { ctx.contentResolver.delete(uri, null, null) }
+                throw e
+            }
             handle = uri.toString()
         } else {
             // API 26..28：点目录直接写文件

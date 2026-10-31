@@ -1,14 +1,17 @@
 package com.filmcam.app
 
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
+import android.util.Log
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -20,6 +23,10 @@ import com.filmcam.app.film.UndevelopedFilmStore
 import coil.load
 
 class GalleryActivity : AppCompatActivity() {
+
+    private companion object {
+        const val TAG = "GalleryActivity"
+    }
 
     private lateinit var rvGallery: RecyclerView
     private lateinit var tvEmpty: TextView
@@ -116,18 +123,37 @@ class GalleryActivity : AppCompatActivity() {
         val photos = mutableListOf<Uri>()
         val collection = MediaStore.Images.Media.EXTERNAL_CONTENT_URI
         val projection = arrayOf(MediaStore.Images.Media._ID)
-        // 精确匹配 DCIM/FilmCam/ 避免误查 DCIM/.FilmCamUndeveloped/ 残留
-        val selection = "${MediaStore.Images.Media.RELATIVE_PATH} = ?"
-        val selectionArgs = arrayOf("DCIM/FilmCam/")
+
+        // API 29+：RELATIVE_PATH 精确定位 DCIM/FilmCam/，并显式排除 IS_PENDING=1 的未冲洗帧。
+        //   pending 项对本应用自身是可见的，若不排除，用户会在冲洗前就在相册里看到原片，
+        //   破坏"拍完不可见、冲洗才出片"的核心体验。
+        // API 26-28：没有 RELATIVE_PATH / IS_PENDING 这两列，查它会抛
+        //   SQLiteException(no such column)，改用 DATA 路径前缀匹配。
+        val selection: String
+        val selectionArgs: Array<String>
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            selection = "${MediaStore.Images.Media.RELATIVE_PATH} = ? AND " +
+                "${MediaStore.Images.Media.IS_PENDING} = 0"
+            selectionArgs = arrayOf("DCIM/FilmCam/")
+        } else {
+            selection = "${MediaStore.Images.Media.DATA} LIKE ?"
+            selectionArgs = arrayOf("%/DCIM/FilmCam/%")
+        }
         val sortOrder = "${MediaStore.Images.Media.DATE_ADDED} DESC"
 
-        contentResolver.query(collection, projection, selection, selectionArgs, sortOrder)?.use { cursor ->
-            val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
-            while (cursor.moveToNext()) {
-                val id = cursor.getLong(idColumn)
-                val uri = Uri.withAppendedPath(collection, id.toString())
-                photos.add(uri)
-            }
+        try {
+            contentResolver.query(collection, projection, selection, selectionArgs, sortOrder)
+                ?.use { cursor ->
+                    val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
+                    while (cursor.moveToNext()) {
+                        val id = cursor.getLong(idColumn)
+                        photos.add(Uri.withAppendedPath(collection, id.toString()))
+                    }
+                }
+        } catch (e: Exception) {
+            // 查询失败不能连累整个页面：降级为空态，并提示用户
+            Log.e(TAG, "查询相册失败", e)
+            Toast.makeText(this, "读取相册失败", Toast.LENGTH_SHORT).show()
         }
 
         if (photos.isEmpty()) {

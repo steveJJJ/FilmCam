@@ -32,7 +32,15 @@ class Camera2Controller(private val context: Context) {
     // 手动参数
     private var manualIso: Int? = null
     private var manualExposure: Long? = null
-    private var exposureComp: Int = -4
+    private var exposureComp: Int = 0
+
+    /**
+     * 设备实际支持的 AE 补偿范围。
+     * CONTROL_AE_EXPOSURE_COMPENSATION 的名义范围是 [-4,4]，但多数机型只支持 [-2,2]，
+     * 越界 set 会抛 IllegalArgumentException。故启动时从 Characteristics 读取真实范围，
+     * 下发前统一钳制。
+     */
+    private var aeCompRange: IntRange = -2..2
 
     // 模拟失焦：手动对焦到失焦距离
     private var minFocusDistance = 0f   // 最近对焦距离（最大屈光度），在 start 时读取
@@ -44,14 +52,13 @@ class Camera2Controller(private val context: Context) {
     fun setExposureComp(comp: Int) {
         exposureComp = comp
         previewRequestBuilder?.let {
-            it.set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, comp)
+            it.set(
+                CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION,
+                comp.coerceIn(aeCompRange.first, aeCompRange.last)
+            )
             captureSession?.setRepeatingRequest(it.build(), null, backgroundHandler)
         }
-        // 拍照请求也要更新
-        pendingExposureComp = comp
     }
-
-    private var pendingExposureComp: Int = -4
 
     // 拍照回调
     var onPhotoCaptured: ((android.graphics.Bitmap) -> Unit)? = null
@@ -69,6 +76,11 @@ class Camera2Controller(private val context: Context) {
         val chars = manager.getCameraCharacteristics(cameraId)
         val map = chars.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
         minFocusDistance = chars.get(CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE) ?: 0f
+
+        // 读设备真实的 AE 补偿范围（缺失时保留默认 -2..2 这个最保守区间）
+        chars.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_RANGE)?.let { r ->
+            if (r.upper > r.lower) aeCompRange = r.lower..r.upper
+        }
 
         // 预览分辨率
         val previewSize = map?.getOutputSizes(SurfaceTexture::class.java)
@@ -168,10 +180,13 @@ class Camera2Controller(private val context: Context) {
             manualIso?.let { builder.set(CaptureRequest.SENSOR_SENSITIVITY, it) }
             manualExposure?.let { builder.set(CaptureRequest.SENSOR_EXPOSURE_TIME, it) }
         } else {
-            // 自动模式：相机自动测光 + 曝光补偿
+            // 自动模式：相机自动测光 + 曝光补偿（下发前按设备真实范围钳制）
             builder.set(CaptureRequest.CONTROL_MODE, android.hardware.camera2.CameraMetadata.CONTROL_MODE_AUTO)
             builder.set(CaptureRequest.CONTROL_AE_MODE, android.hardware.camera2.CameraMetadata.CONTROL_AE_MODE_ON)
-            builder.set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, exposureComp)
+            builder.set(
+                CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION,
+                exposureComp.coerceIn(aeCompRange.first, aeCompRange.last)
+            )
         }
         // 对焦：模拟失焦用手动固定对焦距离，否则自动连续对焦
         val d = defocusDistance
