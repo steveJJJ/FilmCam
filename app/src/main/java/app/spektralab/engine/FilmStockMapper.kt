@@ -41,6 +41,10 @@ object FilmStockMapper {
         "EKTAR 100"        to ("kodak_ektar_100"             to "kodak_endura_premier"),
         "GOLD 200"         to ("kodak_gold_200"               to "kodak_endura_premier"),
         "SUPERIA 400"      to ("fujifilm_xtra_400"           to "fujifilm_crystal_archive_typeii"),
+        // 早期版本曾把这支胶卷误叫 "CLASSIC CHROME"（富士的数字胶片模拟名），
+        // 实际引擎 profile 是柯达 Kodachrome 64 反转片——已更正为真实胶卷名；
+        // 旧键保留作兼容别名（老代码路径若仍传旧名不至于崩溃）。
+        "KODACHROME 64"    to ("kodak_kodachrome_64"         to "kodak_endura_premier"),
         "CLASSIC CHROME"   to ("kodak_kodachrome_64"         to "kodak_endura_premier"),
         "ETERNA"           to ("kodak_vision3_250d"          to "kodak_2383"),
         "TRI-X 400"        to ("kodak_tri_x_400"             to "ilford_multigrade_iv_rc"),

@@ -33,9 +33,9 @@ object FilmRollRepository {
             tag = "彩色"
         ),
         FilmRoll(
-            name = "CLASSIC CHROME",
-            iconResId = R.drawable.ic_film_classic_chrome,
-            description = "富士素雅，低饱和胶片感",
+            name = "KODACHROME 64",
+            iconResId = R.drawable.ic_film_kodachrome64,
+            description = "柯达经典反转片，浓郁暖红调",
             tag = "反转"
         ),
         FilmRoll(

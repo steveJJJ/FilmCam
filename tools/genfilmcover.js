@@ -36,7 +36,7 @@ const SPECS = [
   ['ic_film_velvia100',      FJ({ bodyColor: '#5a2a8c', bottomBand: true, bottomColor: '#ffffff', name: 'VELVIA', number: '100', perfs: true })],
   ['ic_film_acros100',       FJ({ bodyColor: '#1a1a1a', name: 'ACROS', number: '100' })],
   ['ic_film_eterna',         FJ({ bodyColor: '#0f5a63', name: 'ETERNA', number: '250D' })],
-  ['ic_film_classic_chrome', FJ({ bodyColor: '#123f33', name: 'CLASSIC', number: '64', perfs: true })],
+  ['ic_film_kodachrome64',   KODAK({ brandColor: '#cc1c05', topColor: '#fcd601', bodyColor: '#d8262c', name: 'KODACHROME', number: '64', perfs: true })],
   // --- 其他 ---
   ['ic_film_hp5',            IL({ bodyColor: '#151515', name: 'HP5 PLUS', number: '400' })],
   ['ic_film_cn800',          CS({ bodyColor: '#c8102e', name: 'TUNGSTEN', number: '800' })],
