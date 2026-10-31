@@ -1,0 +1,20 @@
+<!-- T3 字标：按真机银版顶盖铭牌字形重绘（2026-10-31 参考图提取）
+     —— 正体 T（横杠+居中竖笔）+ 双碗形 3，亮红 #E73C41（参考图取样）。
+     viewport 210x100，字面高 100，笔画宽约 12，与 CONTAX 细体同屏使用 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="40dp"
+    android:height="19dp"
+    android:viewportWidth="210"
+    android:viewportHeight="100">
+    <!-- T：横杠 4..64，竖笔居中 28..40 -->
+    <path
+        android:fillColor="#E73C41"
+        android:pathData="M4,0 L64,0 L64,12 L40,12 L40,100 L28,100 L28,12 L4,12 Z" />
+    <!-- 3：双碗形，中横在 y≈50，上碗略小、下碗略大，首尾端点在左侧 -->
+    <path
+        android:strokeColor="#E73C41"
+        android:strokeWidth="12"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M122,16 C132,7 150,5 165,6 C184,7 197,16 197,29 C197,42 186,49 168,51 C188,53 199,63 197,78 C195,93 174,98 155,94 C140,91 130,87 126,78" />
+</vector>

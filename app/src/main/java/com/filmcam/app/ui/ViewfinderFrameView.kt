@@ -323,7 +323,10 @@ class ViewfinderFrameView @JvmOverloads constructor(
          * 预览画面竖向偏移：0 = 在顶栏（铭牌+液晶屏）与底栏（快门条）之间的
          * 剩余空间里垂直居中。负值会把画面上移、导致取景框顶到机顶液晶屏，
          * 正值反之。取景框标记层与预览 shader 共用此常量，必须一致。
+         *
+         * -0.06：画面整体上移，让内容下沿（0.8077h→0.769h）落到机身铭牌
+         * （取景框下方、快门条上方）之上，铭牌完全移出预览窗。
          */
-        const val PREVIEW_OFFSET_Y = 0f
+        const val PREVIEW_OFFSET_Y = -0.06f
     }
 }

@@ -188,7 +188,10 @@ class T3LcdView @JvmOverloads constructor(
     }
 
     /**
-     * 屏幕内容：左侧大号曝光计数七段，右侧 ISO / EV / 闪光 / 模式 / 电池。
+     * 屏幕内容：按真机排布——
+     *   右侧：大号曝光计数七段（真机计数在屏右侧）；
+     *   左列上：闪光 bolt + 闪光模式文字（AUTO 等），其下 AF eye 图标；
+     *   底行小字：ISO / EV（有补偿时）/ 模式 + 电池。
      * 所有七段都会先画一次极淡的「全亮 ghost」，模拟未点亮的液晶段。
      */
     private fun drawContent(canvas: Canvas, rect: RectF, bl: Float) {
@@ -200,6 +203,7 @@ class T3LcdView @JvmOverloads constructor(
 
         // 点亮色：深灰黑（背光下更深、对比更强）
         val onColor = Color.argb(255, (34 - bl * 12).toInt(), (38 - bl * 14).toInt(), (30 - bl * 8).toInt())
+        val ghostColor = Color.argb(46, 40, 44, 36)
         val labelPaint = Paint(textPaint).apply {
             color = onColor
             textSize = ch * 0.15f
@@ -209,61 +213,56 @@ class T3LcdView @JvmOverloads constructor(
             color = onColor
             textSize = ch * 0.135f
         }
+        val flashOn = state.flashLabel != "OFF"
 
-        // ---- 行1：曝光计数（大号七段） + "/36" + 右端拍摄模式 ----
-        val bigH = ch * 0.34f
+        // ---- 右侧：大号曝光计数（真机位置） ----
+        val bigH = ch * 0.46f
         val bigW = bigH * 0.56f
         val countStr = state.count.toString().padStart(2, ' ').takeLast(2)
-        var cx = left
-        val y1 = rect.top + padY + ch * 0.04f
+        var cx = right - (bigW * 2 + bigH * 0.14f)
+        val y1 = rect.top + padY + ch * 0.02f
         countStr.forEach { c ->
             draw7(canvas, c, cx, y1, bigW, bigH, onColor)
             cx += bigW + bigH * 0.14f
         }
-        smallPaint.textSize = ch * 0.14f
-        canvas.drawText("/${state.filmMax}", cx + ch * 0.03f, y1 + bigH, smallPaint)
 
-        val modeStr = state.mode
-        canvas.drawText(
-            modeStr, right - smallPaint.measureText(modeStr), y1 + bigH * 0.8f,
-            Paint(smallPaint).apply { textSize = ch * 0.18f; isFakeBoldText = true }
-        )
+        // ---- 左列上：闪光 bolt + 模式文字（AUTO 等） ----
+        val boltH = ch * 0.30f
+        drawBolt(canvas, left, y1 + boltH * 0.08f, boltH, onColor, flashOn)
+        canvas.drawText(state.flashLabel, left + boltH * 0.78f, y1 + boltH * 0.92f, labelPaint)
 
-        // ---- 行2：ISO（七段） + EV（有补偿时：符号 + 一位七段） ----
-        val y2 = y1 + bigH + ch * 0.085f
-        val smH = ch * 0.165f
+        // ---- 左列下：AF eye 图标（对焦确认） ----
+        val eyeY = y1 + boltH + ch * 0.05f
+        drawEye(canvas, left + boltH * 0.06f, eyeY, ch * 0.36f, ch * 0.20f, onColor, ghostColor)
+
+        // ---- 底行小字：ISO / EV / 模式 + 电池 ----
+        val smH = ch * 0.15f
         val smW = smH * 0.56f
+        val y3 = rect.bottom - padY - smH - ch * 0.03f
         var ix = left
-        canvas.drawText("ISO", ix, y2 + smH, labelPaint)
-        ix += labelPaint.measureText("ISO") + ch * 0.04f
+        canvas.drawText("ISO", ix, y3 + smH, smallPaint)
+        ix += smallPaint.measureText("ISO") + ch * 0.04f
         state.isoLabel.takeLast(3).padStart(3, ' ').forEach { c ->
-            draw7(canvas, c, ix, y2, smW, smH, onColor)
+            draw7(canvas, c, ix, y3, smW, smH, onColor)
             ix += smW + smH * 0.14f
         }
-
-        val evX = left + (right - left) * 0.50f
-        canvas.drawText("EV", evX, y2 + smH, labelPaint)
         if (state.evSteps != 0f) {
-            var ex = evX + labelPaint.measureText("EV") + ch * 0.035f
+            ix += ch * 0.06f
+            canvas.drawText("EV", ix, y3 + smH, smallPaint)
+            ix += smallPaint.measureText("EV") + ch * 0.035f
             val sign = if (state.evSteps > 0) '+' else '-'
-            draw7(canvas, sign, ex, y2, smW, smH, onColor)
-            ex += smW + smH * 0.14f
+            draw7(canvas, sign, ix, y3, smW, smH, onColor)
+            ix += smW + smH * 0.14f
             val absI = kotlin.math.abs(state.evSteps).toInt()
-            if (absI > 0) draw7(canvas, (absI + '0'.code).toChar(), ex, y2, smW, smH, onColor)
+            if (absI > 0) draw7(canvas, (absI + '0'.code).toChar(), ix, y3, smW, smH, onColor)
         }
-
-        // ---- 行3：闪光模式 + 闪光符号 + ± + 右端电池 ----
-        val y3 = y2 + smH + ch * 0.085f
-        val row3H = ch * 0.155f
-        val flashOn = state.flashLabel != "OFF"
-        canvas.drawText(state.flashLabel, left, y3 + row3H, smallPaint)
-        val flashIconX = left + smallPaint.measureText(state.flashLabel) + ch * 0.05f
-        drawBolt(canvas, flashIconX, y3 + row3H * 0.1f, row3H * 0.95f, onColor, flashOn)
-        // ± 曝光补偿标记（T3 机顶屏同样会显示补偿已设定）
-        if (state.evSteps != 0f) {
-            canvas.drawText("±", flashIconX + row3H * 1.2f, y3 + row3H, smallPaint)
-        }
-        drawBattery(canvas, right - ch * 0.32f, y3 + row3H * 0.25f, ch * 0.32f, ch * 0.16f, onColor, state.battery)
+        // 模式 + 电池靠右
+        val modeStr = state.mode
+        canvas.drawText(
+            modeStr, right - ch * 0.40f - smallPaint.measureText(modeStr), y3 + smH,
+            Paint(smallPaint).apply { isFakeBoldText = true }
+        )
+        drawBattery(canvas, right - ch * 0.32f, y3 + smH * 0.1f, ch * 0.32f, smH * 0.85f, onColor, state.battery)
     }
 
     // ---------------------------------------------------------------
@@ -353,6 +352,22 @@ class T3LcdView @JvmOverloads constructor(
         fillPaint.color = if (filled) color else Color.argb(46, 40, 44, 36)
         fillPaint.style = Paint.Style.FILL
         canvas.drawPath(p, fillPaint)
+    }
+
+    /** AF 眼睛符号：外轮廓椭圆 + 中央瞳孔（真机 LCD 上的对焦确认图标） */
+    private fun drawEye(canvas: Canvas, x: Float, y: Float, w: Float, h: Float, onColor: Int, ghostColor: Int) {
+        strokePaint.color = onColor
+        strokePaint.strokeWidth = max(1f, h * 0.13f)
+        canvas.drawOval(RectF(x, y, x + w, y + h), strokePaint)
+        fillPaint.style = Paint.Style.FILL
+        fillPaint.color = onColor
+        canvas.drawCircle(x + w * 0.5f, y + h * 0.5f, h * 0.22f, fillPaint)
+        // 未点亮 ghost（左右两段弧，模拟熄灭段）
+        strokePaint.color = ghostColor
+        strokePaint.strokeWidth = max(1f, h * 0.10f)
+        val gr = RectF(x - w * 0.10f, y + h * 0.08f, x + w * 1.10f, y + h * 0.92f)
+        canvas.drawArc(gr, 150f, 60f, false, strokePaint)
+        canvas.drawArc(gr, -30f, 60f, false, strokePaint)
     }
 
     /** 电池符号：外框 + 电量格 */

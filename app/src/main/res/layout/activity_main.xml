@@ -128,16 +128,12 @@
             android:letterSpacing="0.22"
             android:includeFontPadding="false" />
 
-        <TextView
+        <ImageView
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="7dp"
-            android:text="T3"
-            android:fontFamily="sans-serif-medium"
-            android:textColor="#A34E32"
-            android:textSize="20sp"
-            android:letterSpacing="0.06"
-            android:includeFontPadding="false" />
+            android:layout_height="19dp"
+            android:adjustViewBounds="true"
+            android:src="@drawable/ic_t3_logo"
+            android:contentDescription="T3" />
     </LinearLayout>
 
     <!-- ===== 底部控制条：胶卷 / 快门 / 暗房（快门为最大触控目标，间距 8dp 网格） ===== -->
