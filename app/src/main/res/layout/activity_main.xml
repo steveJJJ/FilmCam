@@ -61,21 +61,10 @@
             android:orientation="horizontal"
             android:gravity="center_vertical">
 
-            <TextView
+            <com.filmcam.app.ui.T3LcdView
                 android:id="@+id/lcdDisplay"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="12/36 ISO500"
-                android:textColor="#D8F078"
-                android:textSize="11sp"
-                android:fontFamily="monospace"
-                android:lineSpacingExtra="2dp"
-                android:background="@drawable/bg_lcd"
-                android:paddingStart="10dp"
-                android:paddingEnd="10dp"
-                android:paddingTop="4dp"
-                android:paddingBottom="4dp"
-                tools:text="12/36\nISO500" />
+                android:layout_width="172dp"
+                android:layout_height="64dp" />
 
             <Space
                 android:layout_width="0dp"

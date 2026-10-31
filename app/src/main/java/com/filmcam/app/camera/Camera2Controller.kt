@@ -68,7 +68,7 @@ class Camera2Controller(private val context: Context) {
                 CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION,
                 comp.coerceIn(aeCompRange.first, aeCompRange.last)
             )
-            captureSession?.setRepeatingRequest(it.build(), null, backgroundHandler)
+            captureSession?.setRepeatingRequest(it.build(), previewMetaCallback, backgroundHandler)
         }
     }
 
@@ -79,6 +79,10 @@ class Camera2Controller(private val context: Context) {
      * 方向只作为元数据随帧记录，由冲洗侧统一旋转。
      */
     var onPhotoCaptured: ((ByteArray, Int) -> Unit)? = null
+
+    /** 取景器元信息回调：(AF 状态, 曝光时间秒)，驱动 T3 取景器内的合焦灯与快门档显示 */
+    var onViewfinderMeta: ((afState: Int?, exposureSec: Float) -> Unit)? = null
+    private var lastMetaPostAt = 0L
 
     fun start(surfaceTexture: SurfaceTexture) {
         backgroundThread = HandlerThread("Camera2").also { it.start() }
@@ -170,7 +174,7 @@ class Camera2Controller(private val context: Context) {
             object : android.hardware.camera2.CameraCaptureSession.StateCallback() {
                 override fun onConfigured(session: android.hardware.camera2.CameraCaptureSession) {
                     captureSession = session
-                    session.setRepeatingRequest(previewRequestBuilder!!.build(), null, backgroundHandler)
+                    session.setRepeatingRequest(previewRequestBuilder!!.build(), previewMetaCallback, backgroundHandler)
                 }
                 override fun onConfigureFailed(session: android.hardware.camera2.CameraCaptureSession) {
                     Toast.makeText(context, "会话创建失败", Toast.LENGTH_SHORT).show()
@@ -248,7 +252,7 @@ class Camera2Controller(private val context: Context) {
         defocusDistance = if (enabled && minFocusDistance > 0f) minFocusDistance * focusRatio else null
         previewRequestBuilder?.let {
             applyManualSettings(it)
-            captureSession?.setRepeatingRequest(it.build(), null, backgroundHandler)
+            captureSession?.setRepeatingRequest(it.build(), previewMetaCallback, backgroundHandler)
         }
     }
 
@@ -312,7 +316,7 @@ class Camera2Controller(private val context: Context) {
             builder.set(CaptureRequest.CONTROL_AF_REGIONS, arrayOf(region))
             builder.set(CaptureRequest.CONTROL_AE_REGIONS, arrayOf(region))
             builder.set(CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_START)
-            session.setRepeatingRequest(builder.build(), afStateCallback, backgroundHandler)
+            session.setRepeatingRequest(builder.build(), previewMetaCallback, backgroundHandler)
 
             // 兜底：部分设备不回调 LOCKED 状态，2.5s 后仍给一次反馈
             backgroundHandler?.removeCallbacks(focusTimeout)
@@ -323,15 +327,20 @@ class Camera2Controller(private val context: Context) {
         }
     }
 
-    /** 扫焦状态监听：锁定/失败锁定即回调反馈，并把触发置回 IDLE 保持焦点 */
-    private val afStateCallback = object : android.hardware.camera2.CameraCaptureSession.CaptureCallback() {
+    /**
+     * 预览帧回调：既监听 AF 状态（点屏扫焦是否完成），也持续把 对焦状态/曝光时间
+     * 上报给 UI 层的取景器指示灯（T3 的绿色合焦灯 / 快门速度档位）。
+     */
+    private val previewMetaCallback = object : android.hardware.camera2.CameraCaptureSession.CaptureCallback() {
         override fun onCaptureCompleted(
             session: android.hardware.camera2.CameraCaptureSession,
             request: CaptureRequest,
             result: android.hardware.camera2.TotalCaptureResult
         ) {
             val state = result.get(android.hardware.camera2.CaptureResult.CONTROL_AF_STATE)
-            android.util.Log.i("Cam2AF", "afState=$state")
+            val exposureSec = result.get(android.hardware.camera2.CaptureResult.SENSOR_EXPOSURE_TIME)
+                ?.let { it / 1_000_000_000f } ?: 0f
+
             if (state == android.hardware.camera2.CaptureResult.CONTROL_AF_STATE_FOCUSED_LOCKED ||
                 state == android.hardware.camera2.CaptureResult.CONTROL_AF_STATE_NOT_FOCUSED_LOCKED
             ) {
@@ -342,12 +351,23 @@ class Camera2Controller(private val context: Context) {
                     CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_IDLE
                 )
                 runCatching {
-                    previewRequestBuilder?.let { session.setRepeatingRequest(it.build(), null, backgroundHandler) }
+                    previewRequestBuilder?.let { session.setRepeatingRequest(it.build(), this, backgroundHandler) }
                 }
                 fireFocusCallback()
             }
+
+            // 指标上报（限流 150ms，避免每帧刷 UI）
+            val now = android.os.SystemClock.uptimeMillis()
+            if (now - lastMetaPostAt > 150) {
+                lastMetaPostAt = now
+                val af = state
+                mainHandler.post { onViewfinderMeta?.invoke(af, exposureSec) }
+            }
         }
     }
+
+    /** 点屏后是否已锁定焦点（供 UI 显示「慢闪」状态，对应 AFL 锁定语义） */
+    fun isAfLocked(): Boolean = afLocked
 
     private fun fireFocusCallback() {
         val cb = pendingFocusCb ?: return
@@ -362,7 +382,7 @@ class Camera2Controller(private val context: Context) {
                     if (enabled) android.hardware.camera2.CameraMetadata.FLASH_MODE_TORCH
                     else android.hardware.camera2.CameraMetadata.FLASH_MODE_OFF)
             }
-            captureSession?.setRepeatingRequest(previewRequestBuilder!!.build(), null, backgroundHandler)
+            captureSession?.setRepeatingRequest(previewRequestBuilder!!.build(), previewMetaCallback, backgroundHandler)
         } catch (_: Exception) {}
     }
 
@@ -370,7 +390,7 @@ class Camera2Controller(private val context: Context) {
         manualIso = iso
         previewRequestBuilder?.let {
             applyManualSettings(it)
-            captureSession?.setRepeatingRequest(it.build(), null, backgroundHandler)
+            captureSession?.setRepeatingRequest(it.build(), previewMetaCallback, backgroundHandler)
         }
     }
 
@@ -378,7 +398,7 @@ class Camera2Controller(private val context: Context) {
         manualExposure = exposureNs
         previewRequestBuilder?.let {
             applyManualSettings(it)
-            captureSession?.setRepeatingRequest(it.build(), null, backgroundHandler)
+            captureSession?.setRepeatingRequest(it.build(), previewMetaCallback, backgroundHandler)
         }
     }
 

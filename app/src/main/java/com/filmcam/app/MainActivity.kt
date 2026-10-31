@@ -1,6 +1,8 @@
 package com.filmcam.app
 
 import android.Manifest
+import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.graphics.SurfaceTexture
 import android.os.Build
@@ -23,6 +25,8 @@ import com.filmcam.app.filter.FilmRollAdapter
 import com.filmcam.app.filter.FilmRollRepository
 import com.filmcam.app.flash.FlashController
 import com.filmcam.app.flash.FlashMode
+import com.filmcam.app.ui.T3LcdView
+import com.filmcam.app.ui.ViewfinderFrameView
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import kotlin.math.roundToInt
 
@@ -174,6 +178,7 @@ class MainActivity : AppCompatActivity() {
                     touchMoved = false
                 }
                 android.view.MotionEvent.ACTION_MOVE -> {
+                    binding.viewfinderFrame.notifyActivity()
                     if (Math.abs(event.rawX - touchStartX) > 24f ||
                         Math.abs(event.rawY - touchStartY) > 24f
                     ) touchMoved = true
@@ -195,6 +200,7 @@ class MainActivity : AppCompatActivity() {
                         // 比	rawX 减 getLocationOnScreen 更可靠——小窗/窗口偏移时后者会错位）
                         val fx = event.x
                         val fy = event.y
+                        binding.viewfinderFrame.notifyActivity()
                         // 点屏对焦：不做任何视觉标记，合焦后仅给一次短震动
                         cameraController?.focusAt(
                             fx, fy,
@@ -673,8 +679,80 @@ class MainActivity : AppCompatActivity() {
                 FlashMode.EXTERNAL -> "EXT"
             }
             binding.evKey.text = "EV$ev"
-            binding.lcdDisplay.text = "$count $currentMode\nISO$iso  EV$ev\nFLASH $flashLabel"
+            binding.lcdDisplay.setState(
+                T3LcdView.State(
+                    count = currentShotCount(),
+                    filmMax = FILM_MAX,
+                    mode = currentMode,
+                    isoLabel = iso,
+                    evSteps = exposureComp.toFloat(),
+                    flashLabel = flashLabel,
+                    battery = batteryIconLevel()
+                )
+            )
         } catch (_: Exception) {}
+        updateViewfinderIndicators(null, lastExposureSec)
+    }
+
+    /** 电池格数 0~3（满电 3 格） */
+    private fun batteryIconLevel(): Int {
+        return try {
+            val i = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+            val level = i?.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL, -1) ?: -1
+            val scale = i?.getIntExtra(android.os.BatteryManager.EXTRA_SCALE, -1) ?: -1
+            if (level < 0 || scale <= 0) 3 else {
+                val pct = level * 100 / scale
+                when { pct > 66 -> 3; pct > 33 -> 2; pct > 10 -> 1; else -> 0 }
+            }
+        } catch (_: Exception) { 3 }
+    }
+
+    /**
+     * 把相机实时元数据翻译成 T3 取景器内的指示灯状态（T3 手册 P.4）：
+     * ⑥ 合焦绿灯：常亮=合焦 / 快闪 4Hz=失焦 / 慢闪 1Hz=焦点锁定（AFL）
+     * ⑧ 快门档位：500 / 125 / 30 / LT
+     */
+    private var lastIndicatorKey = ""
+    private var lastExposureSec = 0f
+
+    private fun updateViewfinderIndicators(afState: Int?, exposureSec: Float) {
+        if (exposureSec > 0f) lastExposureSec = exposureSec
+        val focus = when (afState) {
+            2, 5 -> if (cameraController?.isAfLocked() == true)
+                ViewfinderFrameView.LedMode.BLINK_SLOW else ViewfinderFrameView.LedMode.ON
+            3, 6 -> ViewfinderFrameView.LedMode.BLINK_FAST
+            else -> ViewfinderFrameView.LedMode.OFF
+        }
+        val lit = shutterTagsFor(lastExposureSec)
+        val blink = lastExposureSec > 0f && lastExposureSec <= 1f / 1200f
+        val key = "${focus.ordinal}|$exposureComp|${lit.joinToString(",")}|$blink|${flash.mode}"
+        if (key == lastIndicatorKey) return
+        lastIndicatorKey = key
+        binding.viewfinderFrame.setIndicators(
+            ViewfinderFrameView.Indicators(
+                focus = focus,
+                evCompOn = exposureComp != 0,
+                evSteps = exposureComp,
+                flash = if (flash.mode != FlashMode.OFF) ViewfinderFrameView.LedMode.ON
+                        else ViewfinderFrameView.LedMode.OFF,
+                shutterLit = lit,
+                shutterBlink = blink
+            )
+        )
+    }
+
+    /** 把曝光时间映射为 T3 取景器的 500/125/30/LT 档组合（相邻两档同亮=中间值） */
+    private fun shutterTagsFor(sec: Float): Set<String> {
+        if (sec <= 0f) return emptySet()
+        return when {
+            sec <= 1f / 700f -> setOf("500")
+            sec <= 1f / 240f -> setOf("500", "125")
+            sec <= 1f / 60f -> setOf("125")
+            sec <= 1f / 24f -> setOf("125", "30")
+            sec <= 1f / 8f -> setOf("30")
+            sec <= 4f -> setOf("30", "LT")
+            else -> setOf("LT")
+        }
     }
 
     /** 更新左下胶卷信息 */
@@ -812,6 +890,10 @@ class MainActivity : AppCompatActivity() {
         // 桥接 FlashController → Camera2Controller 控制 LED
         flash.onBuiltInFlash = { enabled ->
             cameraController?.enableFlash(enabled)
+        }
+        // 实时元数据 → 取景器内的 T3 指示灯（合焦灯 / 快门档位）
+        cameraController?.onViewfinderMeta = { afState, exposureSec ->
+            updateViewfinderIndicators(afState, exposureSec)
         }
         // 全分辨率拍照回调：后台把原帧 JPEG 存入未冲洗胶卷（零处理，不做 LUT/日期戳/EXIF——那些在冲洗侧做）
         cameraController?.onPhotoCaptured = { bytes, rotation ->
