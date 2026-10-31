@@ -52,65 +52,11 @@ class LutGLSurfaceView @JvmOverloads constructor(
         queueEvent { renderer?.grainStrength = strength }
     }
 
-    private var pendingCapture: ((android.graphics.Bitmap?) -> Unit)? = null
-
-    /** 读取当前 GL 帧并回调 Bitmap */
-    fun captureFrame(onResult: (android.graphics.Bitmap?) -> Unit) {
-        queueEvent {
-            pendingCapture = onResult
-            requestRender()  // 触发一次渲染，渲染完成后会在 onDrawFrame 里读像素
-        }
-    }
-
-    /** 在 onDrawFrame 末尾调用，执行待捕获（FBO 高分辨率离屏渲染） */
-    internal fun executePendingCapture() {
-        val callback = pendingCapture ?: return
-        pendingCapture = null
-        renderer?.let { r ->
-            val targetW = 3000  // 高分辨率出图 3:4
-            val targetH = 4000
-
-            // 创建 FBO
-            val fboIds = IntArray(1)
-            val texIds = IntArray(1)
-            GLES30.glGenFramebuffers(1, fboIds, 0)
-            GLES30.glGenTextures(1, texIds, 0)
-            GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, texIds[0])
-            GLES30.glTexImage2D(GLES30.GL_TEXTURE_2D, 0, GLES30.GL_RGBA,
-                targetW, targetH, 0, GLES30.GL_RGBA, GLES30.GL_UNSIGNED_BYTE, null)
-            GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_MIN_FILTER, GLES30.GL_LINEAR)
-            GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_MAG_FILTER, GLES30.GL_LINEAR)
-            GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, fboIds[0])
-            GLES30.glFramebufferTexture2D(GLES30.GL_FRAMEBUFFER, GLES30.GL_COLOR_ATTACHMENT0,
-                GLES30.GL_TEXTURE_2D, texIds[0], 0)
-
-            // 高分辨率渲染（颗粒暂未启用）
-            r.renderTo(targetW, targetH)
-
-            // 读像素
-            val buf = java.nio.ByteBuffer.allocateDirect(targetW * targetH * 4)
-            GLES30.glReadPixels(0, 0, targetW, targetH, GLES30.GL_RGBA, GLES30.GL_UNSIGNED_BYTE, buf)
-
-            // 清理 FBO
-            GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, 0)
-            GLES30.glDeleteTextures(1, texIds, 0)
-            GLES30.glDeleteFramebuffers(1, fboIds, 0)
-
-            val bmp = android.graphics.Bitmap.createBitmap(targetW, targetH, android.graphics.Bitmap.Config.ARGB_8888)
-            bmp.copyPixelsFromBuffer(buf)
-            val matrix = android.graphics.Matrix().apply { postScale(1f, -1f) }
-            val flipped = android.graphics.Bitmap.createBitmap(bmp, 0, 0, targetW, targetH, matrix, false)
-            post { callback(flipped) }
-        }
-    }
-
     inner class LutRenderer : GLSurfaceView.Renderer {
 
         private var program = 0
         private var oesTexId = 0
-        private var lutTexId = 0
         private var surfaceTexture: SurfaceTexture? = null
-        private var lutSize = 0
         var surfaceWidth = 0
             private set
         var surfaceHeight = 0
@@ -190,12 +136,14 @@ class LutGLSurfaceView @JvmOverloads constructor(
                 Log.i("LutRenderer", "frame#$loggedFrames texMatrix=${texMatrix.joinToString(",") { "%.3f".format(it) }}")
                 diagAppend("frame#$loggedFrames texMatrix=${texMatrix.joinToString(",") { "%.3f".format(it) }}")
             }
-            renderTo(surfaceWidth, surfaceHeight, applyLut = false, applyPostFX = false, offsetY = -0.08f)  // 预览原相机，画面上移一点
-            executePendingCapture()
+            renderTo(surfaceWidth, surfaceHeight, applyPostFX = false, offsetY = -0.08f)  // 预览原相机，画面上移一点
         }
 
-        /** 在指定分辨率下渲染一帧 */
-        fun renderTo(viewW: Int, viewH: Int, applyLut: Boolean = true, applyPostFX: Boolean = true, offsetY: Float = 0f) {
+        /** 在指定分辨率下渲染一帧。
+         *  注意：shader 里不能残留未绑定纹理的 sampler 声明——部分真机驱动
+         *  （Adreno/麒麟）会因 sampler3D 无有效绑定直接让整次 draw 失败（黑屏），
+         *  模拟器软件渲染则不受影响。LUT 调色已移交 Vulkan 冲洗引擎。 */
+        fun renderTo(viewW: Int, viewH: Int, applyPostFX: Boolean = true, offsetY: Float = 0f) {
             val st = surfaceTexture ?: return
             GLES30.glViewport(0, 0, viewW, viewH)
             GLES30.glUseProgram(program)
@@ -221,19 +169,9 @@ class LutGLSurfaceView @JvmOverloads constructor(
             GLES30.glUniform1f(GLES30.glGetUniformLocation(program, "uGrain"),
                 grainStrength)
 
-            // LUT 开关（预览关闭，拍照开启）
-            GLES30.glUniform1f(GLES30.glGetUniformLocation(program, "uUseLut"),
-                if (applyLut && lutTexId != 0) 1f else 0f)
             // 后处理效果开关（halation/grain/vignette）
             GLES30.glUniform1f(GLES30.glGetUniformLocation(program, "uPostFX"),
                 if (applyPostFX) 1f else 0f)
-
-            if (lutTexId != 0) {
-                GLES30.glActiveTexture(GLES30.GL_TEXTURE1)
-                GLES30.glBindTexture(GLES30.GL_TEXTURE_3D, lutTexId)
-                GLES30.glUniform1i(GLES30.glGetUniformLocation(program, "uLut"), 1)
-                GLES30.glUniform1i(GLES30.glGetUniformLocation(program, "uLutSize"), lutSize)
-            }
 
             vertexBuffer.position(0)
             val posLoc = GLES30.glGetAttribLocation(program, "aPosition")
@@ -291,23 +229,20 @@ class LutGLSurfaceView @JvmOverloads constructor(
         }
         """.trimIndent()
 
-        // 片元着色器：LUT + halation + 胶片颗粒 + 暗角
+        // 片元着色器：halation + 胶片颗粒 + 暗角（LUT 调色在冲洗引擎侧做）
         private val FRAGMENT_SHADER = """#version 300 es
         #extension GL_OES_EGL_image_external_essl3 : require
         precision mediump float;
-        // GLSL ES 3.0 规范：sampler3D / samplerExternalOES 无默认精度，
+        // GLSL ES 3.0 规范：samplerExternalOES 无默认精度，
         // 必须显式声明，否则严格驱动（含模拟器 translator）编译失败 → 黑屏
         uniform mediump samplerExternalOES uTexture;
-        uniform mediump sampler3D uLut;
         uniform mat4 uTexMatrix;
         uniform float uScreenAspect;
         uniform float uContentAspect;
         uniform float uOffsetY;
         uniform vec3 uTint;
         uniform float uGrain;
-        uniform float uUseLut;
         uniform float uPostFX;
-        uniform int uLutSize;
         in vec2 vTexCoord;
         out vec4 fragColor;
 
@@ -316,11 +251,6 @@ class LutGLSurfaceView @JvmOverloads constructor(
             vec3 p3 = fract(vec3(p.xyx) * 0.1031);
             p3 += dot(p3, p3.yzx + 33.33);
             return fract((p3.x + p3.y) * p3.z);
-        }
-
-        vec3 applyLut(vec3 color) {
-            vec3 c = clamp(color, 0.0, 1.0);
-            return texture(uLut, c).rgb;
         }
 
         void main() {
@@ -341,11 +271,6 @@ class LutGLSurfaceView @JvmOverloads constructor(
                 float highlight = smoothstep(0.7, 1.0, lum);
                 color.r += highlight * highlight * 0.15;
                 color.g += highlight * highlight * 0.05;
-            }
-
-            // LUT
-            if (uUseLut > 0.5) {
-                color.rgb = applyLut(color.rgb);
             }
             color.rgb *= uTint;
 

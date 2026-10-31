@@ -87,9 +87,15 @@ class Camera2Controller(private val context: Context) {
             if (r.upper > r.lower) aeCompRange = r.lower..r.upper
         }
 
-        // 预览分辨率
+        // 预览分辨率：限制在 1920 宽以内。部分机型（三星 S25/Adreno + Android 16）
+        // 把 12MP 全尺寸作为 SurfaceTexture 私有流时，GL 消费者绑定 EGLImage 会
+        // 持续失败（bindTextureImage 0x502），取景器黑屏；且预览远超屏幕分辨率
+        // 白白耗电。拍照走 ImageReader JPEG，仍取全尺寸，不受影响。
         val previewSize = map?.getOutputSizes(SurfaceTexture::class.java)
-            ?.maxByOrNull { it.width * it.height } ?: Size(3840, 2880)
+            ?.filter { maxOf(it.width, it.height) <= 1920 }
+            ?.maxByOrNull { it.width * it.height }
+            ?: map?.getOutputSizes(SurfaceTexture::class.java)?.minByOrNull { it.width * it.height }
+            ?: Size(1920, 1440)
         surfaceTexture.setDefaultBufferSize(previewSize.width, previewSize.height)
         runCatching {
             java.io.File(context.applicationInfo.dataDir, "files").let { d ->
