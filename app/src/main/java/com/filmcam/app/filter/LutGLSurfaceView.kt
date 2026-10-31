@@ -316,8 +316,10 @@ class LutGLSurfaceView @JvmOverloads constructor(
         private val FRAGMENT_SHADER = """#version 300 es
         #extension GL_OES_EGL_image_external_essl3 : require
         precision mediump float;
-        uniform samplerExternalOES uTexture;
-        uniform sampler3D uLut;
+        // GLSL ES 3.0 规范：sampler3D / samplerExternalOES 无默认精度，
+        // 必须显式声明，否则严格驱动（含模拟器 translator）编译失败 → 黑屏
+        uniform mediump samplerExternalOES uTexture;
+        uniform mediump sampler3D uLut;
         uniform mat4 uTexMatrix;
         uniform float uScreenAspect;
         uniform float uContentAspect;
