@@ -28,9 +28,13 @@
 
     <!-- allowBackup 必须关闭：未冲洗胶卷的登记表在 SharedPreferences（会被备份），
          而对应的帧文件在 MediaStore / DCIM（不在同一备份域，不会恢复）。
-         开启备份会导致换机恢复后"登记表有 12 帧、实际文件 0 个"，整卷冲洗失败。 -->
+         开启备份会导致换机恢复后"登记表有 12 帧、实际文件 0 个"，整卷冲洗失败。
+
+         largeHeap：冲洗一帧需要 12MP ARGB 位图（48MB）+ 引擎 float 缓冲（143MB），
+         标准堆上限在多数机型为 192-256MB，必 OOM。图像处理类 App 的标准做法。 -->
     <application
         android:allowBackup="false"
+        android:largeHeap="true"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:supportsRtl="true"

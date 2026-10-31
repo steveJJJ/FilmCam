@@ -255,7 +255,9 @@ class DevelopmentService : Service() {
         // （90° 整数倍 + filter=false → 纯像素搬运，无插值无色差）
         val rotation = UndevelopedFilmStore.frameOrientation(roll.rollId, index)
         if (rotation != 0) {
-            bmp = rotateBitmap(bmp, rotation)
+            val rotated = rotateBitmap(bmp, rotation)
+            bmp.recycle()   // 旧位图立即回收，否则 48MB 挂到 GC 才释放
+            bmp = rotated
         }
 
         var writtenOk = false
@@ -278,8 +280,10 @@ class DevelopmentService : Service() {
             }
 
             // 引擎冲洗到临时 JPEG（全分辨率）
+            // recycleInput=true：像素转入 float 缓冲后立即回收位图，把 48MB 堆让给 solve 阶段
             val result = SpektraProcessor.processFrame(
-                applicationContext, bmp, paramsJson, tmpJpeg.absolutePath
+                applicationContext, bmp, paramsJson, tmpJpeg.absolutePath,
+                recycleInput = true
             )
             if (!result.ok) {
                 throw IllegalStateException("processFrame 失败: ${result.message}")
