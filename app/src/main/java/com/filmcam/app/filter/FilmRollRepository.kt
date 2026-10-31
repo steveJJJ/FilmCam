@@ -36,7 +36,8 @@ object FilmRollRepository {
             name = "CLASSIC CHROME",
             iconResId = R.drawable.ic_film_classic_chrome,
             description = "富士素雅，低饱和胶片感",
-            tag = "彩色"
+            tag = "反转",
+            available = false  // 反转片：原项目不支持印相纸
         ),
         FilmRoll(
             name = "ETERNA",
@@ -121,19 +122,22 @@ object FilmRollRepository {
             name = "PROVIA 100F",
             iconResId = R.drawable.ic_film_provia100f,
             description = "富士反转片，纯正色彩",
-            tag = "反转"
+            tag = "反转",
+            available = false  // 反转片：原项目不支持印相纸
         ),
         FilmRoll(
             name = "VELVIA 100",
             iconResId = R.drawable.ic_film_velvia100,
             description = "富士反转片，浓郁风光",
-            tag = "反转"
+            tag = "反转",
+            available = false  // 反转片：原项目不支持印相纸
         ),
         FilmRoll(
             name = "EKTACHROME 100",
             iconResId = R.drawable.ic_film_ektachrome100,
             description = "柯达反转片，明亮通透",
-            tag = "反转"
+            tag = "反转",
+            available = false  // 反转片：原项目不支持印相纸
         ),
         FilmRoll(
             name = "VERITA 200D",

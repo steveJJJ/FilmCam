@@ -35,7 +35,21 @@ class FilmRollAdapter(
         holder.name.text = roll.name
         holder.desc.text = roll.description
         holder.tag.text = roll.tag
-        holder.itemView.setOnClickListener { onSelect(roll) }
+        if (roll.available) {
+            holder.itemView.alpha = 1f
+            holder.itemView.setOnClickListener { onSelect(roll) }
+        } else {
+            // 反转片：列表保留但置灰。与原项目一致——引擎有这支胶卷，
+            // 但本版只支持负片印相纸，选中即拒绝。
+            holder.itemView.alpha = 0.32f
+            holder.itemView.setOnClickListener {
+                android.widget.Toast.makeText(
+                    it.context,
+                    "反转片（幻灯）不能印到相纸上——本版暂只支持负片",
+                    android.widget.Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
     }
 
     override fun getItemCount() = rolls.size

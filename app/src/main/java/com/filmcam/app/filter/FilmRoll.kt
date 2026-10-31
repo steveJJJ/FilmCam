@@ -11,5 +11,11 @@ data class FilmRoll(
     val name: String,
     val iconResId: Int,
     val description: String,
-    val tag: String
+    val tag: String,
+    /**
+     * 是否可选。反转片（type=positive）在 SpektraLab-Android 原项目中是明确拒绝的：
+     * 选中即提示「反转片（幻灯）不能印到相纸上——本版暂只支持负片」并回退。
+     * 这里保持一致：列表仍展示（让用户知道引擎有这支），但置灰且不可选中。
+     */
+    val available: Boolean = true
 )

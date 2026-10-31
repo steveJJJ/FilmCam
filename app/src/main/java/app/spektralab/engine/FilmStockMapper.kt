@@ -37,6 +37,15 @@ object FilmStockMapper {
         "HP5 PLUS"         to ("ilford_hp5_plus_400"         to "ilford_multigrade_iv_rc"),
         "CN800"            to ("cinestill_800t"               to "kodak_endura_premier"),
         // ---- 2025-11 扩充：引擎 catalog 全量 25 支胶卷 ----
+        // 配对依据（三项交叉核对）：
+        //   1) stock_catalog.json 的 type/use 字段（negative / positive / use=cine）
+        //   2) print_luts.json 的 paired_film 声明（相纸侧标注的典型配对胶片）
+        //   3) 品牌官方推荐：柯达负片印 Kodak 相纸、富士负片印 Crystal Archive、
+        //      黑白印 Ilford Multigrade、电影卷印 Kodak 2383 正片拷贝
+        // 注：原项目 SpektraLab-Android 无配对表（胶片/相纸是两个独立下拉），
+        //     这张表是本产品的默认搭配，用户在冲洗参数里可手动覆盖。
+        // 反转片（ProVia / Velvia / Ektachrome / Kodachrome）映射仅作保留，
+        //     UI 已禁用选择——原项目明确「本版暂只支持负片」。
         "C200"             to ("fujifilm_c200"                to "fujifilm_crystal_archive_typeii"),
         "NEOPAN ACROS 100 II" to ("fujifilm_neopan_acros_100_ii" to "ilford_multigrade_iv_rc"),
         "PRO 400H"         to ("fujifilm_pro_400h"            to "fujifilm_crystal_archive_typeii"),

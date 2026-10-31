@@ -221,7 +221,10 @@ class MainActivity : AppCompatActivity() {
             FlashMode.valueOf(prefs.getString("flashMode", FlashMode.OFF.name) ?: FlashMode.OFF.name)
         } catch (_: Exception) { FlashMode.OFF }
         val rollIndex = prefs.getInt("rollIndex", 0).coerceIn(0, FilmRollRepository.rolls.size - 1)
-        selectFilmRoll(FilmRollRepository.rolls[rollIndex], fromUser = false)
+        // 上次选中的若是反转片（本版不支持），回退到第一支可用胶卷，避免带着禁用卷启动
+        val restored = FilmRollRepository.rolls[rollIndex].takeIf { it.available }
+            ?: FilmRollRepository.rolls.first()
+        selectFilmRoll(restored, fromUser = false)
         applyExposure()
         updateLcd()
         updateFilmInfo()
@@ -451,6 +454,11 @@ class MainActivity : AppCompatActivity() {
     /** 选中胶卷：切换 LUT + 更新图标。fromUser=false 用于启动时恢复设置（不做拦截）。 */
     private fun selectFilmRoll(roll: FilmRoll, fromUser: Boolean = true) {
         if (fromUser) {
+            // 反转片拦截：与原项目一致，本版只支持负片印相纸
+            if (!roll.available) {
+                Toast.makeText(this, "反转片（幻灯）不能印到相纸上——本版暂只支持负片", Toast.LENGTH_SHORT).show()
+                return
+            }
             // 换卷拦截：当前卷有未冲洗帧时禁止换胶卷
             val active = UndevelopedFilmStore.currentRoll()
             if (active != null && UndevelopedFilmStore.shotCount(active.rollId) > 0) {
