@@ -8,7 +8,7 @@
 
     <!-- 开源致谢：名称 | 作者/组织 | 许可证 | 链接 -->
     <string-array name="oss_credits">
-        <item>SpektraFilm 胶片与相纸 profile、冲洗引擎资源|SpektraLab · JamesQiu2005|CC BY-SA 4.0|https://creativecommons.org/licenses/by-sa/4.0/</item>
+        <item>SpektraFilm 胶片与相纸 profile、冲洗引擎资源|SpektraLab · JamesQiu2005|CC BY-SA 4.0|https://creativecommons.org/licenses/by-sa/4.0/|原素材已按本项目需求调整（新增 ISO 适配与本地化命名），同样以 CC BY-SA 4.0 分发</item>
         <item>Android Jetpack (AndroidX)|Google LLC|Apache-2.0|https://github.com/androidx/androidx</item>
         <item>Material Components for Android|Google LLC|Apache-2.0|https://github.com/material-components/material-components-android</item>
         <item>Kotlin / Kotlinx Coroutines|JetBrains|Apache-2.0|https://github.com/JetBrains/kotlin</item>

@@ -50,7 +50,7 @@ class AboutActivity : AppCompatActivity() {
 
     /**
      * 开源致谢列表：条目来自 res/values/strings.xml 的 oss_credits
-     * （格式 名称|作者/组织|许可证|链接），行内点击可打开对应许可/项目地址。
+     * （格式 名称|作者/组织|许可证|链接[|二次分发说明]），行内点击可打开对应许可/项目地址。
      */
     private fun buildOssCredits() {
         val container = findViewById<LinearLayout>(R.id.ossList)
@@ -73,6 +73,8 @@ class AboutActivity : AppCompatActivity() {
                 append(parts.getOrElse(2) { "" })
             }
             val url = parts.getOrElse(3) { "" }
+            // 可选第 5 段：二次分发说明（如 CC BY-SA 要求标注是否修改过）
+            val note = parts.getOrElse(4) { "" }.trim()
 
             if (index > 0) {
                 container.addView(View(this).apply {
@@ -121,6 +123,18 @@ class AboutActivity : AppCompatActivity() {
                     LinearLayout.LayoutParams.WRAP_CONTENT
                 ).apply { topMargin = (3 * density).toInt() }
             })
+            if (note.isNotEmpty()) {
+                row.addView(TextView(this).apply {
+                    text = note
+                    setTextColor(0xFF9A8C6A.toInt())
+                    textSize = 10f
+                    letterSpacing = 0.03f
+                    layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    ).apply { topMargin = (2 * density).toInt() }
+                })
+            }
             container.addView(row)
         }
     }
