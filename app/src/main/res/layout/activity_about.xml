@@ -91,6 +91,32 @@
             android:src="@drawable/appreciate_code"
             android:contentDescription="赞赏码" />
 
+        <!-- 开源致谢：条目由 strings.xml 的 oss_credits 驱动，代码动态渲染 -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="36dp"
+            android:text="开源致谢"
+            android:textColor="#E8E4DA"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="@string/about_oss_summary"
+            android:textColor="#8A8A8E"
+            android:textSize="11sp"
+            android:lineSpacingMultiplier="1.45" />
+
+        <LinearLayout
+            android:id="@+id/ossList"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:orientation="vertical" />
+
         <!-- 版本号：连点 10 次进入工程师模式 -->
         <TextView
             android:id="@+id/tvVersion"

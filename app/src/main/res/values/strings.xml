@@ -4,6 +4,21 @@
     <!-- 关于页 -->
     <string name="about_intro">把手机变成一台康泰时 T3。\n\n取景器里看到的是真实的光学世界；快门按下一卷 36 张的胶卷；拍完送进暗房冲洗，出片由胶片引擎按这一卷的配方显影。\n\n冲洗之前，谁也不知道拍到的是什么——这就是胶片的乐趣。</string>
     <string name="percent_fmt">%1$d%%</string>
+    <string name="about_oss_summary">FILMCAM 站在这些开源项目与素材作者的作品上——感谢各位开发者的慷慨分享。\n胶片/相纸配方与冲洗引擎资源依 CC BY-SA 4.0 使用，点击查看具体许可。</string>
+
+    <!-- 开源致谢：名称 | 作者/组织 | 许可证 | 链接 -->
+    <string-array name="oss_credits">
+        <item>SpektraFilm 胶片与相纸 profile、冲洗引擎资源|SpektraLab · JamesQiu2005|CC BY-SA 4.0|https://creativecommons.org/licenses/by-sa/4.0/</item>
+        <item>Android Jetpack (AndroidX)|Google LLC|Apache-2.0|https://github.com/androidx/androidx</item>
+        <item>Material Components for Android|Google LLC|Apache-2.0|https://github.com/material-components/material-components-android</item>
+        <item>Kotlin / Kotlinx Coroutines|JetBrains|Apache-2.0|https://github.com/JetBrains/kotlin</item>
+        <item>Coil 图片加载库|Coil Contributors|Apache-2.0|https://github.com/coil-kt/coil</item>
+        <item>DSEG7 七段数码管字体|keshikan|SIL OFL 1.1|https://github.com/keshikan/DSEG</item>
+        <item>Imprint 印刷体与等宽字体|Google Fonts · Croscore(Red Hat) · Bitstream/DejaVu|SIL OFL 1.1|https://fonts.google.com/</item>
+        <item>stb 单文件库|Sean Barrett|MIT / Public Domain|https://github.com/nothings/stb</item>
+        <item>org.json|JSON.org|JSON License|https://github.com/stleary/JSON-java</item>
+        <item>JUnit 4|Eclipse Foundation|EPL-1.0|https://github.com/junit-team/junit4</item>
+    </string-array>
 
     <!-- 成片信息面板 -->
     <string name="info_group_shooting">拍摄参数</string>

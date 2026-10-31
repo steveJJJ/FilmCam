@@ -1,6 +1,11 @@
 package com.filmcam.app
 
+import android.content.Intent
+import android.graphics.drawable.GradientDrawable
+import android.net.Uri
 import android.os.Bundle
+import android.view.View
+import android.widget.LinearLayout
 import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
@@ -26,6 +31,8 @@ class AboutActivity : AppCompatActivity() {
             "?"
         })
 
+        buildOssCredits()
+
         val tvVersion = findViewById<TextView>(R.id.tvVersion)
         tvVersion.text = versionText
         tvVersion.setOnClickListener {
@@ -38,6 +45,83 @@ class AboutActivity : AppCompatActivity() {
                     showHiddenSettings()
                 }
             }
+        }
+    }
+
+    /**
+     * 开源致谢列表：条目来自 res/values/strings.xml 的 oss_credits
+     * （格式 名称|作者/组织|许可证|链接），行内点击可打开对应许可/项目地址。
+     */
+    private fun buildOssCredits() {
+        val container = findViewById<LinearLayout>(R.id.ossList)
+        val density = resources.displayMetrics.density
+        val pad = (14 * density).toInt()
+        val entries = resources.getStringArray(R.array.oss_credits)
+
+        container.background = GradientDrawable().apply {
+            setColor(0xFF161616.toInt())
+            cornerRadius = 12f * resources.displayMetrics.density
+            setStroke((0.8f * resources.displayMetrics.density).toInt().coerceAtLeast(1), 0xFF2E2E2E.toInt())
+        }
+
+        entries.forEachIndexed { index, raw ->
+            val parts = raw.split("|")
+            val name = parts[0]
+            val meta = buildString {
+                append(parts.getOrElse(1) { "" })
+                append(" · ")
+                append(parts.getOrElse(2) { "" })
+            }
+            val url = parts.getOrElse(3) { "" }
+
+            if (index > 0) {
+                container.addView(View(this).apply {
+                    setBackgroundColor(0xFF2A2A2A.toInt())
+                    layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        (0.7f * density).toInt().coerceAtLeast(1)
+                    )
+                })
+            }
+
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                )
+                setPadding(pad, pad, pad, pad)
+            }
+            // 用主题自带水波纹做点击反馈（Foreground 更贴合列表）
+            if (url.isNotBlank()) {
+                val a = intArrayOf(android.R.attr.selectableItemBackground)
+                val ta = obtainStyledAttributes(a)
+                row.foreground = ta.getDrawable(0)
+                ta.recycle()
+                row.isClickable = true
+                row.setOnClickListener {
+                    runCatching {
+                        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                    }
+                }
+            }
+
+            row.addView(TextView(this).apply {
+                text = name
+                setTextColor(0xFFD8D4CC.toInt())
+                textSize = 12.5f
+            })
+            row.addView(TextView(this).apply {
+                text = meta
+                setTextColor(0xFF7C7C80.toInt())
+                textSize = 10.5f
+                letterSpacing = 0.03f
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { topMargin = (3 * density).toInt() }
+            })
+            container.addView(row)
         }
     }
 
