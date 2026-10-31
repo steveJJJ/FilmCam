@@ -7,6 +7,7 @@ import android.opengl.GLES30
 import android.opengl.GLSurfaceView
 import android.util.AttributeSet
 import android.util.Log
+import com.filmcam.app.ui.ViewfinderFrameView
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.FloatBuffer
@@ -126,7 +127,7 @@ class LutGLSurfaceView @JvmOverloads constructor(
                 Log.i("LutRenderer", "frame#$loggedFrames texMatrix=${texMatrix.joinToString(",") { "%.3f".format(it) }}")
                 diagAppend("frame#$loggedFrames texMatrix=${texMatrix.joinToString(",") { "%.3f".format(it) }}")
             }
-            renderTo(surfaceWidth, surfaceHeight, offsetY = -0.08f)  // 画面上移一点，贴近 T3 取景视野
+            renderTo(surfaceWidth, surfaceHeight, offsetY = ViewfinderFrameView.PREVIEW_OFFSET_Y)
         }
 
         /** 在指定分辨率下渲染一帧。

@@ -1,68 +1,51 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 暗房图标：顶部红色安全灯 + 光晕光锥，下方两条晾挂的底片条（帧窗深红） -->
+<!-- 暗房：放大机（灯室 + 支柱 + 光锥 + 压纸板相纸 + 底板）+ 红色安全灯。
+     线稿风格与机身的银色金属一致，光锥/安全灯用暗房琥珀红点缀。 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="24dp"
-    android:height="24dp"
+    android:width="48dp"
+    android:height="48dp"
     android:viewportWidth="48"
     android:viewportHeight="48">
 
-    <!-- 安全灯光晕（两层半透明红） -->
+    <!-- 投影光锥：从机头到相纸，暗房琥珀色微光 -->
     <path
-        android:fillColor="#22FF5252"
-        android:pathData="M24,14.5 m-11,0 a11,11 0 1,1 22,0 a11,11 0 1,1 -22,0" />
-    <path
-        android:fillColor="#38FF5252"
-        android:pathData="M24,14.5 m-6.5,0 a6.5,6.5 0 1,1 13,0 a6.5,6.5 0 1,1 -13,0" />
+        android:pathData="M12.8,15.5 L17.2,15.5 L21.8,34.5 L8.2,34.5 Z"
+        android:fillColor="#2ED98E4A" />
 
-    <!-- 吊杆 -->
+    <!-- 支柱 -->
     <path
-        android:fillColor="#E53935"
-        android:pathData="M23.2,2 h1.6 v5.2 h-1.6 Z" />
+        android:pathData="M15,11 L15,39.5"
+        android:strokeColor="#C9C5BC"
+        android:strokeWidth="2.4"
+        android:strokeLineCap="round" />
 
-    <!-- 灯罩 -->
+    <!-- 灯室（机头） -->
     <path
-        android:fillColor="#E53935"
-        android:pathData="M14.5,15.5 L33.5,15.5 L27.6,7.2 L20.4,7.2 Z" />
+        android:pathData="M10.5,7.5 h9 a2.5,2.5 0 0 1 2.5,2.5 v3 a2.5,2.5 0 0 1 -2.5,2.5 h-9 a2.5,2.5 0 0 1 -2.5,-2.5 v-3 a2.5,2.5 0 0 1 2.5,-2.5 z"
+        android:fillColor="#C9C5BC" />
 
-    <!-- 灯泡（暖白） -->
+    <!-- 压纸板上的相纸 -->
     <path
-        android:fillColor="#FFCCBC"
-        android:pathData="M24,15.5 m-3.2,0 a3.2,3.2 0 1,1 6.4,0 a3.2,3.2 0 1,1 -6.4,0" />
+        android:pathData="M6,34.5 h17 v3.5 h-17 z"
+        android:strokeColor="#C9C5BC"
+        android:strokeWidth="2"
+        android:strokeLineJoin="round" />
 
-    <!-- 光锥 -->
+    <!-- 底板 -->
     <path
-        android:fillColor="#17FF5252"
-        android:pathData="M17.5,18.5 L30.5,18.5 L38,45 L10,45 Z" />
+        android:pathData="M3.5,41.5 H33"
+        android:strokeColor="#C9C5BC"
+        android:strokeWidth="2.4"
+        android:strokeLineCap="round" />
 
-    <!-- 底片夹 ×2 -->
+    <!-- 安全灯光晕 -->
     <path
-        android:fillColor="#9E9E9E"
-        android:pathData="M17.6,24.6 h2.2 v3 h-2.2 Z" />
-    <path
-        android:fillColor="#9E9E9E"
-        android:pathData="M28.2,24.6 h2.2 v3 h-2.2 Z" />
+        android:pathData="M39.5,10.5 m-5.2,0 a5.2,5.2 0 1 1 10.4,0 a5.2,5.2 0 1 1 -10.4,0"
+        android:strokeColor="#40E14B3B"
+        android:strokeWidth="1.6" />
 
-    <!-- 底片条 1 -->
+    <!-- 安全灯 -->
     <path
-        android:fillColor="#C62828"
-        android:pathData="M15.5,27 h7 a1.2,1.2 0 0 1 1.2,1.2 v15.6 a1.2,1.2 0 0 1 -1.2,1.2 h-7 a1.2,1.2 0 0 1 -1.2,-1.2 v-15.6 a1.2,1.2 0 0 1 1.2,-1.2 Z" />
-    <!-- 底片条 1 帧窗 -->
-    <path
-        android:fillColor="#7F1616"
-        android:pathData="M16.8,29.5 h5.6 v5 h-5.6 Z" />
-    <path
-        android:fillColor="#7F1616"
-        android:pathData="M16.8,37.5 h5.6 v5 h-5.6 Z" />
-
-    <!-- 底片条 2 -->
-    <path
-        android:fillColor="#C62828"
-        android:pathData="M25.5,27 h7 a1.2,1.2 0 0 1 1.2,1.2 v15.6 a1.2,1.2 0 0 1 -1.2,1.2 h-7 a1.2,1.2 0 0 1 -1.2,-1.2 v-15.6 a1.2,1.2 0 0 1 1.2,-1.2 Z" />
-    <!-- 底片条 2 帧窗 -->
-    <path
-        android:fillColor="#7F1616"
-        android:pathData="M26.8,29.5 h5.6 v5 h-5.6 Z" />
-    <path
-        android:fillColor="#7F1616"
-        android:pathData="M26.8,37.5 h5.6 v5 h-5.6 Z" />
+        android:pathData="M39.5,10.5 m-2.8,0 a2.8,2.8 0 1 1 5.6,0 a2.8,2.8 0 1 1 -5.6,0"
+        android:fillColor="#E14B3B" />
 </vector>

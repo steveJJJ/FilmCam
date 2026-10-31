@@ -526,6 +526,11 @@ class MainActivity : AppCompatActivity() {
         dialog.setContentView(view)
 
         val rv = view.findViewById<RecyclerView>(R.id.rvFilmRolls)
+        // RecyclerView 是 wrap_content，25 支胶卷的内容高度远超一屏时弹层会被
+        // 容器裁掉底部——最后一两项永远被导航区/屏幕底边盖住。这里给列表
+        // 设定明确高度上限（屏高 72%），让它在弹层内部滚动，底部 padding 生效。
+        rv.layoutParams?.height = (resources.displayMetrics.heightPixels * 0.72f).toInt()
+        dialog.behavior.skipCollapsed = true   // 直接全展开，避免半开状态看不到底部
         rv.layoutManager = LinearLayoutManager(this)
         rv.adapter = FilmRollAdapter(FilmRollRepository.rolls) { roll ->
             selectFilmRoll(roll)
@@ -565,6 +570,8 @@ class MainActivity : AppCompatActivity() {
         applyExposure()
         updateLcd()
         showEvIndicator(exposureComp)
+        // 点亮取景器内的同步 ± 补偿指示（否则停手 8 秒熄灭后按 EV 键看不到）
+        binding.viewfinderFrame.notifyActivity()
         saveSettings()
     }
 
@@ -777,6 +784,8 @@ class MainActivity : AppCompatActivity() {
         }
         applyExposure()
         updateLcd()
+        // 点亮取景器内的闪光指示
+        binding.viewfinderFrame.notifyActivity()
         saveSettings()
     }
 

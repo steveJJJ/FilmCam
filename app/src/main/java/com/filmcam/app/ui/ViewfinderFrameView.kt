@@ -173,7 +173,9 @@ class ViewfinderFrameView @JvmOverloads constructor(
         val iconSize = minOf(cw, ch) * 0.032f
         val baseLine = cb - ch * 0.055f
 
-        // ⑤ 曝光补偿 ±（左下）
+        // ⑤ 曝光补偿 ±（左侧偏下）：
+        // 不能放在画面底部角落——那里有亮框和视差小角标两层横线，± 文字会压线。
+        // 放到左侧、垂直约 7/10 高度处，四周留出净空（与真机 T3 左侧指示灯位一致）。
         if (st.evCompOn) {
             val pmPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 textSize = iconSize * 1.6f
@@ -181,15 +183,17 @@ class ViewfinderFrameView @JvmOverloads constructor(
                 typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
             }
             val text = if (st.evSteps > 0) "+${st.evSteps}" else st.evSteps.toString()
-            canvas.drawText(text, cl + cw * 0.07f, baseLine, pmPaint)
+            val evX = cl + cw * 0.085f
+            val evBase = cb - ch * 0.30f
+            canvas.drawText(text, evX, evBase, pmPaint)
             canvas.drawText(
-                "±", cl + cw * 0.07f + pmPaint.measureText(text) + 3 * density, baseLine, pmPaint
+                "±", evX + pmPaint.measureText(text) + 3 * density, evBase, pmPaint
             )
         }
 
-        // ⑦ 闪光指示（左下，位于补偿标记上方）
+        // ⑦ 闪光指示（左侧，位于补偿标记上方）
         if (st.flash != LedMode.OFF) {
-            drawBolt(canvas, cl + cw * 0.075f, baseLine - iconSize * 2.2f, iconSize * 1.6f, st.flash, alpha)
+            drawBolt(canvas, cl + cw * 0.09f, cb - ch * 0.30f - iconSize * 2.2f, iconSize * 1.6f, st.flash, alpha)
         }
 
         // ⑥ 对焦指示绿色 LED：画面下方居中
@@ -304,7 +308,11 @@ class ViewfinderFrameView @JvmOverloads constructor(
         /** 预览内容宽高比（1440x1920，与 LutGLSurfaceView.renderTo 一致） */
         const val CONTENT_ASPECT = 1440f / 1920f
 
-        /** 预览画面竖向偏移（与 LutGLSurfaceView onDrawFrame 的 offsetY 一致） */
-        const val PREVIEW_OFFSET_Y = -0.08f
+        /**
+         * 预览画面竖向偏移：0 = 在顶栏（铭牌+液晶屏）与底栏（快门条）之间的
+         * 剩余空间里垂直居中。负值会把画面上移、导致取景框顶到机顶液晶屏，
+         * 正值反之。取景框标记层与预览 shader 共用此常量，必须一致。
+         */
+        const val PREVIEW_OFFSET_Y = 0f
     }
 }
