@@ -61,7 +61,12 @@ class Camera2Controller(private val context: Context) {
     }
 
     // 拍照回调
-    var onPhotoCaptured: ((android.graphics.Bitmap) -> Unit)? = null
+    /**
+     * 拍照回调：相机 ISP 输出的原始 JPEG 字节 + 像素需顺时针旋转的角度（0/90/180/270）。
+     * 不做任何解码/旋转/重编码——那会把一次编码变成两次并多吃约 100MB 内存。
+     * 方向只作为元数据随帧记录，由冲洗侧统一旋转。
+     */
+    var onPhotoCaptured: ((ByteArray, Int) -> Unit)? = null
 
     fun start(surfaceTexture: SurfaceTexture) {
         backgroundThread = HandlerThread("Camera2").also { it.start() }
@@ -94,21 +99,17 @@ class Camera2Controller(private val context: Context) {
         // 读取传感器方向
         val sensorOrientation = chars.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 90
 
+        // 归一化到 0/90/180/270（Activity 锁竖屏，无需再叠加设备旋转）
+        val rotationDegrees = (((sensorOrientation % 360) + 360) % 360) / 90 * 90
         imageReader?.setOnImageAvailableListener({ reader ->
             val image = reader.acquireNextImage() ?: return@setOnImageAvailableListener
-            val buffer = image.planes[0].buffer
-            val bytes = ByteArray(buffer.remaining())
-            buffer.get(bytes)
-            image.close()
-            // 解码 JPEG
-            val rawBmp = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-            rawBmp?.let { src ->
-                // 按传感器方向旋转
-                val matrix = android.graphics.Matrix()
-                matrix.postRotate(sensorOrientation.toFloat())
-                val rotated = android.graphics.Bitmap.createBitmap(src, 0, 0, src.width, src.height, matrix, true)
-                onPhotoCaptured?.invoke(rotated)
+            val bytes = try {
+                val buffer = image.planes[0].buffer
+                ByteArray(buffer.remaining()).also { buffer.get(it) }
+            } finally {
+                image.close()
             }
+            onPhotoCaptured?.invoke(bytes, rotationDegrees)
         }, backgroundHandler)
 
         try {

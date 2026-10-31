@@ -663,14 +663,12 @@ class MainActivity : AppCompatActivity() {
             cameraController?.enableFlash(enabled)
         }
         // 全分辨率拍照回调：后台把原帧 JPEG 存入未冲洗胶卷（零处理，不做 LUT/日期戳/EXIF——那些在冲洗侧做）
-        cameraController?.onPhotoCaptured = { bmp ->
+        cameraController?.onPhotoCaptured = { bytes, rotation ->
             saveExecutor.execute {
                 var savedRollId: String? = null
                 try {
-                    val bytes = java.io.ByteArrayOutputStream().use { baos ->
-                        bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 100, baos)
-                        baos.toByteArray()
-                    }
+                    // 字节直传：相机 ISP 的 JPEG 原样入卷，不解码、不旋转、不全尺寸重编码。
+                    // 方向由 rotation 随帧记录，冲洗侧统一旋转（90° 整数倍，无损）。
                     // 无活动卷 → 按当前胶卷映射开新卷
                     var roll = UndevelopedFilmStore.currentRoll()
                     if (roll == null) {
@@ -682,7 +680,7 @@ class MainActivity : AppCompatActivity() {
                     savedRollId = roll.rollId
                     val iso = isoValues[isoValue]
                     val count = UndevelopedFilmStore.saveFrame(
-                        roll.rollId, bytes, System.currentTimeMillis(), iso
+                        roll.rollId, bytes, System.currentTimeMillis(), iso, rotation
                     )
                     runOnUiThread {
                         if (count >= FILM_MAX) {

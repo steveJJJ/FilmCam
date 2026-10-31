@@ -241,15 +241,42 @@ class DevelopmentService : Service() {
         // openFrameStream → 全分辨率 decode
         val stream = UndevelopedFilmStore.openFrameStream(roll.rollId, index)
             ?: throw IllegalStateException("openFrameStream 返回 null: $roll/$index")
-        // RGB_565：解码内存从 48MB → 24MB（12MP），bitmapToFloatRgb 不依赖 alpha 通道
+        // ARGB_8888：8bit/通道。早前用 RGB_565「省内存」其实更费：bitmapToFloatRgb 转引擎格式时
+        // 会再 copy 一份 8888，峰值 264MB 高于直接 8888 解码的 240MB，还白丢 2-3bit 色深
+        // （冲洗强拉对比后暗部/天空会出现色带）。inMutable 供日期戳就地绘制。
         val decodeOpts = BitmapFactory.Options().apply {
-            inPreferredConfig = android.graphics.Bitmap.Config.RGB_565
+            inPreferredConfig = android.graphics.Bitmap.Config.ARGB_8888
+            inMutable = true
         }
-        val bmp = stream.use { BitmapFactory.decodeStream(it, null, decodeOpts) }
+        var bmp = stream.use { BitmapFactory.decodeStream(it, null, decodeOpts) }
             ?: throw IllegalStateException("decodeStream 失败: $roll/$index")
+
+        // 方向：拍摄侧直传字节不旋转像素，这里按帧记录的角度旋转
+        // （90° 整数倍 + filter=false → 纯像素搬运，无插值无色差）
+        val rotation = UndevelopedFilmStore.frameOrientation(roll.rollId, index)
+        if (rotation != 0) {
+            bmp = rotateBitmap(bmp, rotation)
+        }
 
         var writtenOk = false
         try {
+            val takenAt = try {
+                UndevelopedFilmStore.frameTakenAt(roll.rollId, index)
+            } catch (_: Throwable) {
+                System.currentTimeMillis()
+            }
+            val iso = UndevelopedFilmStore.frameIso(roll.rollId, index)
+
+            // 日期戳：直接画在进引擎的位图上，省掉一次全尺寸 decode + encode；
+            // 水印会随 LUT 一起调色（等同底片曝光日期）。失败不影响整卷冲洗。
+            if (isDateStampEnabled()) {
+                try {
+                    DateStampRenderer.drawOnBitmap(applicationContext, bmp, takenAt)
+                } catch (e: Throwable) {
+                    Log.e(TAG, "日期戳绘制失败（跳过）: ${e.message}", e)
+                }
+            }
+
             // 引擎冲洗到临时 JPEG（全分辨率）
             val result = SpektraProcessor.processFrame(
                 applicationContext, bmp, paramsJson, tmpJpeg.absolutePath
@@ -258,15 +285,6 @@ class DevelopmentService : Service() {
                 throw IllegalStateException("processFrame 失败: ${result.message}")
             }
 
-            val takenAt = try {
-                UndevelopedFilmStore.frameTakenAt(roll.rollId, index)
-            } catch (_: Throwable) {
-                System.currentTimeMillis()
-            }
-            val iso = UndevelopedFilmStore.frameIso(roll.rollId, index)
-
-            // 日期戳（就地重写到 tmpJpeg）
-            DateStampRenderer.apply(applicationContext, tmpJpeg, takenAt)
             // EXIF（用引擎实际输出尺寸；DateTimeOriginal 按帧拍摄时刻 + 胶卷元数据）
             ContaxExif.write(
                 tmpJpeg, iso, result.width, result.height, takenAt,
@@ -294,6 +312,20 @@ class DevelopmentService : Service() {
             }
         }
     }
+
+    /** 按 90° 整数倍旋转位图。filter=false 保证纯像素搬运（无插值），旋转后立即回收原图。 */
+    private fun rotateBitmap(src: android.graphics.Bitmap, degrees: Int): android.graphics.Bitmap {
+        val m = android.graphics.Matrix().apply { postRotate(degrees.toFloat()) }
+        return try {
+            android.graphics.Bitmap.createBitmap(src, 0, 0, src.width, src.height, m, false)
+        } finally {
+            src.recycle()
+        }
+    }
+
+    /** 日期水印开关（与拍摄侧共用 "filmcam" 偏好；默认开） */
+    private fun isDateStampEnabled(): Boolean =
+        getSharedPreferences("filmcam", MODE_PRIVATE).getBoolean("dateStamp", true)
 
     private fun finishWithError(msg: String) {
         DevelopmentState.phase = DevelopmentState.PHASE_ERROR

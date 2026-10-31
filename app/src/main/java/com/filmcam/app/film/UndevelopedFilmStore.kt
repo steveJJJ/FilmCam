@@ -71,7 +71,10 @@ object UndevelopedFilmStore {
         val index: Int,
         val handle: String,          // MediaStore uri 字符串（API29+）或文件绝对路径（API26-28）
         val takenAtMs: Long,
-        val iso: Int?
+        val iso: Int?,
+        /** 像素需要顺时针旋转的角度（0/90/180/270）。拍摄侧直传字节不做像素旋转，
+         *  方向随帧记录，由冲洗侧统一旋转。旧记录缺省 0（旧链路已物理旋转过）。 */
+        val orientation: Int = 0
     )
 
     private data class RollRec(
@@ -118,7 +121,8 @@ object UndevelopedFilmStore {
                                     index = f.getInt("index"),
                                     handle = f.getString("handle"),
                                     takenAtMs = f.getLong("takenAtMs"),
-                                    iso = if (f.isNull("iso")) null else f.getInt("iso")
+                                    iso = if (f.isNull("iso")) null else f.getInt("iso"),
+                                    orientation = f.optInt("orientation", 0)
                                 )
                             )
                         }
@@ -160,6 +164,7 @@ object UndevelopedFilmStore {
                 fo.put("handle", f.handle)
                 fo.put("takenAtMs", f.takenAtMs)
                 if (f.iso == null) fo.put("iso", JSONObject.NULL) else fo.put("iso", f.iso)
+                fo.put("orientation", f.orientation)
                 fa.put(fo)
             }
             o.put("frames", fa)
@@ -201,8 +206,16 @@ object UndevelopedFilmStore {
     /**
      * 存一帧原 JPEG（未冲洗、零处理）。返回当前张数（1..36）。
      * 拍满 36 抛 IllegalStateException。
+     *
+     * @param orientation 像素需顺时针旋转的角度（0/90/180/270），冲洗侧按此旋转
      */
-    fun saveFrame(rollId: String, jpegBytes: ByteArray, takenAtMs: Long, iso: Int?): Int = synchronized(this) {
+    fun saveFrame(
+        rollId: String,
+        jpegBytes: ByteArray,
+        takenAtMs: Long,
+        iso: Int?,
+        orientation: Int = 0,
+    ): Int = synchronized(this) {
         val rolls = loadAll()
         val roll = findRec(rolls, rollId)
         check(roll.status == STATUS_SHOOTING) { "卷状态非 shooting: ${roll.status}" }
@@ -253,7 +266,9 @@ object UndevelopedFilmStore {
             handle = file.absolutePath
         }
 
-        roll.frames.add(FrameRec(index = index, handle = handle, takenAtMs = takenAtMs, iso = iso))
+        roll.frames.add(
+            FrameRec(index = index, handle = handle, takenAtMs = takenAtMs, iso = iso, orientation = orientation)
+        )
         persist(rolls)
         roll.frames.size
     }
@@ -269,6 +284,11 @@ object UndevelopedFilmStore {
 
     fun frameIso(rollId: String, index: Int): Int? = synchronized(this) {
         findRec(loadAll(), rollId).frames.firstOrNull { it.index == index }?.iso
+    }
+
+    /** 该帧像素需顺时针旋转的角度（0/90/180/270）。缺省 0。 */
+    fun frameOrientation(rollId: String, index: Int): Int = synchronized(this) {
+        findRec(loadAll(), rollId).frames.firstOrNull { it.index == index }?.orientation ?: 0
     }
 
     /** 冲洗侧解码用：打开原始未冲洗帧的输入流。 */

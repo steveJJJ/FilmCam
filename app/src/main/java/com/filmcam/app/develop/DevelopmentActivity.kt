@@ -286,8 +286,18 @@ class DevelopmentActivity : AppCompatActivity(), SensorEventListener {
             var sample = 1
             while (w / sample > maxEdge || h / sample > maxEdge) sample *= 2
             val decodeOpts = BitmapFactory.Options().apply { inSampleSize = sample }
-            UndevelopedFilmStore.openFrameStream(rollId, index)?.use {
+            val small = UndevelopedFilmStore.openFrameStream(rollId, index)?.use {
                 BitmapFactory.decodeStream(it, null, decodeOpts)
+            }
+            // 未冲洗帧像素保持传感器方向（拍摄侧直传不旋转），动画里按记录角度摆正
+            val rot = UndevelopedFilmStore.frameOrientation(rollId, index)
+            if (small != null && rot != 0) {
+                val m = android.graphics.Matrix().apply { postRotate(rot.toFloat()) }
+                android.graphics.Bitmap
+                    .createBitmap(small, 0, 0, small.width, small.height, m, false)
+                    .also { small.recycle() }
+            } else {
+                small
             }
         } catch (e: Throwable) {
             Log.w(TAG, "decodeSmallFrame 失败: ${e.message}")
