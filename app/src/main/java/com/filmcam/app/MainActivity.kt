@@ -208,10 +208,6 @@ class MainActivity : AppCompatActivity() {
         // 旧 filmCount 键仅作迁移保留读取，不再作为权威（张数一律读 UndevelopedFilmStore.shotCount）
         @Suppress("UNUSED_VARIABLE") val legacyFilmCount = prefs.getInt("filmCount", 0)
         debugInstantDevelop = prefs.getBoolean("debug_instant_develop", false)
-        binding.glSurfaceView.enableHalation = prefs.getBoolean("halation", false)
-        binding.glSurfaceView.enableLightLeak = prefs.getBoolean("lightLeak", false)
-        binding.glSurfaceView.enableLensDust = prefs.getBoolean("lensDust", false)
-        binding.glSurfaceView.enableShakeBlur = prefs.getBoolean("shakeBlur", false)
         binding.glSurfaceView.photoGrainEnabled = prefs.getBoolean("grain", true)
         flash.mode = try {
             FlashMode.valueOf(prefs.getString("flashMode", FlashMode.OFF.name) ?: FlashMode.OFF.name)
@@ -232,10 +228,6 @@ class MainActivity : AppCompatActivity() {
         prefs.putBoolean("filmRollMode", filmRollMode)
         // 旧 filmCount 键不再写入；权威张数来自 UndevelopedFilmStore
         prefs.putBoolean("debug_instant_develop", debugInstantDevelop)
-        prefs.putBoolean("halation", binding.glSurfaceView.enableHalation)
-        prefs.putBoolean("lightLeak", binding.glSurfaceView.enableLightLeak)
-        prefs.putBoolean("lensDust", binding.glSurfaceView.enableLensDust)
-        prefs.putBoolean("shakeBlur", binding.glSurfaceView.enableShakeBlur)
         prefs.putBoolean("grain", binding.glSurfaceView.photoGrainEnabled)
         prefs.putString("flashMode", flash.mode.name)
         prefs.putInt("rollIndex", FilmRollRepository.rolls.indexOf(currentRoll))
@@ -244,14 +236,8 @@ class MainActivity : AppCompatActivity() {
 
     /** 设置弹窗 */
     private fun showSettings() {
-        val shot = currentShotCount()
         val items = arrayOf(
             "日期水印: ${if (dateStampEnabled) "开" else "关"}",
-            "冲洗当前胶卷 ($shot/$FILM_MAX)",
-            "光晕 Halation: ${if (binding.glSurfaceView.enableHalation) "开" else "关"}",
-            "漏光效果: ${if (binding.glSurfaceView.enableLightLeak) "开" else "关"}",
-            "镜头灰尘: ${if (binding.glSurfaceView.enableLensDust) "开" else "关"}",
-            "手抖模糊: ${if (binding.glSurfaceView.enableShakeBlur) "开" else "关"}",
             "模拟失焦: ${if (softFocusEnabled) "开" else "关"}",
             "胶片颗粒: ${if (binding.glSurfaceView.photoGrainEnabled) "开" else "关"}",
             "调试: 跳过冲洗立即出片: ${if (debugInstantDevelop) "开" else "关"}",
@@ -262,27 +248,26 @@ class MainActivity : AppCompatActivity() {
             .setItems(items) { _, which ->
                 when (which) {
                     0 -> { dateStampEnabled = !dateStampEnabled; saveSettings() }
-                    1 -> {
-                        // 冲洗当前胶卷（有帧才响应）
-                        val rollId = activeRollId()
-                        if (rollId != null && shot > 0) {
-                            DevelopController.startDevelopment(this, rollId)
-                        } else {
-                            Toast.makeText(this, "当前没有未冲洗的胶卷", Toast.LENGTH_SHORT).show()
-                        }
-                    }
-                    2 -> { binding.glSurfaceView.enableHalation = !binding.glSurfaceView.enableHalation; saveSettings() }
-                    3 -> { binding.glSurfaceView.enableLightLeak = !binding.glSurfaceView.enableLightLeak; saveSettings() }
-                    4 -> { binding.glSurfaceView.enableLensDust = !binding.glSurfaceView.enableLensDust; saveSettings() }
-                    5 -> { binding.glSurfaceView.enableShakeBlur = !binding.glSurfaceView.enableShakeBlur; saveSettings() }
-                    6 -> { softFocusEnabled = !softFocusEnabled; saveSettings() }
-                    7 -> { binding.glSurfaceView.photoGrainEnabled = !binding.glSurfaceView.photoGrainEnabled; saveSettings() }
-                    8 -> { debugInstantDevelop = !debugInstantDevelop; saveSettings() }
-                    9 -> showDevParamsDialog()
+                    1 -> { softFocusEnabled = !softFocusEnabled; saveSettings() }
+                    2 -> { binding.glSurfaceView.photoGrainEnabled = !binding.glSurfaceView.photoGrainEnabled; saveSettings() }
+                    3 -> { debugInstantDevelop = !debugInstantDevelop; saveSettings() }
+                    4 -> showDevParamsDialog()
                 }
-                if (which != 1 && which != 9) showSettings()
+                if (which != 4) showSettings()
             }
             .setNegativeButton("关闭", null)
+            .show()
+    }
+
+    /** 胶卷拍满：引导去暗房冲洗 */
+    private fun promptDevelopFullRoll() {
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("胶卷已拍完")
+            .setMessage("这一卷 36 张已拍完，去暗房冲洗出片")
+            .setPositiveButton("去冲洗") { _, _ ->
+                activeRollId()?.let { DevelopController.startDevelopment(this, it) }
+            }
+            .setNegativeButton("稍后", null)
             .show()
     }
 
@@ -705,7 +690,7 @@ class MainActivity : AppCompatActivity() {
                     )
                     runOnUiThread {
                         if (count >= FILM_MAX) {
-                            Toast.makeText(this, "胶卷已拍满，请先冲洗", Toast.LENGTH_LONG).show()
+                            promptDevelopFullRoll()
                         }
                         updateLcd()
                         updateFilmInfo()
@@ -745,9 +730,9 @@ class MainActivity : AppCompatActivity() {
     private var isCapturing = false
 
     private fun triggerShutter() {
-        // 拍满 36 张：拒绝拍照，提示先冲洗
+        // 拍满 36 张：拒绝拍照，弹窗引导冲洗
         if (currentShotCount() >= FILM_MAX) {
-            Toast.makeText(this, "胶卷已拍满，请先冲洗", Toast.LENGTH_LONG).show()
+            promptDevelopFullRoll()
             return
         }
         // SELF 自拍模式：先 3 秒倒计时再拍
