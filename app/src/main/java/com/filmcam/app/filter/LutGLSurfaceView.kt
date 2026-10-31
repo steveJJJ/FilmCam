@@ -7,7 +7,6 @@ import android.opengl.GLES30
 import android.opengl.GLSurfaceView
 import android.util.AttributeSet
 import android.util.Log
-import com.filmcam.app.filter.LutParser.LutResult
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.FloatBuffer
@@ -31,7 +30,6 @@ class LutGLSurfaceView @JvmOverloads constructor(
     /** CameraX 就绪后回调，把 SurfaceTexture 交给 CameraX 输出帧 */
     var onSurfaceTextureReady: ((SurfaceTexture) -> Unit)? = null
 
-    private var lutResult: LutResult? = null
     private var renderer: LutRenderer? = null
 
     init {
@@ -42,14 +40,6 @@ class LutGLSurfaceView @JvmOverloads constructor(
             setRenderer(it)
         }
         renderMode = RENDERMODE_WHEN_DIRTY
-    }
-
-    /** 从 res/raw 加载 .cube LUT */
-    fun loadLutFromRaw(resId: Int) {
-        context.resources.openRawResource(resId).use { stream ->
-            lutResult = LutParser().parse(stream.bufferedReader())
-        }
-        queueEvent { renderer?.uploadLut(lutResult) }
     }
 
     /** 设置临时色调（后续替换真实 LUT 后删掉） */
@@ -169,7 +159,6 @@ class LutGLSurfaceView @JvmOverloads constructor(
             onSurfaceTextureReady?.invoke(surfaceTexture!!)
 
             program = createProgram()
-            lutResult?.let { uploadLut(it) }
         }
 
         override fun onSurfaceChanged(gl: GL10?, width: Int, height: Int) {
@@ -260,36 +249,6 @@ class LutGLSurfaceView @JvmOverloads constructor(
 
             GLES30.glDisableVertexAttribArray(posLoc)
             GLES30.glDisableVertexAttribArray(texLoc)
-        }
-
-        fun uploadLut(result: LutResult?) {
-            result ?: return
-            lutSize = result.size
-
-            if (lutTexId == 0) {
-                val ids = IntArray(1)
-                GLES30.glGenTextures(1, ids, 0)
-                lutTexId = ids[0]
-            }
-            GLES30.glBindTexture(GLES30.GL_TEXTURE_3D, lutTexId)
-            GLES30.glTexParameteri(GLES30.GL_TEXTURE_3D, GLES30.GL_TEXTURE_MIN_FILTER, GLES30.GL_LINEAR)
-            GLES30.glTexParameteri(GLES30.GL_TEXTURE_3D, GLES30.GL_TEXTURE_MAG_FILTER, GLES30.GL_LINEAR)
-            GLES30.glTexParameteri(GLES30.GL_TEXTURE_3D, GLES30.GL_TEXTURE_WRAP_S, GLES30.GL_CLAMP_TO_EDGE)
-            GLES30.glTexParameteri(GLES30.GL_TEXTURE_3D, GLES30.GL_TEXTURE_WRAP_T, GLES30.GL_CLAMP_TO_EDGE)
-            GLES30.glTexParameteri(GLES30.GL_TEXTURE_3D, GLES30.GL_TEXTURE_WRAP_R, GLES30.GL_CLAMP_TO_EDGE)
-
-            val lutBuffer = ByteBuffer.allocateDirect(result.data.size * 4)
-                .order(ByteOrder.nativeOrder())
-                .asFloatBuffer()
-                .put(result.data)
-            lutBuffer.position(0)
-
-            GLES30.glTexImage3D(
-                GLES30.GL_TEXTURE_3D, 0, GLES30.GL_RGB,
-                lutSize, lutSize, lutSize, 0,
-                GLES30.GL_RGB, GLES30.GL_FLOAT, lutBuffer
-            )
-            Log.i("LutRenderer", "LUT uploaded: ${lutSize}x${lutSize}x${lutSize}")
         }
 
         private fun createProgram(): Int {

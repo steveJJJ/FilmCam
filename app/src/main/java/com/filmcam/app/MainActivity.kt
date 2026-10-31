@@ -94,8 +94,7 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        // 加载默认胶卷 LUT
-        binding.glSurfaceView.loadLutFromRaw(currentRoll.lutResId)
+        // 胶卷图标（预览不做 LUT 调色：光学取景器看不到成片效果，是产品设计）
         binding.tvFilmName.setImageResource(currentRoll.iconResId)
 
         // 颗粒先关掉，拍照时再加
@@ -461,7 +460,6 @@ class MainActivity : AppCompatActivity() {
         }
         currentRoll = roll
         binding.tvFilmName.setImageResource(roll.iconResId)
-        binding.glSurfaceView.loadLutFromRaw(roll.lutResId)
         updateFilmInfo()
         saveSettings()
     }
