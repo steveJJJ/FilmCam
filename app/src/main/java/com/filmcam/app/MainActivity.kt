@@ -331,6 +331,11 @@ class MainActivity : AppCompatActivity() {
             sbExposure.progress = ((exp - 0.5f) * 100f).roundToInt()
             tvExposure.text = String.format("%.2f", exp)
             tvPaper.text = paperDisplayName(prefs.getString(devKey("paper"), "") ?: "")
+            // 反转片没有印相纸环节（引擎 scan_film 直扫正片）：相纸行置灰
+            val positiveStock = FilmStockMapper.isPositive(selRollId)
+            rowPaper.isEnabled = !positiveStock
+            rowPaper.alpha = if (positiveStock) 0.45f else 1f
+            if (positiveStock) tvPaper.text = "—（反转片直接显影，无相纸）"
         }
         syncUi()
 

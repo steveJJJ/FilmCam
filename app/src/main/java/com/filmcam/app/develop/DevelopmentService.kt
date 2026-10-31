@@ -170,18 +170,20 @@ class DevelopmentService : Service() {
 
             // 冲洗开始时读一次设置；帧循环内不做动态重发（grain/halation/glare 是普通参数字段）
             val devSettings = FilmStockMapper.readDevSettings(this, roll.filmStockId)
+            // 旧记录可能存了空相纸 id：冲洗时兜底到合法占位（反转片 scan_film 模式下不参与成像）
+            val mappedPrint = roll.printStockId.ifBlank { FilmStockMapper.DEFAULT_PRINT_FALLBACK }
             val resolved = FilmStockMapper.resolvePrintStock(
-                roll.filmStockId, roll.printStockId, devSettings.paperOverride
+                roll.filmStockId, mappedPrint, devSettings.paperOverride
             )
             if (resolved.fellBack) {
                 android.widget.Toast.makeText(
                     this,
-                    "所选相纸不适用于该胶卷（反转片不配相纸），已回退默认相纸",
+                    "反转片直接在显影液里出正像，不经过相纸，已忽略所选相纸",
                     android.widget.Toast.LENGTH_SHORT
                 ).show()
             }
             val effective = devSettings.copy(paperOverride = resolved.paperId)
-            val paramsJson = FilmStockMapper.buildParamsJson(roll.filmStockId, roll.printStockId, effective)
+            val paramsJson = FilmStockMapper.buildParamsJson(roll.filmStockId, mappedPrint, effective)
             val filmDisplayName = FilmStockMapper.stockDisplayName(roll.filmStockId)
             // 临时文件名带 rollId：即使并发（例如被系统重新拉起）也不会互相覆写同一个文件
             val tmpJpeg = File(cacheDir, "develop_${roll.rollId}.jpg")

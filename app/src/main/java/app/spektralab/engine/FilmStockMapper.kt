@@ -10,6 +10,16 @@ import java.util.Locale
  */
 object FilmStockMapper {
 
+    /**
+     * 旧版本胶卷记录可能存了空相纸 id（反转片曾映射为空串）；
+     * 冲洗时用它兜底——引擎要求 print_stock 必须是合法 profile，
+     * 反转片虽走 scan_film 直扫，但仍需一个可加载的占位 profile。
+     */
+    const val DEFAULT_PRINT_FALLBACK = "kodak_portra_endura"
+
+    /** 该 film stock 是否为反转片。 */
+    fun isPositive(filmStockId: String): Boolean = filmTypeOf(filmStockId) == "positive"
+
     /** 冲洗（暗房）用户可调参数；未改设置时全部取冻结模板默认值。 */
     data class DevSettings(
         val grainAmount: Float = 1.0f,
@@ -139,8 +149,10 @@ object FilmStockMapper {
     }
 
     /**
-     * 相纸解析：反转片（type=="positive"）忽略用户选择、强制回退默认映射；
-     * 否则选中即用、未选回落默认。
+     * 相纸解析：
+     *  - 反转片（type=="positive"）：不使用任何相纸，直接显影（[NO_PRINT]）；
+     *    用户若选了相纸则忽略并置 fellBack=true（提示用）。
+     *  - 负片：选中即用、未选回落默认。
      */
     fun resolvePrintStock(
         filmStockId: String,
@@ -148,8 +160,9 @@ object FilmStockMapper {
         selectedPaper: String?,
     ): ResolvedPrint {
         val sel = selectedPaper?.takeIf { it.isNotBlank() }
-        return if (filmTypeOf(filmStockId) == "positive" && sel != null) {
-            ResolvedPrint(mappedDefault, true)
+        return if (isPositive(filmStockId)) {
+            // 反转片直接扫描胶片出正像，相纸不参与成像；仍需一个合法 id 供引擎加载
+            ResolvedPrint(mappedDefault, sel != null)
         } else {
             ResolvedPrint(sel ?: mappedDefault, false)
         }
@@ -214,6 +227,8 @@ object FilmStockMapper {
         settings: DevSettings,
     ): String {
         val effectivePrintStock = settings.paperOverride?.takeIf { it.isNotBlank() } ?: printStockId
+        // 反转片不走放大机/相纸：加 scan_film=true，引擎按「直接扫描正片」出图
+        val positiveFlag = if (isPositive(filmStockId)) ",\"scan_film\":true" else ""
         val sb = StringBuilder(256)
         sb.append('{')
           .append("\"film_stock\":\"").append(esc(filmStockId)).append("\",")
@@ -227,6 +242,7 @@ object FilmStockMapper {
           .append("\"halation_amount\":").append(jsonNum(settings.halationAmount)).append(',')
           .append("\"glare_amount\":").append(jsonNum(settings.glareAmount)).append(',')
           .append("\"film_format_mm\":36.0")
+          .append(positiveFlag)
           .append('}')
         return sb.toString()
     }

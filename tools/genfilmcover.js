@@ -27,16 +27,16 @@ const SPECS = [
   ['ic_film_vision3_500t',   KODAK({ topColor: '#f8c000', bodyColor: '#4677b1', name: 'VISION3', number: '500T' })],
   ['ic_film_verita200d',     KODAK({ topColor: '#f8c000', bodyColor: '#402a1e', name: 'VERITA', number: '200D' })],
   // --- 反转片（列表内已禁用，图标仍保留）---
-  ['ic_film_ektachrome100',  KODAK({ brandColor: '#db0111', topColor: '#fcd605', bodyColor: '#1a4c96', name: 'EKTACHROME', number: '100' })],
+  ['ic_film_ektachrome100',  KODAK({ brandColor: '#db0111', topColor: '#fcd605', bodyColor: '#1a4c96', name: 'EKTACHROME', number: '100', perfs: true })],
   // --- 富士 ---
   ['ic_film_c200',           FJ({ bodyColor: '#1d9a55', name: 'FUJICOLOR', number: 'C200' })],
   ['ic_film_superia400',     FJ({ bodyColor: '#d22630', name: 'SUPERIA', number: '400' })],
   ['ic_film_pro400h',        FJ({ bodyColor: '#2f8fb0', bottomBand: true, bottomColor: '#ffffff', name: 'PRO', number: '400H' })],
-  ['ic_film_provia100f',     FJ({ bodyColor: '#1f5fae', bottomBand: true, bottomColor: '#ffffff', name: 'PROVIA', number: '100F' })],
-  ['ic_film_velvia100',      FJ({ bodyColor: '#5a2a8c', bottomBand: true, bottomColor: '#ffffff', name: 'VELVIA', number: '100' })],
+  ['ic_film_provia100f',     FJ({ bodyColor: '#1f5fae', bottomBand: true, bottomColor: '#ffffff', name: 'PROVIA', number: '100F', perfs: true })],
+  ['ic_film_velvia100',      FJ({ bodyColor: '#5a2a8c', bottomBand: true, bottomColor: '#ffffff', name: 'VELVIA', number: '100', perfs: true })],
   ['ic_film_acros100',       FJ({ bodyColor: '#1a1a1a', name: 'ACROS', number: '100' })],
   ['ic_film_eterna',         FJ({ bodyColor: '#0f5a63', name: 'ETERNA', number: '250D' })],
-  ['ic_film_classic_chrome', FJ({ bodyColor: '#123f33', name: 'CLASSIC', number: '64' })],
+  ['ic_film_classic_chrome', FJ({ bodyColor: '#123f33', name: 'CLASSIC', number: '64', perfs: true })],
   // --- 其他 ---
   ['ic_film_hp5',            IL({ bodyColor: '#151515', name: 'HP5 PLUS', number: '400' })],
   ['ic_film_cn800',          CS({ bodyColor: '#c8102e', name: 'TUNGSTEN', number: '800' })],
@@ -93,6 +93,22 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       if (data.tag) {
         const band = 0.906, cy = (band + 1) / 2;
         drawText(cv.getContext('2d'), ${SIZE}, { text: data.tag, font: 'FK-Inter900', track: 0.06, h: 0.052, cy: cy, x: 0.5, align: 'center', color: data.textColor || '#ffffff' });
+      }
+      if (data.perfs) {
+        // 反转片：上下加胶卷齿孔条（35mm 胶片边缘的输片孔），示意幻灯片/直出正像
+        const c2 = cv.getContext('2d');
+        const S2 = ${SIZE};
+        const hole = (x, y, w, h, r) => { c2.beginPath(); c2.roundRect(x*S2, y*S2, w*S2, h*S2, r*S2); c2.fill(); };
+        c2.fillStyle = 'rgba(14,12,10,0.9)';
+        c2.fillRect(0, 0, S2, 0.055*S2);
+        c2.fillRect(0, 0.945*S2, S2, 0.055*S2);
+        c2.fillStyle = '#ece7db';
+        const n = 7, w = 0.054, h = 0.027, gap = (1 - n*w) / (n + 1);
+        for (let i = 0; i < n; i++) {
+          const x = gap + i*(w + gap);
+          hole(x, (0.055 - h)/2, w, h, 0.006);
+          hole(x, 0.945 + (0.055 - h)/2, w, h, 0.006);
+        }
       }
       out.push([file, cv.toDataURL('image/png')]);
     }
