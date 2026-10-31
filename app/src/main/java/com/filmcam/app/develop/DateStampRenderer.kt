@@ -2,6 +2,7 @@ package com.filmcam.app.develop
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BlurMaskFilter
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Typeface
@@ -10,24 +11,26 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * 日期戳渲染（规格 §6.4）。
+ * 日期戳渲染（规格 §6.4，v2：仿真石英日期机背成像）。
  *
- * 逻辑照搬原 MainActivity.savePhoto：
- *  - 格式 `'yy MM dd`（SimpleDateFormat("''yy MM dd")，输出形如 `'26 10 30`）
- *  - 字体 dseg7.ttf（assets 已存在）
- *  - 主字 #FFC100，辉光 #FF8A00，阴影 #FF6600（setShadowLayer 18f）
- *  - 字号 = 宽 * 0.045，右下角 margin = 宽 * 0.04
- *  - letterSpacing 0.1f，抗锯齿
+ * 参考真实胶片机背（Contax T3 Quartz Date 一类）的光学特征：
+ *  - 七段 LCD 数码管字形（dseg7.ttf），字距紧、段间几乎贴合
+ *  - 颜色为红色 LED 透橙色滤片曝光后的橙红（#FF7E15 一带），不是数码金黄
+ *  - LCD 隔着机背玻璃与片基曝光 → 边缘天然失焦发软（小半径模糊）
+ *  - LCD 表面反光在玻璃上 → 约 0.5px 的鬼影（低透明度错位重绘一次）
+ *  - 只有微弱光渗（大半径、极低透明度），没有霓虹式辉光
+ *  - 曝光在底片上而非后期叠加 → 整体略降不透明度，且随引擎一起吃颗粒/调色
  *
- * 直接画在冲洗流程的输入位图上（进引擎之前），不产生任何 JPEG 编解码：
- * 省掉一次全尺寸 decode + encode，日期戳也会随胶卷 LUT 一起被调色，
- * 与真实底片上「拍摄时就把日期曝在胶片上」的成像方式一致。
+ * 直接画在冲洗流程的输入位图上（进引擎之前），不产生任何 JPEG 编解码。
  */
 object DateStampRenderer {
 
-    private const val COLOR_PRIMARY = 0xFFFFC100.toInt()
-    private const val COLOR_GLOW = 0xFFFF8A00.toInt()
-    private const val COLOR_SHADOW = 0xFFFF6600.toInt()
+    // 石英日期机背实际成色：橙红主色 + 更深的红做光渗
+    private const val COLOR_INK = 0xFFFF7E15.toInt()      // 主体（略降 alpha 模拟曝光密度）
+    private const val COLOR_BLOOM = 0xFFFF5A00.toInt()    // 光渗
+
+    private const val INK_ALPHA = 232                     // 曝光在片基上达不到纯 255
+    private const val BLOOM_ALPHA = 42                    // 微弱光渗
 
     @Volatile private var cachedTypeface: Typeface? = null
 
@@ -50,33 +53,45 @@ object DateStampRenderer {
         val w = bmp.width
         val h = bmp.height
 
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            typeface = typeface(ctx)
-            textSize = w * 0.045f
-            color = COLOR_PRIMARY
-            letterSpacing = 0.1f
-            // 辉光/阴影：先画一层稍大的辉光，再用 setShadowLayer 加重
-            setShadowLayer(18f, 0f, 0f, COLOR_SHADOW)
-        }
-
-        // 辉光层：把同一文字用 #FF8A00 再画一次（alpha 较低）
-        val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            typeface = typeface(ctx)
-            textSize = w * 0.045f
-            color = COLOR_GLOW
-            alpha = 110
-            letterSpacing = 0.1f
-            setShadowLayer(22f, 0f, 0f, COLOR_GLOW)
-        }
-
         val text = SimpleDateFormat("''yy MM dd", Locale.US).format(Date(takenAtMs))
-        val margin = w * 0.04f
-        val fm = paint.fontMetrics
+
+        // 真机背的日期相对画面更小（约 3.6% 画幅宽），位置更贴边
+        val textSize = w * 0.036f
+        val margin = w * 0.032f
+
+        val basePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            typeface = typeface(ctx)
+            this.textSize = textSize
+            letterSpacing = 0.06f                       // 段间贴合，不再是霓虹宽字距
+            color = COLOR_INK
+            alpha = INK_ALPHA
+            // 失焦感：极小半径的边缘模糊（软件画布，BlurMaskFilter 生效）
+            maskFilter = BlurMaskFilter(textSize * 0.055f, BlurMaskFilter.Blur.NORMAL)
+        }
+
+        // 鬼影：LCD 反光，整体错位约 0.4px、低透明度
+        val ghostPaint = Paint(basePaint).apply {
+            alpha = (INK_ALPHA * 0.28f).toInt().coerceAtMost(255)
+            maskFilter = BlurMaskFilter(textSize * 0.075f, BlurMaskFilter.Blur.NORMAL)
+        }
+
+        // 光渗：大半径、极低透明度，模拟弱曝光在片基上的光晕
+        val bloomPaint = Paint(basePaint).apply {
+            color = COLOR_BLOOM
+            alpha = BLOOM_ALPHA
+            maskFilter = BlurMaskFilter(textSize * 0.22f, BlurMaskFilter.Blur.NORMAL)
+        }
+
+        val fm = basePaint.fontMetrics
         val baseline = h - margin - fm.descent
-        val x = w - margin - paint.measureText(text)
+        val x = w - margin - basePaint.measureText(text)
 
         val canvas = Canvas(bmp)
-        canvas.drawText(text, x, baseline, glowPaint)
-        canvas.drawText(text, x, baseline, paint)
+        // 鬼影偏移量：约 0.4px，缩放到不同分辨率下等比
+        val ghostDx = textSize * 0.011f
+        val ghostDy = -textSize * 0.006f
+        canvas.drawText(text, x + ghostDx, baseline + ghostDy, ghostPaint)
+        canvas.drawText(text, x, baseline, bloomPaint)
+        canvas.drawText(text, x, baseline, basePaint)
     }
 }
