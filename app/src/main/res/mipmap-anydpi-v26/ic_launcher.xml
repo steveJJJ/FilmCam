@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<!-- 启动图标：CONTAX 银底 / T3 玫红描边（设计师稿 tools/ic_launcher_source.svg）
-     前景已按 66/108 安全区缩放居中，圆形/水滴/Squircle 蒙版均不会裁切字形 -->
-<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
-    <background android:drawable="@mipmap/ic_launcher_background" />
-    <foreground android:drawable="@mipmap/ic_launcher_foreground" />
-</adaptive-icon>

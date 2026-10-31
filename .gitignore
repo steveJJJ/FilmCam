@@ -25,3 +25,4 @@ Thumbs.db
 # 签名文件
 keystore.properties
 keystore/
+tmp/
