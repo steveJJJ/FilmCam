@@ -81,6 +81,9 @@ class ViewfinderFrameView @JvmOverloads constructor(
     private val AUTO_OFF_MS = 8_000L
     private val FADE_MS = 1_200L
 
+    /** 取景器左侧指示灯之间的最小净空 */
+    private val INDICATOR_GAP = 9f * density
+
     private fun indicatorsAlpha(): Float {
         val idle = SystemClock.uptimeMillis() - lastActivityAt
         return when {
@@ -173,6 +176,13 @@ class ViewfinderFrameView @JvmOverloads constructor(
         val iconSize = minOf(cw, ch) * 0.032f
         val baseLine = cb - ch * 0.055f
 
+        // 左侧指示灯列：自下而上依次排 ⑤ EV ± → ⑦ 闪光。
+        // 基线随内容上移时用「字体度量 + 固定间距」算净空，不再用魔术数字——
+        // 之前 ± 的文字实际高度（约 1.2×iconSize）大于两者间距（0.6×iconSize），
+        // 导致闪光闪电压在 ± 上。
+        val colLeft = cl + cw * 0.085f
+        var colBase = cb - ch * 0.28f
+
         // ⑤ 曝光补偿 ±（左侧偏下）：
         // 不能放在画面底部角落——那里有亮框和视差小角标两层横线，± 文字会压线。
         // 放到左侧、垂直约 7/10 高度处，四周留出净空（与真机 T3 左侧指示灯位一致）。
@@ -183,17 +193,18 @@ class ViewfinderFrameView @JvmOverloads constructor(
                 typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
             }
             val text = if (st.evSteps > 0) "+${st.evSteps}" else st.evSteps.toString()
-            val evX = cl + cw * 0.085f
-            val evBase = cb - ch * 0.30f
-            canvas.drawText(text, evX, evBase, pmPaint)
+            canvas.drawText(text, colLeft, colBase, pmPaint)
             canvas.drawText(
-                "±", evX + pmPaint.measureText(text) + 3 * density, evBase, pmPaint
+                "±", colLeft + pmPaint.measureText(text) + 3 * density, colBase, pmPaint
             )
+            // 上移到文字顶部之上，再留一段净空
+            colBase += pmPaint.fontMetrics.ascent - INDICATOR_GAP
         }
 
-        // ⑦ 闪光指示（左侧，位于补偿标记上方）
+        // ⑦ 闪光指示（左侧，紧贴 EV 上方；无 EV 时固定在同高度，避免忽上忽下）
         if (st.flash != LedMode.OFF) {
-            drawBolt(canvas, cl + cw * 0.09f, cb - ch * 0.30f - iconSize * 2.2f, iconSize * 1.6f, st.flash, alpha)
+            val boltH = iconSize * 1.6f
+            drawBolt(canvas, colLeft + 1.5f * density, colBase - boltH, boltH, st.flash, alpha)
         }
 
         // ⑥ 对焦指示绿色 LED：画面下方居中

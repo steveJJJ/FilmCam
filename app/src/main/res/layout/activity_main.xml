@@ -147,13 +147,13 @@
             android:focusable="true"
             android:contentDescription="当前胶卷" />
 
-        <!-- 中：快门 -->
+        <!-- 中：快门（与两翼留 56dp，避免误触胶卷/暗房） -->
         <View
             android:id="@+id/btnShutter"
             android:layout_width="72dp"
             android:layout_height="72dp"
-            android:layout_marginStart="32dp"
-            android:layout_marginEnd="32dp"
+            android:layout_marginStart="56dp"
+            android:layout_marginEnd="56dp"
             android:layout_gravity="center"
             android:background="@drawable/bg_shutter" />
 
