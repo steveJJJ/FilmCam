@@ -36,6 +36,23 @@ object FilmStockMapper {
         "TRI-X 400"        to ("kodak_tri_x_400"             to "ilford_multigrade_iv_rc"),
         "HP5 PLUS"         to ("ilford_hp5_plus_400"         to "ilford_multigrade_iv_rc"),
         "CN800"            to ("cinestill_800t"               to "kodak_endura_premier"),
+        // ---- 2025-11 扩充：引擎 catalog 全量 25 支胶卷 ----
+        "C200"             to ("fujifilm_c200"                to "fujifilm_crystal_archive_typeii"),
+        "NEOPAN ACROS 100 II" to ("fujifilm_neopan_acros_100_ii" to "ilford_multigrade_iv_rc"),
+        "PRO 400H"         to ("fujifilm_pro_400h"            to "fujifilm_crystal_archive_typeii"),
+        "PROVIA 100F"      to ("fujifilm_provia_100f"         to "fujifilm_crystal_archive_typeii"),
+        "VELVIA 100"       to ("fujifilm_velvia_100"          to "fujifilm_crystal_archive_typeii"),
+        "EKTACHROME 100"   to ("kodak_ektachrome_100"         to "kodak_endura_premier"),
+        "PORTRA 160"       to ("kodak_portra_160"             to "kodak_portra_endura"),
+        "PORTRA 800"       to ("kodak_portra_800"             to "kodak_portra_endura"),
+        "PORTRA 800 PUSH 1" to ("kodak_portra_800_push1"      to "kodak_portra_endura"),
+        "PORTRA 800 PUSH 2" to ("kodak_portra_800_push2"      to "kodak_portra_endura"),
+        "T-MAX 100"        to ("kodak_tmax_100"               to "ilford_multigrade_iv_rc"),
+        "ULTRAMAX 400"     to ("kodak_ultramax_400"           to "kodak_endura_premier"),
+        "VERITA 200D"      to ("kodak_verita_200d"            to "kodak_endura_premier"),
+        "VISION3 50D"      to ("kodak_vision3_50d"            to "kodak_2383"),
+        "VISION3 200T"     to ("kodak_vision3_200t"           to "kodak_2383"),
+        "VISION3 500T"     to ("kodak_vision3_500t"           to "kodak_2383"),
     )
 
     // ---------- stock_catalog.json 名称缓存 ----------
