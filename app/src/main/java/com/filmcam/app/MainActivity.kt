@@ -195,11 +195,11 @@ class MainActivity : AppCompatActivity() {
                         // 比	rawX 减 getLocationOnScreen 更可靠——小窗/窗口偏移时后者会错位）
                         val fx = event.x
                         val fy = event.y
-                        val focused = cameraController?.focusAt(
+                        // 点屏对焦：不做任何视觉标记，合焦后仅给一次短震动
+                        cameraController?.focusAt(
                             fx, fy,
                             binding.glSurfaceView.width, binding.glSurfaceView.height
-                        ) { vibrate(15) } ?: false
-                        if (focused) showFocusRing(fx, fy)
+                        ) { vibrate(15) }
                     }
                 }
             }
@@ -947,10 +947,6 @@ class MainActivity : AppCompatActivity() {
         } catch (_: Exception) {}
     }
 
-    /** 点屏对焦指示：T3 中央 AF 标记（圆圈+竖线）在点击处收拢，短暂停留后淡出 */
-    private fun showFocusRing(fx: Float, fy: Float) {
-        binding.viewfinderFrame.showFocusMarker(fx, fy)
-    }
 
     /** 快门反馈：播放真实 T3 快门声 + 振动（过卷声暂不播放，待找到素材后加入） */
     private fun playShutterFeedback() {

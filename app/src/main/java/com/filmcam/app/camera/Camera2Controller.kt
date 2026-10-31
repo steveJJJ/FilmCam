@@ -46,6 +46,15 @@ class Camera2Controller(private val context: Context) {
     private var minFocusDistance = 0f   // 最近对焦距离（最大屈光度），在 start 时读取
     private var defocusDistance: Float? = null  // null=自动对焦
 
+    // 点屏对焦状态：afRegion 为点屏测光/对焦区，afLocked 表示扫焦完成已锁定
+    private var afRegion: android.hardware.camera2.params.MeteringRectangle? = null
+    private var afLocked = false
+    private var pendingFocusCb: (() -> Unit)? = null
+    private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val focusTimeout = Runnable {
+        if (!afLocked) { afLocked = true; fireFocusCallback() }
+    }
+
     // 复刻康泰时 T3 35mm 视角：主摄等效约23mm，裁切至35mm ≈ 1.52x
     private var zoomRatio = 1.52f
 
@@ -205,13 +214,21 @@ class Camera2Controller(private val context: Context) {
                 exposureComp.coerceIn(aeCompRange.first, aeCompRange.last)
             )
         }
-        // 对焦：模拟失焦用手动固定对焦距离，否则自动连续对焦
+        // 对焦：模拟失焦用手动固定对焦距离；点屏后切 AUTO 并锁定焦点（T3 半按锁定手感）；
+        // 未点屏时才用连续对焦
         val d = defocusDistance
         if (d != null) {
             builder.set(CaptureRequest.CONTROL_AF_MODE, android.hardware.camera2.CameraMetadata.CONTROL_AF_MODE_OFF)
             builder.set(CaptureRequest.LENS_FOCUS_DISTANCE, d)
         } else {
-            builder.set(CaptureRequest.CONTROL_AF_MODE, android.hardware.camera2.CameraMetadata.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
+            val region = afRegion
+            if (region != null) {
+                builder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_AUTO)
+                builder.set(CaptureRequest.CONTROL_AF_REGIONS, arrayOf(region))
+                builder.set(CaptureRequest.CONTROL_AE_REGIONS, arrayOf(region))
+            } else {
+                builder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
+            }
         }
         // 复刻 T3 35mm 视角：主摄裁切（需 Android 11+，S25 Ultra 支持）
         if (android.os.Build.VERSION.SDK_INT >= 30) {
@@ -224,6 +241,10 @@ class Camera2Controller(private val context: Context) {
      * 实时生效于预览和拍照。focusRatio 0~1，越小失焦越轻。
      */
     fun setDefocus(enabled: Boolean, focusRatio: Float = 0.6f) {
+        if (!enabled) {
+            afRegion = null
+            afLocked = false
+        }
         defocusDistance = if (enabled && minFocusDistance > 0f) minFocusDistance * focusRatio else null
         previewRequestBuilder?.let {
             applyManualSettings(it)
@@ -281,21 +302,57 @@ class Camera2Controller(private val context: Context) {
                 half * 2, half * 2, 1000
             )
 
+            // 关键：CONTROL_AF_MODE_CONTINUOUS_PICTURE 下相机框架会忽略 AF_TRIGGER，
+            // 点屏只影响测光→看起来"只有测光变了没对上焦"。这里切换到 AUTO 模式并触发一次扫焦，
+            // 完成锁定后保持（T3 半按锁定手感），再次点屏才重新对焦。
+            afRegion = region
+            afLocked = false
+            pendingFocusCb = onFocused
+            builder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_AUTO)
             builder.set(CaptureRequest.CONTROL_AF_REGIONS, arrayOf(region))
             builder.set(CaptureRequest.CONTROL_AE_REGIONS, arrayOf(region))
-            // 先取消上一次未完的触发，再启动一次扫焦
-            builder.set(CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_CANCEL)
-            session.capture(builder.build(), null, backgroundHandler)
             builder.set(CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_START)
-            session.capture(builder.build(), null, backgroundHandler)
-            builder.set(CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_IDLE)
-            session.setRepeatingRequest(builder.build(), null, backgroundHandler)
+            session.setRepeatingRequest(builder.build(), afStateCallback, backgroundHandler)
 
-            onFocused?.let { cb -> backgroundHandler?.postDelayed({ runCatching { cb() } }, 700) }
+            // 兜底：部分设备不回调 LOCKED 状态，2.5s 后仍给一次反馈
+            backgroundHandler?.removeCallbacks(focusTimeout)
+            backgroundHandler?.postDelayed(focusTimeout, 2500)
             true
         } catch (_: Exception) {
             false
         }
+    }
+
+    /** 扫焦状态监听：锁定/失败锁定即回调反馈，并把触发置回 IDLE 保持焦点 */
+    private val afStateCallback = object : android.hardware.camera2.CameraCaptureSession.CaptureCallback() {
+        override fun onCaptureCompleted(
+            session: android.hardware.camera2.CameraCaptureSession,
+            request: CaptureRequest,
+            result: android.hardware.camera2.TotalCaptureResult
+        ) {
+            val state = result.get(android.hardware.camera2.CaptureResult.CONTROL_AF_STATE)
+            android.util.Log.i("Cam2AF", "afState=$state")
+            if (state == android.hardware.camera2.CaptureResult.CONTROL_AF_STATE_FOCUSED_LOCKED ||
+                state == android.hardware.camera2.CaptureResult.CONTROL_AF_STATE_NOT_FOCUSED_LOCKED
+            ) {
+                backgroundHandler?.removeCallbacks(focusTimeout)
+                afLocked = true
+                // 触发位回到 IDLE，避免重复扫焦；AF 仍停在锁定位置
+                previewRequestBuilder?.set(
+                    CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_IDLE
+                )
+                runCatching {
+                    previewRequestBuilder?.let { session.setRepeatingRequest(it.build(), null, backgroundHandler) }
+                }
+                fireFocusCallback()
+            }
+        }
+    }
+
+    private fun fireFocusCallback() {
+        val cb = pendingFocusCb ?: return
+        pendingFocusCb = null
+        mainHandler.post { runCatching { cb.invoke() } }
     }
 
     fun enableFlash(enabled: Boolean) {

@@ -5,7 +5,6 @@ import android.graphics.Canvas
 import android.graphics.Paint
 import android.util.AttributeSet
 import android.view.View
-import androidx.core.animation.doOnEnd
 
 /**
  * 康泰时 T3 取景器常驻标记层，按真机取景玻璃刻线复刻：
@@ -23,7 +22,7 @@ class ViewfinderFrameView @JvmOverloads constructor(
 ) : View(context, attrs, defStyleAttr) {
 
     private val density = resources.displayMetrics.density
-    private val stroke = 1.6f * density
+    private val stroke = 3.0f * density
 
     // 大亮框角标
     private val brightPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -35,7 +34,7 @@ class ViewfinderFrameView @JvmOverloads constructor(
     // 内侧视差小角标：更细更淡
     private val parallaxPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
-        strokeWidth = stroke * 0.8f
+        strokeWidth = stroke * 0.85f
         color = 0x99FFFFFF.toInt()
     }
 
@@ -44,55 +43,6 @@ class ViewfinderFrameView @JvmOverloads constructor(
         style = Paint.Style.STROKE
         strokeWidth = stroke
         color = 0xB3FFFFFF.toInt()
-    }
-
-    // 点屏对焦标记（与中央标记同款，动画显示在点按处）
-    private val markerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.STROKE
-        strokeWidth = 1.8f * density
-        color = 0xFFFFFFFF.toInt()
-    }
-    private var markerX = 0f
-    private var markerY = 0f
-    private var markerAlpha = 0f
-    private var markerScale = 1f
-    private var markerAnim: android.animation.ValueAnimator? = null
-
-    /**
-     * 在点按处显示对焦标记：收拢(160ms) → 停留(650ms) → 淡出(280ms)。
-     * 坐标为 View 内坐标（与 glSurfaceView 全屏一致）。
-     */
-    fun showFocusMarker(x: Float, y: Float) {
-        markerX = x
-        markerY = y
-        markerAnim?.cancel()
-        val settle = android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
-            duration = 160
-            addUpdateListener {
-                val t = it.animatedValue as Float
-                markerAlpha = 0.2f + 0.8f * t
-                markerScale = 1.5f - 0.5f * t
-                invalidate()
-            }
-            doOnEnd {
-                postDelayed({
-                    val fade = android.animation.ValueAnimator.ofFloat(1f, 0f).apply {
-                        duration = 280
-                        addUpdateListener { a ->
-                            markerAlpha = a.animatedValue as Float
-                            invalidate()
-                        }
-                        doOnEnd {
-                            markerAlpha = 0f
-                            invalidate()
-                        }
-                    }
-                    fade.start()
-                }, 650)
-            }
-        }
-        settle.start()
-        markerAnim = settle
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -123,21 +73,15 @@ class ViewfinderFrameView @JvmOverloads constructor(
         val pLen = cw * 0.035f
         drawBrackets(canvas, cl + pInset, ct + pInset, cr - pInset, cb - pInset, pLen, parallaxPaint)
 
-        // ---- 中央 AF 标记：圆圈 + 中央竖线 ----
+        // ---- 中央 AF 标记：左右两段弧括号（上下留缺口，中间不相连、无竖线）----
         val cx = (cl + cr) / 2f
         val cy = (ct + cb) / 2f
         val r = minOf(cw, ch) * 0.055f
-        canvas.drawCircle(cx, cy, r, centerPaint)
-        val vHalf = r * 0.85f
-        canvas.drawLine(cx, cy - vHalf, cx, cy + vHalf, centerPaint)
+        val oval = android.graphics.RectF(cx - r, cy - r, cx + r, cy + r)
+        // Android 角度：0°为3点方向、顺时针增大；左右各 140°，上下各留 40° 缺口
+        canvas.drawArc(oval, 110f, 140f, false, centerPaint)
+        canvas.drawArc(oval, -70f, 140f, false, centerPaint)
 
-        // ---- 点屏对焦标记（同款圆+竖线，动画） ----
-        if (markerAlpha > 0f) {
-            markerPaint.alpha = (markerAlpha * 255).toInt().coerceIn(0, 255)
-            val mr = r * markerScale
-            canvas.drawCircle(markerX, markerY, mr, markerPaint)
-            canvas.drawLine(markerX, markerY - mr * 0.85f, markerX, markerY + mr * 0.85f, markerPaint)
-        }
     }
 
     /** 在四角画直角括号（l/t/r/b 为角标外沿矩形，len 为横向角标边长，竖向略长） */
