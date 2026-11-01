@@ -26,10 +26,12 @@ class TitanBodyDrawable : Drawable() {
         val b: Rect = bounds
         if (b.isEmpty) return
 
-        // 1) 受光：顶部偏亮（环境光落在肩部），中段最暗，底部一线反射
+        // 1) 受光：顶部偏亮（环境光落在肩部），中段最暗，底部一线反射。
+        //    取色与 BodyTheme.bodyTopRgb/Mid/Bot 同源（裸钛在自然光下偏暖的香槟灰，
+        //    不是不锈钢冷银），GL 那侧的留白用的是同一组值。
         paint.shader = LinearGradient(
             0f, b.top.toFloat(), 0f, b.bottom.toFloat(),
-            intArrayOf(0xFFC9CDD2.toInt(), 0xFFAEB2B8.toInt(), 0xFFBFC3C8.toInt()),
+            intArrayOf(0xFFDAD2C4.toInt(), 0xFFC0B7A8.toInt(), 0xFFCEC6B8.toInt()),
             floatArrayOf(0f, 0.46f, 1f),
             Shader.TileMode.CLAMP
         )
@@ -44,7 +46,8 @@ class TitanBodyDrawable : Drawable() {
         var y = top
         var i = 0
         while (y < bottom) {
-            paint.color = if (i % 2 == 0) 0x14FFFFFF else 0x14000000
+            // 亮纹用暖白（不是纯白），暗纹用纯黑，钛面上才不会显出蓝灰调
+            paint.color = if (i % 2 == 0) 0x16FFF6E6.toInt() else 0x15000000
             canvas.drawRect(b.left.toFloat(), y, b.right.toFloat(), y + 1f, paint)
             y += step
             i++

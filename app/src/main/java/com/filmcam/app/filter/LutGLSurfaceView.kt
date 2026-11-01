@@ -39,6 +39,17 @@ class LutGLSurfaceView @JvmOverloads constructor(
     var debugRotateOverride: Int = -1
         set(value) { field = value; android.util.Log.i("RotateTest", "override set $value") }
 
+    /**
+     * 机身配色：true = 钛银。取景画面之外的留白（letterbox）在真机上是**机身外壳**，
+     * 不是黑边——黑钛档画黑，钛银档画拉丝钛面。改这个会立刻触发一帧重绘。
+     */
+    var bodyTitan: Boolean = false
+        set(value) {
+            if (field == value) return
+            field = value
+            requestRender()
+        }
+
     private var renderer: LutRenderer? = null
 
     init {
@@ -176,6 +187,20 @@ class LutGLSurfaceView @JvmOverloads constructor(
             GLES30.glUniform1f(GLES30.glGetUniformLocation(program, "uOffsetY"), offsetY)
             GLES30.glUniform1f(GLES30.glGetUniformLocation(program, "uMode"), mode)
 
+            // 机身外壳：留白区域按机身配色画（黑=黑漆钛，钛银=拉丝钛面）
+            val titan = bodyTitan
+            GLES30.glUniform1f(GLES30.glGetUniformLocation(program, "uBodyTitan"),
+                if (titan) 1f else 0f)
+            if (titan) {
+                val theme = com.filmcam.app.ui.BodyTheme
+                GLES30.glUniform3fv(GLES30.glGetUniformLocation(program, "uBodyTop"), 1, theme.bodyTopRgb, 0)
+                GLES30.glUniform3fv(GLES30.glGetUniformLocation(program, "uBodyMid"), 1, theme.bodyMidRgb, 0)
+                GLES30.glUniform3fv(GLES30.glGetUniformLocation(program, "uBodyBot"), 1, theme.bodyBotRgb, 0)
+                GLES30.glUniform1f(GLES30.glGetUniformLocation(program, "uBodyH"), viewH.toFloat())
+                GLES30.glUniform1f(GLES30.glGetUniformLocation(program, "uBodyStep"),
+                    (BRUSH_STEP_DP * resources.displayMetrics.density).coerceAtLeast(1f))
+            }
+
             vertexBuffer.position(0)
             val posLoc = GLES30.glGetAttribLocation(program, "aPosition")
             GLES30.glEnableVertexAttribArray(posLoc)
@@ -222,6 +247,9 @@ class LutGLSurfaceView @JvmOverloads constructor(
 
     companion object {
 
+        /** 拉丝纹间距（dp）：与 TitanBodyDrawable 保持一致，钛面板是细密横纹不是镜面 */
+        private const val BRUSH_STEP_DP = 3f
+
         private val VERTEX_SHADER = """#version 300 es
         layout(location = 0) in vec4 aPosition;
         layout(location = 1) in vec2 aTexCoord;
@@ -247,6 +275,13 @@ class LutGLSurfaceView @JvmOverloads constructor(
         uniform float uFitHeight;
         uniform float uOffsetY;
         uniform float uMode;
+        // 机身外壳（取景画面之外的留白）：uBodyTitan=1 时按钛面画，否则纯黑
+        uniform float uBodyTitan;
+        uniform vec3 uBodyTop;
+        uniform vec3 uBodyMid;
+        uniform vec3 uBodyBot;
+        uniform float uBodyH;      // 视口高度（像素），拉丝按像素起纹
+        uniform float uBodyStep;   // 拉丝间距（像素）
         in vec2 vTexCoord;
         out vec4 fragColor;
 
@@ -265,7 +300,19 @@ class LutGLSurfaceView @JvmOverloads constructor(
             }
 
             if (texX < 0.0 || texX > 1.0 || texY < 0.0 || texY > 1.0) {
-                fragColor = vec4(0.0, 0.0, 0.0, 1.0);
+                // 画面之外是机身外壳，不是"黑边"：钛银档画裸钛面（暖香槟灰 + 细横拉丝），
+                // 与 TitanBodyDrawable 同一套受光/起纹逻辑，黑钛档维持纯黑。
+                if (uBodyTitan < 0.5) {
+                    fragColor = vec4(0.0, 0.0, 0.0, 1.0);
+                    return;
+                }
+                float t = clamp(1.0 - vTexCoord.y, 0.0, 1.0);   // 0=顶 1=底
+                vec3 body = t < 0.46
+                    ? mix(uBodyTop, uBodyMid, t / 0.46)
+                    : mix(uBodyMid, uBodyBot, (t - 0.46) / 0.54);
+                float band = fract(t * uBodyH / max(uBodyStep, 1.0));
+                body *= band < 0.5 ? 1.04 : 0.966;
+                fragColor = vec4(body, 1.0);
                 return;
             }
 

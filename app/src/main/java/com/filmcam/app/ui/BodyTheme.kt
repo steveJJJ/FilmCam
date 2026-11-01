@@ -53,29 +53,39 @@ object BodyTheme {
         if (isTitan) TitanBodyDrawable() else ColorDrawable(Color.BLACK)
 
     /** 机身底色（纯色版，用于需要 int 的地方，如状态栏） */
-    val bodyColor: Int get() = if (isTitan) 0xFFB4B8BD.toInt() else Color.BLACK
+    val bodyColor: Int get() = if (isTitan) 0xFFC6BEB0.toInt() else Color.BLACK
 
-    /** 机身底上的主文字/图标色：黑底浅字，银底深字（像蚀刻在钛面上） */
-    val onBodyText: Int get() = if (isTitan) 0xFF2E3136.toInt() else 0xFFE8E4DA.toInt()
+    /**
+     * 钛面受光三色（顶/中/底，0-1 的 RGB）。
+     * 裸钛不是不锈钢那种冷银——自然光下是偏暖的香槟灰，
+     * 所以这里整体往红黄方向拉：顶肩受光最亮、中段最暗、底部一线反射回一点。
+     * 主页的上下留白是 GL 画的（见 LutGLSurfaceView），也用这三个值。
+     */
+    val bodyTopRgb: FloatArray get() = if (isTitan) floatArrayOf(0.855f, 0.824f, 0.769f) else floatArrayOf(0f, 0f, 0f)
+    val bodyMidRgb: FloatArray get() = if (isTitan) floatArrayOf(0.753f, 0.718f, 0.659f) else floatArrayOf(0f, 0f, 0f)
+    val bodyBotRgb: FloatArray get() = if (isTitan) floatArrayOf(0.808f, 0.776f, 0.722f) else floatArrayOf(0f, 0f, 0f)
+
+    /** 机身底上的主文字/图标色：黑底浅字，钛底深字（像蚀刻在钛面上，偏暖的深灰） */
+    val onBodyText: Int get() = if (isTitan) 0xFF2E2B27.toInt() else 0xFFE8E4DA.toInt()
 
     /** 机身底上的次要文字 */
-    val onBodyTextSecondary: Int get() = if (isTitan) 0xFF5C6066.toInt() else 0xFF8A8A8E.toInt()
+    val onBodyTextSecondary: Int get() = if (isTitan) 0xFF5F5A52.toInt() else 0xFF8A8A8E.toInt()
 
-    /** 面板/弹层底色（弹窗、底部弹层不是机身，比机身略深一档，保持"面板"层次） */
-    val panelBg: Int get() = if (isTitan) 0xFFC3C7CC.toInt() else 0xFF1A1A1A.toInt()
+    /** 面板/弹层底色（弹窗、底部弹层不是机身，比机身略亮一档，保持"面板"层次） */
+    val panelBg: Int get() = if (isTitan) 0xFFD3CBBD.toInt() else 0xFF1A1A1A.toInt()
 
     /** 面板底上的主文字 */
-    val panelText: Int get() = if (isTitan) 0xFF2E3136.toInt() else 0xFFE8E4DA.toInt()
+    val panelText: Int get() = if (isTitan) 0xFF2E2B27.toInt() else 0xFFE8E4DA.toInt()
 
     /** 面板底上的次要文字 */
-    val panelTextSecondary: Int get() = if (isTitan) 0xFF5C6066.toInt() else 0xFF8A8A8E.toInt()
+    val panelTextSecondary: Int get() = if (isTitan) 0xFF5F5A52.toInt() else 0xFF8A8A8E.toInt()
 
     /** 弹窗主题（AlertDialog 的 style） */
     val dialogTheme: Int get() =
         if (isTitan) com.filmcam.app.R.style.TitanDialog else com.filmcam.app.R.style.DarkDialog
 
-    /** 过卷/冲洗遮罩：黑钛是全黑，钛银是"机身面板盖上来"的银面 */
-    val overlayColor: Int get() = if (isTitan) 0xFFB4B8BD.toInt() else Color.BLACK
+    /** 过卷/冲洗遮罩：黑钛是全黑，钛银是"机身面板盖上来"的钛面 */
+    val overlayColor: Int get() = if (isTitan) 0xFFC6BEB0.toInt() else Color.BLACK
 
     // ===== 整棵 View 树的配色重映射 =====
 
@@ -85,29 +95,33 @@ object BodyTheme {
      * 品牌色和暗房氛围一起改掉。
      */
     private val TEXT_PAIRS = mapOf(
-        0xFFFFFFFF.toInt() to 0xFF2E3136.toInt(),
-        0xFFE8E4DA.toInt() to 0xFF2E3136.toInt(),
-        0xFFE8D5C8.toInt() to 0xFF3A3E43.toInt(),
-        0xFFCBC7BE.toInt() to 0xFF3A3E43.toInt(),
-        0xFFC9C5BC.toInt() to 0xFF3A3E43.toInt(),
-        0xFFB8B8BC.toInt() to 0xFF5C6066.toInt(),
-        0xFF9A9A9E.toInt() to 0xFF5C6066.toInt(),
-        0xFF8A8A8E.toInt() to 0xFF5C6066.toInt(),
-        0xFF77777C.toInt() to 0xFF5C6066.toInt(),
-        0xFF6E6E6E.toInt() to 0xFF5C6066.toInt(),
-        0xFF6A6A6E.toInt() to 0xFF5C6066.toInt(),
-        0xFF999999.toInt() to 0xFF5C6066.toInt(),
-        0xFF666666.toInt() to 0xFF5C6066.toInt()
+        0xFFFFFFFF.toInt() to 0xFF2E2B27.toInt(),
+        0xFFE8E4DA.toInt() to 0xFF2E2B27.toInt(),
+        0xFFE8D5C8.toInt() to 0xFF3A3630.toInt(),
+        // 关于页开源致谢是代码里动态建的文本，这几个色必须也在表内，
+        // 否则切到钛银后它们还是浅字，银底上直接糊掉（踩过一次）。
+        0xFFD8D4CC.toInt() to 0xFF2E2B27.toInt(),
+        0xFFCBC7BE.toInt() to 0xFF3A3630.toInt(),
+        0xFFC9C5BC.toInt() to 0xFF3A3630.toInt(),
+        0xFFB8B8BC.toInt() to 0xFF5F5A52.toInt(),
+        0xFF9A9A9E.toInt() to 0xFF5F5A52.toInt(),
+        0xFF8A8A8E.toInt() to 0xFF5F5A52.toInt(),
+        0xFF7C7C80.toInt() to 0xFF5F5A52.toInt(),
+        0xFF77777C.toInt() to 0xFF5F5A52.toInt(),
+        0xFF6E6E6E.toInt() to 0xFF5F5A52.toInt(),
+        0xFF6A6A6E.toInt() to 0xFF5F5A52.toInt(),
+        0xFF999999.toInt() to 0xFF5F5A52.toInt(),
+        0xFF666666.toInt() to 0xFF5F5A52.toInt()
     )
 
     /** 面板底色配对表：深底 ↔ 钛面（比机身略亮一档，保持"面板"层次） */
     private val BG_PAIRS = mapOf(
-        Color.BLACK to 0xFFB4B8BD.toInt(),
-        0xFF111111.toInt() to 0xFFB4B8BD.toInt(),
-        0xFF1A1A1A.toInt() to 0xFFC3C7CC.toInt(),
-        0xFF141416.toInt() to 0xFFC3C7CC.toInt(),
-        0xFF222222.toInt() to 0xFFB0B4B9.toInt(),
-        0xFF26262A.toInt() to 0xFFB0B4B9.toInt()
+        Color.BLACK to 0xFFC6BEB0.toInt(),
+        0xFF111111.toInt() to 0xFFC6BEB0.toInt(),
+        0xFF1A1A1A.toInt() to 0xFFD3CBBD.toInt(),
+        0xFF141416.toInt() to 0xFFD3CBBD.toInt(),
+        0xFF222222.toInt() to 0xFFC0B8AA.toInt(),
+        0xFF26262A.toInt() to 0xFFC0B8AA.toInt()
     )
 
     private val TEXT_TO_TITAN = TEXT_PAIRS

@@ -466,6 +466,9 @@ class MainActivity : AppCompatActivity() {
         // （外壳在钛银档是拉丝纹理，不是纯色，所以要在重映射之后单独设）
         theme.applyToViewTree(binding.root)
         binding.root.background = theme.bodyBackground()
+        // 取景画面之外的留白是 GL 画的（GLSurfaceView 铺满全屏，会盖住 root 的底），
+        // 机身配色必须同步给 GL，否则切到钛银只有系统栏变色、主页还是一片黑。
+        binding.glSurfaceView.bodyTitan = theme.isTitan
         binding.developingOverlay.setBackgroundColor(theme.overlayColor)
         binding.tvDevelopingText.setTextColor(theme.onBodyText)
         binding.brandLogo.setImageResource(

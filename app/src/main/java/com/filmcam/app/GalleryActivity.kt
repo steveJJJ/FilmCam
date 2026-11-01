@@ -55,7 +55,7 @@ class GalleryActivity : AppCompatActivity() {
         com.filmcam.app.ui.BodyTheme.load(this)
         val root = findViewById<View>(android.R.id.content)
         com.filmcam.app.ui.BodyTheme.applyToViewTree(root)
-        root.setBackgroundColor(com.filmcam.app.ui.BodyTheme.bodyColor)
+        root.background = com.filmcam.app.ui.BodyTheme.bodyBackground()
         com.filmcam.app.ui.BodyTheme.applySystemBars(window)
     }
 
