@@ -16,8 +16,8 @@ import kotlin.math.abs
 import kotlin.math.min
 
 /**
- * 过卷动画：**胶卷（平面，原样不旋转不缩放）从左到右走**——
- * 像过片时胶片被拖着往右走：从左边缘外进场 → 匀速向右 → 走出右边缘 → 再从左边进来，
+ * 过卷动画：**胶卷（平面，原样不旋转不缩放）向右走一个图标的宽度，然后原地循环**——
+ * 以中心为基准，向左半个图标起步 → 匀速向右走满一个图标 → 立刻回到起点继续，
  * 循环不断。全程画面里只有一个胶卷，身后（左侧）带横向拖影（运动模糊）。
  *
  * 走过的版本：图标原地空转 → 单卷横掠+自转 → 双卷轴+胶带 → 端面绕 Z 轴转 →
@@ -48,17 +48,16 @@ class FilmReelView @JvmOverloads constructor(
         if (b == null || w <= 4f || h <= 4f) return
 
         // 胶卷按自身比例放进视图高度
-        val s = min(w * 0.55f / b.width.toFloat(), h * 0.94f / b.height.toFloat())
+        val s = min(w * 0.34f / b.width.toFloat(), h * 0.58f / b.height.toFloat())
         val fw = b.width * s
         val fh = b.height * s
         val top = (h - fh) / 2f
 
-        // 一个周期 = 视图宽 + 胶卷宽：走出右边缘的瞬间正好从左边重新进场，
-        // 既不会同时出现两个，也不会出现空档。
-        val period = w + fw
-        val x = -fw + (scroll % period)
+        // 一个周期 = 一个图标的宽度：图标以中心为基准，向左半个图标 → 向右半个图标，
+        // 走到头立刻回到起点继续，位移正好一个图标大小，原地循环。
+        val x = (w - fw) / 2f - fw / 2f + (scroll % fw)
 
-        val trail = (abs(speed) / 55f).coerceIn(0f, fw * 0.55f)
+        val trail = (abs(speed) / 85f).coerceIn(0f, fw * 0.5f)
 
         // 身后（左侧）的残影：横向运动模糊
         if (trail > 1.5f) {
@@ -91,7 +90,7 @@ class FilmReelView @JvmOverloads constructor(
     fun startSpinning(pxPerSecond: Float) {
         stopSpinning()
         speed = pxPerSecond
-        applyBlur((abs(pxPerSecond) / 700f).coerceIn(0f, 3f))
+        applyBlur((abs(pxPerSecond) / 420f).coerceIn(0f, 3f))
         lastFrameMs = 0L
         animator = ValueAnimator.ofFloat(0f, 1f).apply {
             duration = 4000L

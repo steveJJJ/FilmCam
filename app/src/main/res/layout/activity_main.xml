@@ -228,8 +228,8 @@
             <!-- 过片动画：胶卷（平面）从左到右被拉着走 -->
             <com.filmcam.app.ui.FilmReelView
                 android:id="@+id/ivDeveloping"
-                android:layout_width="220dp"
-                android:layout_height="160dp"
+                android:layout_width="150dp"
+                android:layout_height="110dp"
                 android:contentDescription="过卷" />
             <TextView
                 android:id="@+id/tvDevelopingText"
