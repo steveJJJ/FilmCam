@@ -108,7 +108,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         // 屏幕快门按钮（快门键行程更长、更实，给一记比功能键更重的触感）
-        binding.btnShutter.hapticClick(ms = 16, amp = 70) { triggerShutter() }
+        binding.btnShutter.hapticClick(ms = 32, amp = 235) { triggerShutter() }
 
         // 点击胶卷名 → 打开胶卷选择器
         binding.tvFilmName.hapticClick { showFilmRollPicker() }
@@ -200,7 +200,7 @@ class MainActivity : AppCompatActivity() {
                     cameraController?.focusAt(
                         fx, fy,
                         binding.glSurfaceView.width, binding.glSurfaceView.height
-                    ) { vibrate(15) }
+                    ) { vibrate(24, 185) }
                     return true
                 }
             }
@@ -244,7 +244,7 @@ class MainActivity : AppCompatActivity() {
                         wbDragging = true
                         wbVisible = true
                         binding.viewfinderFrame.notifyActivity()
-                        vibrate(15)          // 进入 WB 手势给一记轻触，确认「抓住了」
+                        vibrate(20, 140)     // 进入 WB 手势给一记轻触，确认「抓住了」
                         applyWbIndex()
                     }
                     if (wbDragging) {
@@ -253,7 +253,7 @@ class MainActivity : AppCompatActivity() {
                         if (idx != wbIndex) {
                             wbIndex = idx
                             applyWbIndex()
-                            vibrate(12)
+                            vibrate(16, 120)
                         }
                         return@setOnTouchListener true
                     }
@@ -266,7 +266,7 @@ class MainActivity : AppCompatActivity() {
                         setEv(newEv, persist = false)   // 抬手时统一 saveSettings
                         // 每过一档给一记轻震：曝光补偿是「档位」机械感，
                         // 手指要能感觉到自己拨过了一格（与胶卷列表滑动触感同一套语言）
-                        vibrate(10)
+                        vibrate(14, 115)
                     }
                 }
                 android.view.MotionEvent.ACTION_UP,
@@ -741,7 +741,7 @@ class MainActivity : AppCompatActivity() {
         dialog.behavior.skipCollapsed = true   // 直接全展开，避免半开状态看不到底部
         rv.layoutManager = LinearLayoutManager(this)
         val adapter = FilmRollAdapter(FilmRollRepository.rolls) { roll ->
-            vibrate(12, 45)          // 选中一支胶卷也有一记触感，和滑动/长按拖拽保持一致
+            vibrate(22, 175)         // 选中一支胶卷也有一记触感，和滑动/长按拖拽保持一致
             selectFilmRoll(roll)
             dialog.dismiss()
         }
@@ -762,7 +762,7 @@ class MainActivity : AppCompatActivity() {
                 ) {
                     super.onSelectedChanged(viewHolder, actionState)
                     if (actionState == androidx.recyclerview.widget.ItemTouchHelper.ACTION_STATE_DRAG) {
-                        vibrate(25, 70)
+                        vibrate(34, 200)
                     }
                 }
 
@@ -776,7 +776,7 @@ class MainActivity : AppCompatActivity() {
                         viewHolder.bindingAdapterPosition,
                         target.bindingAdapterPosition
                     )
-                    vibrate(12)
+                    vibrate(18, 130)
                     return true
                 }
 
@@ -809,7 +809,7 @@ class MainActivity : AppCompatActivity() {
                 if (tickAccum >= threshold && now - lastTickMs > 40) {
                     tickAccum = 0
                     lastTickMs = now
-                    vibrate(8)
+                    vibrate(12, 95)
                 }
             }
         })
@@ -877,7 +877,7 @@ class MainActivity : AppCompatActivity() {
             // 反转片拦截：与原项目一致，本版只支持负片印相纸
             if (!roll.available) {
                 showLcdNotice("反转片不支持印相")
-                vibrate(60)
+                vibrate(70, 200)
                 return
             }
             // 换卷拦截：当前卷有未冲洗帧时禁止换胶卷（对应真机拍完必须回卷才能开盖）
@@ -886,10 +886,9 @@ class MainActivity : AppCompatActivity() {
             if (active != null && pending > 0) {
                 showLcdNotice("胶卷冲洗后才能换卷")
                 // 被拦下来要有「机身顶住了」的手感：两连震，比单纯给提示更直接。
-                // 不传振幅走系统默认强度——之前用 70/255 的低振幅在真机上几乎无感，
-                // 三星的马达对低于约 1/3 强度的短脉冲基本不响应。
-                vibrate(90)
-                binding.viewfinderFrame.postDelayed({ vibrate(90) }, 140)
+                // 强度给到接近满档——早先用系统默认强度在真机上偏软，顶不住的感觉出不来。
+                vibrate(95, 235)
+                binding.viewfinderFrame.postDelayed({ vibrate(95, 235) }, 140)
                 return
             }
         }
@@ -898,8 +897,8 @@ class MainActivity : AppCompatActivity() {
         updateFilmInfo()
         saveSettings()
         // 选中一支新胶卷：给一记轻触确认，替换 LUT 的同时手上要有响应。
-        // 同样走系统默认强度，不用自定义低振幅。
-        if (fromUser) vibrate(45)
+        // 时长比按键略长，像「卷芯卡到位」的一记闷响。
+        if (fromUser) vibrate(50, 190)
     }
 
     // ===== T3 机身 UI 交互 =====
@@ -1322,8 +1321,13 @@ class MainActivity : AppCompatActivity() {
         handler.postDelayed(runnable, 1000)
     }
 
-    /** 触感反馈（统一入口，兼容 API 26/31+）。amp=-1 用系统默认强度 */
-    private fun vibrate(ms: Long, amp: Int = -1) {
+    /**
+     * 触感反馈（统一入口，兼容 API 26/31+）。
+     * amp<=0 时用 HAPTIC_AMP_DEFAULT。注意：早先这里走的是系统默认振幅（-1），
+     * 在三星这类线性马达上表现为「若有若无」，整机的按键手感因此偏轻；
+     * 现在默认档直接给到 170/255，敲击感才明显。
+     */
+    private fun vibrate(ms: Long, amp: Int = HAPTIC_AMP_DEFAULT) {
         try {
             val vibrator = if (android.os.Build.VERSION.SDK_INT >= 31) {
                 (getSystemService(android.content.Context.VIBRATOR_MANAGER_SERVICE)
@@ -1333,12 +1337,8 @@ class MainActivity : AppCompatActivity() {
                 getSystemService(android.content.Context.VIBRATOR_SERVICE) as? android.os.Vibrator
             }
             if (android.os.Build.VERSION.SDK_INT >= 26) {
-                val effect = if (amp > 0) {
-                    android.os.VibrationEffect.createOneShot(ms, amp)
-                } else {
-                    android.os.VibrationEffect.createOneShot(ms, android.os.VibrationEffect.DEFAULT_AMPLITUDE)
-                }
-                vibrator?.vibrate(effect)
+                val level = if (amp > 0) amp.coerceAtMost(255) else HAPTIC_AMP_DEFAULT
+                vibrator?.vibrate(android.os.VibrationEffect.createOneShot(ms, level))
             } else {
                 @Suppress("DEPRECATION")
                 vibrator?.vibrate(ms)
@@ -1352,7 +1352,7 @@ class MainActivity : AppCompatActivity() {
      * 这里统一包一层，避免以后新增按键漏掉触感。
      * @param ms 震动时长；@param amp 强度（1-255，越大越实）
      */
-    private fun android.view.View.hapticClick(ms: Long = 12, amp: Int = 45, action: () -> Unit) {
+    private fun android.view.View.hapticClick(ms: Long = 24, amp: Int = 175, action: () -> Unit) {
         setOnClickListener { vibrate(ms, amp); action() }
     }
 
@@ -1380,8 +1380,8 @@ class MainActivity : AppCompatActivity() {
                 shutterSoundPool?.play(shutterSoundId, 1f, 1f, 1, 0, 1f)
             }
         } catch (_: Exception) {}
-        // 快门振动（30ms 轻微触感）
-        vibrate(30)
+        // 快门振动：快门键的「段落感」要比功能键更实，给满强度
+        vibrate(38, 230)
     }
 
     private fun doCapture() {
@@ -1463,10 +1463,10 @@ class MainActivity : AppCompatActivity() {
     private fun startGearHaptics(fromMs: Long, toMs: Long, stepMs: Long) {
         var t = fromMs
         while (t <= toMs) {
-            binding.ivDeveloping.postDelayed({ if (isCapturing) vibrate(12, 48) }, t)
+            binding.ivDeveloping.postDelayed({ if (isCapturing) vibrate(18, 140) }, t)
             t += stepMs
         }
-        binding.ivDeveloping.postDelayed({ if (isCapturing) vibrate(26, 95) }, toMs + 60)
+        binding.ivDeveloping.postDelayed({ if (isCapturing) vibrate(32, 210) }, toMs + 60)
     }
 
     /** 过卷等待动画：胶片带匀速被拖过片门，持续到后台处理+保存完成（连贯不跳变） */
@@ -1498,6 +1498,15 @@ class MainActivity : AppCompatActivity() {
 
         /** 过卷声播放音量：真实录音 + 0.45 音量，避免像合成音那样"炸耳朵" */
         const val ADVANCE_VOLUME = 0.45f
+
+        /**
+         * 触感强度基准（1-255）。三星这类线性马达对低振幅短脉冲几乎不响应，
+         * 低于约 1/3 强度基本无感，所以整机触感统一抬到这个档位再按场景微调。
+         * - 轻触（滑动刻度/档位）：约 0.6 倍
+         * - 常规按键：基准值
+         * - 快门/拦截等重反馈：0.9 倍以上
+         */
+        const val HAPTIC_AMP_DEFAULT = 170
 
         // 「拍摄同款」Intent extras（写入方见 PhotoViewerActivity.shootSame）
         const val EXTRA_SAME_FILM = "same_film_stock"
