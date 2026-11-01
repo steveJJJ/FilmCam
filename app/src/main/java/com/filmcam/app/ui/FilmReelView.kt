@@ -50,28 +50,16 @@ class FilmReelView @JvmOverloads constructor(
         val fh = b.height * s
         val top = (h - fh) / 2f
 
-        // 一趟 = 窗口宽 + 胶卷宽：走出右缘的瞬间正好从左缘重新进场，
-        // 既不会同时出现两个，也不会出现空档。
-        val period = w + fw
-        val x = -fw + (flow % 1f) * period
-
-        // 进出场淡入淡出，避免边缘生硬
-        val fadeIn = ((x + fw) / (fw * 0.85f)).coerceIn(0.35f, 1f)
-        val fadeOut = ((w - x) / (fw * 0.85f)).coerceIn(0.35f, 1f)
-        val fade = min(fadeIn, fadeOut)
-
-        // 身后的残影（运动感）
-        val trail = fw * 0.42f
-        paint.alpha = (38 * fade).toInt()
-        dstRect.set(x - trail * 0.65f, top, x - trail * 0.65f + fw, top + fh)
-        canvas.drawBitmap(b, null, dstRect, paint)
-        paint.alpha = (72 * fade).toInt()
-        dstRect.set(x - trail * 0.32f, top, x - trail * 0.32f + fw, top + fh)
-        canvas.drawBitmap(b, null, dstRect, paint)
-
-        paint.alpha = (255 * fade).toInt()
-        dstRect.set(x, top, x + fw, top + fh)
-        canvas.drawBitmap(b, null, dstRect, paint)
+        // 胶卷一个紧挨一个排成队列（略微重叠，彻底没有缝隙），
+        // 整体匀速平移：窗口里永远填着胶卷，看不到接头和空档。
+        val step = fw * 0.94f
+        var x = -step + (flow % 1f) * step
+        while (x < w) {
+            paint.alpha = 255
+            dstRect.set(x, top, x + fw, top + fh)
+            canvas.drawBitmap(b, null, dstRect, paint)
+            x += step
+        }
     }
 
     fun setIcon(resId: Int) {
