@@ -107,11 +107,11 @@ class MainActivity : AppCompatActivity() {
             runOnUiThread { startCamera(surfaceTexture) }
         }
 
-        // 屏幕快门按钮
-        binding.btnShutter.setOnClickListener { triggerShutter() }
+        // 屏幕快门按钮（快门键行程更长、更实，给一记比功能键更重的触感）
+        binding.btnShutter.hapticClick(ms = 16, amp = 70) { triggerShutter() }
 
         // 点击胶卷名 → 打开胶卷选择器
-        binding.tvFilmName.setOnClickListener { showFilmRollPicker() }
+        binding.tvFilmName.hapticClick { showFilmRollPicker() }
 
         // 闪光灯控制器
         flash = FlashController(this)
@@ -145,20 +145,20 @@ class MainActivity : AppCompatActivity() {
         binding.glSurfaceView.postDelayed({ maybeShowFirstRunGuide() }, 500)
 
         // 闪光灯模式切换
-        binding.tvFlashStatus.setOnClickListener { cycleFlashMode() }
+        binding.tvFlashStatus.hapticClick { cycleFlashMode() }
 
         // 相册回看
-        binding.btnGallery.setOnClickListener {
+        binding.btnGallery.hapticClick {
             startActivity(android.content.Intent(this, GalleryActivity::class.java))
         }
 
         // 设置按钮
-        binding.settingsKey.setOnClickListener { showSettings() }
+        binding.settingsKey.hapticClick { showSettings() }
 
         // 顶部功能键：闪光灯 / 曝光补偿
-        binding.flashKey.setOnClickListener { cycleFlashMode() }
-        binding.evKey.setOnClickListener { cycleEvValue() }
-        binding.filmInfoText.setOnClickListener { showFilmRollPicker() }
+        binding.flashKey.hapticClick { cycleFlashMode() }
+        binding.evKey.hapticClick { cycleEvValue() }
+        binding.filmInfoText.hapticClick { showFilmRollPicker() }
         updateLcd()
         updateFilmInfo()
 
@@ -293,18 +293,18 @@ class MainActivity : AppCompatActivity() {
         }
 
         // 曝光补偿按钮
-        binding.btnEvPlus.setOnClickListener {
+        binding.btnEvPlus.hapticClick {
             setEv(if (exposureComp >= 3) -3 else exposureComp + 1)
         }
-        binding.btnEvMinus.setOnClickListener {
+        binding.btnEvMinus.hapticClick {
             setEv(if (exposureComp <= -3) 3 else exposureComp - 1)
         }
 
         // 专业模式
-        binding.tvProToggle.setOnClickListener { toggleProMode() }
-        binding.tvIso.setOnClickListener { cycleIso() }
-        binding.tvShutter.setOnClickListener { cycleShutter() }
-        binding.tvExposure.setOnClickListener { cycleEv() }
+        binding.tvProToggle.hapticClick { toggleProMode() }
+        binding.tvIso.hapticClick { cycleIso() }
+        binding.tvShutter.hapticClick { cycleShutter() }
+        binding.tvExposure.hapticClick { cycleEv() }
 
         // 「拍摄同款」从暗房带参数跳回（进程被杀后冷启动也走这里）
         // 参数每次都照常套用（幂等），但机身提示只在「真正新的一次跳转」给：
@@ -683,7 +683,7 @@ class MainActivity : AppCompatActivity() {
         })
 
         // 相纸选择：单选弹窗（自动 + 9 款）
-        rowPaper.setOnClickListener {
+        rowPaper.hapticClick {
             val current = prefs.getString(devKey("paper"), "") ?: ""
             val items = arrayOfNulls<String>(paperOptions.size + 1)
             items[0] = "自动（按胶卷默认）"
@@ -704,7 +704,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         // 恢复该款默认：移除当前 stockId 对应的 5 个后缀键（=回落冻结默认）
-        btnReset.setOnClickListener {
+        btnReset.hapticClick {
             prefs.edit()
                 .remove(devKey("grain"))
                 .remove(devKey("halation"))
@@ -741,6 +741,7 @@ class MainActivity : AppCompatActivity() {
         dialog.behavior.skipCollapsed = true   // 直接全展开，避免半开状态看不到底部
         rv.layoutManager = LinearLayoutManager(this)
         val adapter = FilmRollAdapter(FilmRollRepository.rolls) { roll ->
+            vibrate(12, 45)          // 选中一支胶卷也有一记触感，和滑动/长按拖拽保持一致
             selectFilmRoll(roll)
             dialog.dismiss()
         }
@@ -1343,6 +1344,16 @@ class MainActivity : AppCompatActivity() {
                 vibrator?.vibrate(ms)
             }
         } catch (_: Exception) {}
+    }
+
+    /**
+     * 机身按键的点击触感：按下先给一记短震，再执行动作。
+     * 真机上一个键按下去手指是有回馈的，纯视觉变化会让人不确定有没有按到；
+     * 这里统一包一层，避免以后新增按键漏掉触感。
+     * @param ms 震动时长；@param amp 强度（1-255，越大越实）
+     */
+    private fun android.view.View.hapticClick(ms: Long = 12, amp: Int = 45, action: () -> Unit) {
+        setOnClickListener { vibrate(ms, amp); action() }
     }
 
     /**
