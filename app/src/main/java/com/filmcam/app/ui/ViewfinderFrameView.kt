@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.RadialGradient
 import android.graphics.RectF
 import android.graphics.Shader
@@ -39,6 +40,9 @@ class ViewfinderFrameView @JvmOverloads constructor(
     /** LED 显示方式 */
     enum class LedMode { OFF, ON, BLINK_FAST, BLINK_SLOW }
 
+    /** 白平衡图标种类（对应用户可用的 WB 预设，语义等同胶片机的校色滤镜片） */
+    enum class WbIcon { AUTO, BULB, TUBE, SUN, CLOUD_SUN, SHADE, TWILIGHT }
+
     /** 取景器内的条件显示状态 */
     data class Indicators(
         val focus: LedMode = LedMode.OFF,
@@ -46,7 +50,10 @@ class ViewfinderFrameView @JvmOverloads constructor(
         val evSteps: Int = 0,              // -3 ~ +3
         val flash: LedMode = LedMode.OFF,  // 闪光指示
         val shutterLit: Set<String> = emptySet(),  // 点亮的快门档位，如 {"500","30"}
-        val shutterBlink: Boolean = false          // 快门档闪烁（实际最快档/过曝警告）
+        val shutterBlink: Boolean = false,         // 快门档闪烁（实际最快档/过曝警告）
+        val wbOn: Boolean = false,         // 白平衡面板是否在显示（横滑调 WB 期间）
+        val wbIndex: Int = 0,              // 当前 WB 档位序号
+        val wbCount: Int = 7               // 总档位数（画档位小点时用）
     )
 
     private val density = resources.displayMetrics.density
@@ -154,12 +161,16 @@ class ViewfinderFrameView @JvmOverloads constructor(
         val ch = cb - ct
 
         // ---- ① 四角大亮框角标 ----
-        val bInset = cw * 0.035f
+        // 内收量由占内容宽的 3.5% 提到 6%：原先角标贴着画面边缘，
+        // 与手机屏幕黑边只隔几十像素，看起来像屏幕 UI 而不是光学取景框。
+        // 真机 T3 的亮框是有明显余量的——取景范围本来就略小于实际成像，
+        // 框线离开边缘正是那个「视感想」的来源。
+        val bInset = cw * 0.060f
         val bLen = cw * 0.075f
         drawBrackets(canvas, cl + bInset, ct + bInset, cr - bInset, cb - bInset, bLen, brightPaint)
 
-        // ---- ② 内侧视差补偿小角标 ----
-        val pInset = cw * 0.105f
+        // ---- ② 内侧视差补偿小角标（随大框同步内收） ----
+        val pInset = cw * 0.135f
         val pLen = cw * 0.035f
         drawBrackets(canvas, cl + pInset, ct + pInset, cr - pInset, cb - pInset, pLen, parallaxPaint)
 
@@ -216,6 +227,163 @@ class ViewfinderFrameView @JvmOverloads constructor(
 
         // ⑧ 快门速度档位：右侧竖排 500 / 125 / 30 / LT
         drawShutterScale(canvas, cr - cw * 0.075f, ct, cb, st.shutterLit, st.shutterBlink, alpha)
+
+        // ⑨ 白平衡面板：改为在取景器这张「玻璃」上一并绘制，样式同 ⑤⑧，
+        //    不再用屏幕中间那块中文浮层——中文字体与这层线性标记不是一套东西。
+        if (st.wbOn) drawWbPanel(canvas, cx, cy, iconSize, st, alpha)
+    }
+
+    // ---------------------------------------------------------------
+    // 白平衡面板
+    // ---------------------------------------------------------------
+
+    /**
+     * 白平衡面板：左右一对三角箭头 + 中间的 WB 图标 + 下方一排档位小点。
+     *
+     * 位置在中央 AF 弧括号下方——既避开四角亮框和视差小角标两层横线，
+     * 也避开⑥合焦绿灯所在的底部居中位，是画面里唯一还空着的地带。
+     * 画法沿用 brightPaint 的白描边：不引入新颜色，和 ①②③ 是同一层「玻璃上的
+     * 蚀刻线」，这样在不同亮背景上都能读出来。
+     */
+    private fun drawWbPanel(
+        canvas: Canvas, cx: Float, cy: Float, iconSize: Float, st: Indicators, alpha: Float
+    ) {
+        val y = cy + iconSize * 4.2f
+        val iconH = iconSize * 2.0f
+        val iconW = iconH * 1.35f
+        val arrowH = iconH * 0.55f
+        val arrowW = arrowH * 0.72f
+        val gap = iconSize * 0.85f
+
+        val p = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = stroke * 0.78f
+            strokeCap = Paint.Cap.ROUND
+            strokeJoin = Paint.Join.ROUND
+            color = Color.argb((0xCC * alpha).toInt(), 255, 255, 255)
+        }
+
+        // 左右箭头：第一/最后一档时收淡，表示到头了
+        drawTriangleArrow(canvas, cx - iconW / 2f - gap - arrowW, y, arrowW, arrowH, false, alpha, st.wbIndex > 0)
+        drawTriangleArrow(canvas, cx + iconW / 2f + gap, y, arrowW, arrowH, true, alpha, st.wbIndex < st.wbCount - 1)
+
+        // 中间当前档位的图形图标
+        drawWbIcon(canvas, cx - iconW / 2f, y - iconH * 0.5f, iconW, iconH, st.wbIndex, p, alpha)
+
+        // 下方档位小点：当前档实心，其余空心
+        if (st.wbCount > 1) {
+            val dotR = iconSize * 0.155f
+            val dotGap = iconSize * 0.62f
+            val totalW = (st.wbCount - 1) * dotGap
+            val dy = y + iconH * 0.72f
+            for (i in 0 until st.wbCount) {
+                val dx = cx - totalW / 2f + i * dotGap
+                val selected = i == st.wbIndex
+                val dp = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = Color.argb(((if (selected) 0xE6 else 0x80) * alpha).toInt(), 255, 255, 255)
+                    style = if (selected) Paint.Style.FILL else Paint.Style.STROKE
+                    strokeWidth = stroke * 0.6f
+                }
+                canvas.drawCircle(dx, dy, dotR, dp)
+            }
+        }
+    }
+
+    /** 左右切换箭头 */
+    private fun drawTriangleArrow(
+        canvas: Canvas, x: Float, centerY: Float, w: Float, h: Float,
+        right: Boolean, alpha: Float, enabled: Boolean
+    ) {
+        val p = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.argb(((if (enabled) 0xCC else 0x4D) * alpha).toInt(), 255, 255, 255)
+        }
+        val path = Path().apply {
+            if (right) {
+                moveTo(x, centerY - h / 2f); lineTo(x + w, centerY); lineTo(x, centerY + h / 2f)
+            } else {
+                moveTo(x + w, centerY - h / 2f); lineTo(x, centerY); lineTo(x + w, centerY + h / 2f)
+            }
+            close()
+        }
+        canvas.drawPath(path, p)
+    }
+
+    /**
+     * WB 图标：七个档位各一个白描边图形。
+     * 全部 stroke 绘制，与①~④同一根线宽，保证缩放后仍是「线」而不是「块」。
+     */
+    private fun drawWbIcon(
+        canvas: Canvas, x: Float, y: Float, w: Float, h: Float, index: Int, p: Paint, alpha: Float
+    ) {
+        val cx = x + w / 2f
+        val cy = y + h / 2f
+        val r = minOf(w, h) * 0.20f
+        when (index) {
+            0 -> {                                  // AUTO：半填充的圆（自动白平衡的通用符号）
+                canvas.drawCircle(cx, cy, r, p)
+                val f = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = Color.argb((0xB3 * alpha).toInt(), 255, 255, 255)
+                    style = Paint.Style.FILL
+                }
+                canvas.drawArc(RectF(cx - r, cy - r, cx + r, cy + r), 0f, 180f, true, f)
+            }
+            1 -> {                                  // 白炽灯：灯泡
+                canvas.drawCircle(cx, cy - r * 0.25f, r * 0.78f, p)
+                val neck = Path().apply {
+                    moveTo(cx - r * 0.34f, cy + r * 0.42f)
+                    lineTo(cx - r * 0.34f, cy + r * 0.92f)
+                    moveTo(cx + r * 0.34f, cy + r * 0.42f)
+                    lineTo(cx + r * 0.34f, cy + r * 0.92f)
+                    moveTo(cx - r * 0.34f, cy + r * 0.92f)
+                    lineTo(cx + r * 0.34f, cy + r * 0.92f)
+                }
+                canvas.drawPath(neck, p)
+            }
+            2 -> {                                  // 荧光灯：直管灯（两端带帽）
+                canvas.drawRoundRect(
+                    RectF(cx - r * 1.05f, cy - r * 0.34f, cx + r * 1.05f, cy + r * 0.34f),
+                    r * 0.16f, r * 0.16f, p
+                )
+                canvas.drawLine(cx - r * 1.05f, cy - r * 0.62f, cx - r * 1.05f, cy + r * 0.62f, p)
+                canvas.drawLine(cx + r * 1.05f, cy - r * 0.62f, cx + r * 1.05f, cy + r * 0.62f, p)
+            }
+            3 -> {                                  // 日光：太阳（日轮 + 八道芒）
+                canvas.drawCircle(cx, cy, r * 0.60f, p)
+                for (i in 0 until 8) {
+                    val a = Math.toRadians(i * 45.0)
+                    val i0 = r * 0.86f
+                    val i1 = r * 1.32f
+                    canvas.drawLine(
+                        cx + (Math.cos(a) * i0).toFloat(), cy + (Math.sin(a) * i0).toFloat(),
+                        cx + (Math.cos(a) * i1).toFloat(), cy + (Math.sin(a) * i1).toFloat(), p
+                    )
+                }
+            }
+            4 -> {                                  // 阴天：云 + 半遮的日轮
+                canvas.drawArc(RectF(cx - r * 0.95f, cy - r * 1.05f, cx + r * 0.15f, cy - r * 0.05f),
+                    200f, 140f, false, p)
+                cloudPath(canvas, cx - r * 0.35f, cy + r * 0.15f, r * 1.25f, r * 0.72f, p)
+            }
+            5 -> {                                  // 阴影：纯云（无日轮）
+                cloudPath(canvas, cx - r * 1.05f, cy - r * 0.35f, r * 2.1f, r * 1.15f, p)
+            }
+            6 -> {                                  // 暮光：地平线 + 下沉的日轮
+                canvas.drawLine(cx - r * 1.2f, cy + r * 0.15f, cx + r * 1.2f, cy + r * 0.15f, p)
+                canvas.drawArc(RectF(cx - r * 0.65f, cy - r * 1.0f, cx + r * 0.65f, cy + r * 0.30f),
+                    0f, 180f, false, p)
+            }
+        }
+    }
+
+    /** 云：三段叠圆弧（T3 风格线条：连续一笔而成，不画成孤立气泡） */
+    private fun cloudPath(canvas: Canvas, x: Float, y: Float, w: Float, h: Float, p: Paint) {
+        val path = Path().apply {
+            moveTo(x, y + h * 0.62f)
+            arcTo(RectF(x, y + h * 0.10f, x + w * 0.44f, y + h * 0.86f), 110f, 150f)
+            arcTo(RectF(x + w * 0.22f, y, x + w * 0.78f, y + h * 0.66f), 250f, 140f)
+            arcTo(RectF(x + w * 0.52f, y + h * 0.14f, x + w, y + h * 0.90f), 285f, 120f)
+        }
+        canvas.drawPath(path, p)
     }
 
     /** 小圆形 LED 指示灯：常亮 / 4Hz 快闪 / 1Hz 慢闪 */

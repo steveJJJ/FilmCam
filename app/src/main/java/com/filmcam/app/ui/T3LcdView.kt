@@ -52,12 +52,33 @@ class T3LcdView @JvmOverloads constructor(
     private val handler = android.os.Handler(android.os.Looper.getMainLooper())
     private val tick = Runnable {
         invalidate()
-        if (SystemClock.uptimeMillis() < backlightUntil + BACKLIGHT_FADE) scheduleTick()
+        val now = SystemClock.uptimeMillis()
+        // 背光淡出、或机身提示未到期时继续走帧（提示需要闪烁）
+        if (now < backlightUntil + BACKLIGHT_FADE || now < messageUntil) scheduleTick()
     }
 
     private fun scheduleTick() {
         handler.removeCallbacks(tick)
         handler.postDelayed(tick, 80)
+    }
+
+    /** 机身提示文案：非空且未到期时整屏显示（取代挂 intends 在机身上的浮层铭牌） */
+    private var message: String? = null
+    private var messageUntil = 0L
+
+    /**
+     * 在液晶屏上显示一句机身提示，到时自动恢复常规内容。
+     *
+     * 放在 LCD 里而不是另做一个浮层：这块屏本来就是机身的状态输出口，
+     * 换卷互锁、不支持的胶卷这类「机身状态」从它这里走最自然，
+     * 也不会额外引入一套与机身质感竞争的颜色。
+     */
+    fun showMessage(text: String, durationMs: Long = 3200L) {
+        message = text
+        messageUntil = SystemClock.uptimeMillis() + durationMs
+        pulseBacklight(durationMs.coerceAtMost(BACKLIGHT_MS))
+        invalidate()
+        scheduleTick()
     }
 
     fun setState(s: State) {
@@ -203,6 +224,16 @@ class T3LcdView @JvmOverloads constructor(
 
         // 点亮色：深灰黑（背光下更深、对比更强）
         val onColor = Color.argb(255, (34 - bl * 12).toInt(), (38 - bl * 14).toInt(), (30 - bl * 8).toInt())
+
+        // 机身提示优先：占用整屏（比如换卷互锁），到时自动回到常规内容
+        if (message != null) {
+            if (SystemClock.uptimeMillis() < messageUntil) {
+                drawMessage(canvas, rect, onColor)
+                return
+            }
+            message = null
+        }
+
         val ghostColor = Color.argb(46, 40, 44, 36)
         val labelPaint = Paint(textPaint).apply {
             color = onColor
@@ -263,6 +294,51 @@ class T3LcdView @JvmOverloads constructor(
             Paint(smallPaint).apply { isFakeBoldText = true }
         )
         drawBattery(canvas, right - ch * 0.32f, y3 + smH * 0.1f, ch * 0.32f, smH * 0.85f, onColor, state.battery)
+    }
+
+    // ---------------------------------------------------------------
+    // 机身提示
+    // ---------------------------------------------------------------
+
+    /**
+     * 整屏机身提示：警示叹号 + 一句话，居中，1.4Hz 闪烁。
+     * 闪烁是液晶报警的通用语汇（数码相机报错、机身异常都这么做），
+     * 比常亮更能表达「这是一个阻止你操作的互锁状态」。
+     */
+    private fun drawMessage(canvas: Canvas, rect: RectF, onColor: Int) {
+        if ((SystemClock.uptimeMillis() / 350L) % 2L == 1L) return
+        val msg = message ?: return
+
+        val padY = 5f * density
+        val ch = rect.height() - padY * 2f
+        val paint = Paint(textPaint).apply {
+            color = onColor
+            textSize = ch * 0.34f
+            isFakeBoldText = true
+        }
+        // 文案长短差异大，按可用宽度自动缩字号，保证一句放得下
+        val maxW = rect.width() - 16f * density
+        while (paint.measureText(msg) > maxW && paint.textSize > ch * 0.16f) {
+            paint.textSize -= 0.5f * density
+        }
+
+        val iconH = paint.textSize * 0.92f
+        val iconW = iconH * 0.24f
+        val gap = 5f * density
+        val totalW = iconW + gap + paint.measureText(msg)
+        val startX = rect.left + (rect.width() - totalW) / 2f
+        val baseline = rect.centerY() - (paint.fontMetrics.ascent + paint.fontMetrics.descent) / 2f
+
+        drawExclamation(canvas, startX, baseline - iconH * 0.82f, iconW, iconH, onColor)
+        canvas.drawText(msg, startX + iconW + gap, baseline, paint)
+    }
+
+    /** 警示叹号：竖条 + 点（不用 emoji，避免字体缺字） */
+    private fun drawExclamation(canvas: Canvas, x: Float, top: Float, w: Float, h: Float, color: Int) {
+        fillPaint.color = color
+        val barBottom = top + h * 0.64f
+        canvas.drawRoundRect(RectF(x, top, x + w, barBottom), w * 0.42f, w * 0.42f, fillPaint)
+        canvas.drawCircle(x + w / 2f, barBottom + h * 0.24f, w * 0.5f, fillPaint)
     }
 
     // ---------------------------------------------------------------

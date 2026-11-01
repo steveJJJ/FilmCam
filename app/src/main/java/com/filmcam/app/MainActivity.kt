@@ -9,7 +9,6 @@ import android.os.Build
 import android.os.Bundle
 import android.view.KeyEvent
 import android.view.LayoutInflater
-import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
@@ -196,7 +195,10 @@ class MainActivity : AppCompatActivity() {
                         Math.abs(dx) > 32f && Math.abs(dx) > Math.abs(dy) * 1.4f
                     ) {
                         wbDragging = true
-                        showWbStrip()
+                        wbVisible = true
+                        binding.viewfinderFrame.notifyActivity()
+                        vibrate(15)          // 进入 WB 手势给一记轻触，确认「抓住了」
+                        applyWbIndex()
                     }
                     if (wbDragging) {
                         val idx = (touchStartWbIndex + (dx / 90f).toInt())
@@ -222,7 +224,12 @@ class MainActivity : AppCompatActivity() {
                     if (wbDragging) {
                         if (wbIndex != touchStartWbIndex) saveSettings()
                         wbDragging = false
-                        hideWbStripDelayed()
+                        // 抬手不立刻擦掉：缓 900ms 让人看清落在哪一档，再淡出
+                        binding.viewfinderFrame.postDelayed({
+                            wbVisible = false
+                            lastIndicatorKey = ""   // 强制下一次去重放过，允许重画
+                            updateViewfinderIndicators(lastAfState, lastExposureSec)
+                        }, 900)
                         return@setOnTouchListener true
                     }
                     if (exposureComp != touchStartEv) saveSettings()
@@ -582,6 +589,18 @@ class MainActivity : AppCompatActivity() {
                 androidx.recyclerview.widget.ItemTouchHelper.UP or
                     androidx.recyclerview.widget.ItemTouchHelper.DOWN, 0
             ) {
+                // 长按抓起：给一记稍重的触感，等价于「这一项被拿起来了」
+                override fun onSelectedChanged(
+                    viewHolder: RecyclerView.ViewHolder?,
+                    actionState: Int
+                ) {
+                    super.onSelectedChanged(viewHolder, actionState)
+                    if (actionState == androidx.recyclerview.widget.ItemTouchHelper.ACTION_STATE_DRAG) {
+                        vibrate(25, 70)
+                    }
+                }
+
+                // 每越过一个相邻位置给一记极轻触感，让「调位置」这件事在手上能被数出来
                 override fun onMove(
                     recyclerView: RecyclerView,
                     viewHolder: RecyclerView.ViewHolder,
@@ -591,6 +610,7 @@ class MainActivity : AppCompatActivity() {
                         viewHolder.bindingAdapterPosition,
                         target.bindingAdapterPosition
                     )
+                    vibrate(12)
                     return true
                 }
 
@@ -612,116 +632,43 @@ class MainActivity : AppCompatActivity() {
         dialog.show()
     }
 
-    // ===== 机身提示铭牌 =====
-
-    private val noticeHandler by lazy { android.os.Handler(android.os.Looper.getMainLooper()) }
-    private var noticeHideRunnable: Runnable? = null
+    // ===== 机身提示 =====
 
     /**
-     * 机身提示铭牌：替代原生 Toast。
+     * 机身提示：走机顶 LCD（T3LcdView.showMessage）。
      *
-     * 系统 Toast 浮在屏幕最底部，样式是一坨圆角灰底——既不处视线自然停留处，也完全脱离
-     * 机身质感的语境。这里换成机顶下方的一块蚀刻铭牌：深玻璃底 + 琥珀发丝边框 +
-     * 左侧琥珀竖条，标题用等宽大写（与 FILM ADVANCING... 等机身状态文案同一套语汇），
-     * 正文用中文补一句为什么。下滑浮现、到时自动收起。
+     * 之前做成挂在机身外侧的一块琥珀铭牌，用户反馈颜色不好看——问题在于它引入了
+     * 一套 LCD 之外的颜色，等于凭空加了第二个状态输出口。LCD 本来就是机身的状态屏，
+     * 互锁、不支持的胶卷这类信息从它这里走是唯一正确的位置，配色也天然一致。
      */
-    private fun showBodyNotice(title: String, body: String, durationMs: Long = 2800L) {
-        val plate = binding.bodyNotice
-        binding.tvNoticeTitle.text = title
-        binding.tvNoticeBody.text = body
-
-        // 连续触发时重置计时，避免上一条的收起动画把新一条抹掉
-        noticeHideRunnable?.let { noticeHandler.removeCallbacks(it) }
-
-        plate.animate().cancel()
-        plate.visibility = android.view.View.VISIBLE
-        plate.translationY = -14f
-        plate.alpha = 0f
-        plate.animate()
-            .translationY(0f)
-            .alpha(1f)
-            .setDuration(200)
-            .setInterpolator(android.view.animation.DecelerateInterpolator())
-            .start()
-
-        noticeHideRunnable = Runnable { hideBodyNotice() }
-        noticeHandler.postDelayed(noticeHideRunnable!!, durationMs)
+    private fun showLcdNotice(text: String) {
+        binding.lcdDisplay.showMessage(text)
     }
 
-    private fun hideBodyNotice() {
-        val plate = binding.bodyNotice
-        plate.animate().cancel()
-        plate.animate()
-            .translationY(-14f)
-            .alpha(0f)
-            .setDuration(180)
-            .setInterpolator(android.view.animation.AccelerateInterpolator())
-            .withEndAction { plate.visibility = android.view.View.GONE }
-            .start()
-    }
+    // ===== 白平衡（闪光开启后，预览上左右拖动切换） =====
 
-    // ===== 白平衡（闪光开启后，预览上左右拖动浮现选择条） =====
+    /** 白平衡档位：语义对应胶片机的校色滤镜片，顺序即横滑从左到右的档位 */
+    private enum class WbIcon { AUTO, BULB, TUBE, SUN, CLOUD_SUN, SHADE, TWILIGHT }
 
-    private data class WbPreset(val label: String, val awbMode: Int)
+    private data class WbPreset(val label: String, val awbMode: Int, val icon: WbIcon)
 
-    /** 白平衡预设：语义对应胶片机的校色滤镜片，顺序即横滑从左到右的档位 */
     private val wbPresets = listOf(
-        WbPreset("AUTO", android.hardware.camera2.CameraMetadata.CONTROL_AWB_MODE_AUTO),
-        WbPreset("白炽灯", android.hardware.camera2.CameraMetadata.CONTROL_AWB_MODE_INCANDESCENT),
-        WbPreset("荧光灯", android.hardware.camera2.CameraMetadata.CONTROL_AWB_MODE_FLUORESCENT),
-        WbPreset("日光", android.hardware.camera2.CameraMetadata.CONTROL_AWB_MODE_DAYLIGHT),
-        WbPreset("阴天", android.hardware.camera2.CameraMetadata.CONTROL_AWB_MODE_CLOUDY_DAYLIGHT),
-        WbPreset("阴影", android.hardware.camera2.CameraMetadata.CONTROL_AWB_MODE_SHADE),
-        WbPreset("暮光", android.hardware.camera2.CameraMetadata.CONTROL_AWB_MODE_TWILIGHT)
+        WbPreset("AUTO", android.hardware.camera2.CameraMetadata.CONTROL_AWB_MODE_AUTO, WbIcon.AUTO),
+        WbPreset("白炽灯", android.hardware.camera2.CameraMetadata.CONTROL_AWB_MODE_INCANDESCENT, WbIcon.BULB),
+        WbPreset("荧光灯", android.hardware.camera2.CameraMetadata.CONTROL_AWB_MODE_FLUORESCENT, WbIcon.TUBE),
+        WbPreset("日光", android.hardware.camera2.CameraMetadata.CONTROL_AWB_MODE_DAYLIGHT, WbIcon.SUN),
+        WbPreset("阴天", android.hardware.camera2.CameraMetadata.CONTROL_AWB_MODE_CLOUDY_DAYLIGHT, WbIcon.CLOUD_SUN),
+        WbPreset("阴影", android.hardware.camera2.CameraMetadata.CONTROL_AWB_MODE_SHADE, WbIcon.SHADE),
+        WbPreset("暮光", android.hardware.camera2.CameraMetadata.CONTROL_AWB_MODE_TWILIGHT, WbIcon.TWILIGHT)
     )
     private var wbIndex = 0
 
-    /** 选择条生成：琥珀等宽小字，选中档加白描边框——与 LCD/铭牌同一套暗房色板 */
-    private fun setupWbStrip() {
-        val strip = binding.wbStrip
-        strip.removeAllViews()
-        wbPresets.forEachIndexed { i, preset ->
-            val tv = TextView(this).apply {
-                text = preset.label
-                setTextColor(0xFFE8E4DA.toInt())
-                textSize = 11f
-                letterSpacing = 0.1f
-                setPadding(18, 7, 18, 7)
-                if (i == wbIndex) {
-                    background = android.graphics.drawable.GradientDrawable().apply {
-                        setColor(0x33FFC100)
-                        setStroke(1, 0xFFFFC100.toInt())
-                        cornerRadius = 2f
-                    }
-                }
-            }
-            strip.addView(tv)
-        }
-    }
+    /** 白平衡面板是否在取景器里显示（横滑期间显示，抬手后收起） */
+    private var wbVisible = false
 
     private fun applyWbIndex() {
         cameraController?.setAwbMode(wbPresets[wbIndex].awbMode)
-        setupWbStrip()   // 重画选中框
-    }
-
-    private fun showWbStrip() {
-        setupWbStrip()
-        val strip = binding.wbStrip
-        strip.animate().cancel()
-        strip.visibility = android.view.View.VISIBLE
-        strip.alpha = 0f
-        strip.animate().alpha(1f).setDuration(140).start()
-    }
-
-    private fun hideWbStripDelayed() {
-        noticeHandler.postDelayed({
-            binding.wbStrip.animate().cancel()
-            binding.wbStrip.animate()
-                .alpha(0f)
-                .setDuration(180)
-                .withEndAction { binding.wbStrip.visibility = android.view.View.GONE }
-                .start()
-        }, 700)
+        updateViewfinderIndicators(lastAfState, lastExposureSec)
     }
 
     /** 选中胶卷：切换 LUT + 更新图标。fromUser=false 用于启动时恢复设置（不做拦截）。 */
@@ -729,20 +676,18 @@ class MainActivity : AppCompatActivity() {
         if (fromUser) {
             // 反转片拦截：与原项目一致，本版只支持负片印相纸
             if (!roll.available) {
-                showBodyNotice(
-                    "SLIDE FILM NOT SUPPORTED",
-                    "反转片是供幻灯放映的，本版只能把负片印到相纸上"
-                )
+                showLcdNotice("反转片不支持印相")
+                vibrate(45, 60)
                 return
             }
             // 换卷拦截：当前卷有未冲洗帧时禁止换胶卷（对应真机拍完必须回卷才能开盖）
             val active = UndevelopedFilmStore.currentRoll()
             val pending = active?.let { UndevelopedFilmStore.shotCount(it.rollId) } ?: 0
             if (active != null && pending > 0) {
-                showBodyNotice(
-                    "CHANGE FILM LOCKED",
-                    "这卷已拍 $pending 张还没冲洗 —— 真机上不回卷也开不了后盖"
-                )
+                showLcdNotice("胶卷冲洗后才能换卷")
+                // 被拦下来要有「机身顶住了」的手感：两连震，比单纯给提示更直接
+                vibrate(30, 70)
+                binding.viewfinderFrame.postDelayed({ vibrate(30, 70) }, 110)
                 return
             }
         }
@@ -750,6 +695,8 @@ class MainActivity : AppCompatActivity() {
         binding.tvFilmName.setImageResource(roll.iconResId)
         updateFilmInfo()
         saveSettings()
+        // 选中一支新胶卷：给一记轻触确认，替换 LUT 的同时手上要有响应
+        if (fromUser) vibrate(22, 45)
     }
 
     // ===== T3 机身 UI 交互 =====
@@ -874,9 +821,11 @@ class MainActivity : AppCompatActivity() {
      */
     private var lastIndicatorKey = ""
     private var lastExposureSec = 0f
+    private var lastAfState: Int? = null
 
     private fun updateViewfinderIndicators(afState: Int?, exposureSec: Float) {
         if (exposureSec > 0f) lastExposureSec = exposureSec
+        if (afState != null) lastAfState = afState
         val focus = when (afState) {
             2, 5 -> if (cameraController?.isAfLocked() == true)
                 ViewfinderFrameView.LedMode.BLINK_SLOW else ViewfinderFrameView.LedMode.ON
@@ -885,7 +834,8 @@ class MainActivity : AppCompatActivity() {
         }
         val lit = shutterTagsFor(lastExposureSec)
         val blink = lastExposureSec > 0f && lastExposureSec <= 1f / 1200f
-        val key = "${focus.ordinal}|$exposureComp|${lit.joinToString(",")}|$blink|${flash.mode}"
+        // WB 状态必须进 key：否则横滑换档时因为其它字段没变，被去重直接跳过不重画
+        val key = "${focus.ordinal}|$exposureComp|${lit.joinToString(",")}|$blink|${flash.mode}|$wbVisible|$wbIndex"
         if (key == lastIndicatorKey) return
         lastIndicatorKey = key
         binding.viewfinderFrame.setIndicators(
@@ -896,7 +846,10 @@ class MainActivity : AppCompatActivity() {
                 flash = if (flash.mode != FlashMode.OFF) ViewfinderFrameView.LedMode.ON
                         else ViewfinderFrameView.LedMode.OFF,
                 shutterLit = lit,
-                shutterBlink = blink
+                shutterBlink = blink,
+                wbOn = wbVisible && flash.mode != FlashMode.OFF,
+                wbIndex = wbIndex,
+                wbCount = wbPresets.size
             )
         )
     }
@@ -1249,19 +1202,20 @@ class MainActivity : AppCompatActivity() {
         // 过卷等待动画：持续旋转直到处理+保存完成（胶片相机拍完需等冲洗，动画连贯不跳变）
         startDevelopingAnimation()
 
-        // 过卷声音：真实 T3 的顺序是「叶片先喀一声曝光」→ 停顿一下 →「马达拖动齿轮过卷」，
-        // 两段声音之间有明显间隔。原先它与快门声在同一帧触发，82ms 的快门声还没播完
-        // 340ms 的马达声就压上来了，两个音叠成一坨，听不出层次——用户反馈"没有过片声"
-        // 其实是听到了，只是被糊在一起分不出来。这里延后 200ms 起播给曝光留出交代，
-        // 并用 0.75 速率把素材拉长到约 450ms、音调略沉（更接近马达带负载的质感）。
+        // 过卷声音：真机 T3 是马达电动过卷，先「喀」一声叶片曝光 → 停顿一下 →
+        // 马达拖齿轮约 0.95 秒 → 末尾到位一记轻钝响。原先素材只有 340ms 且与快门声
+        // 同帧起播，两者糊成一坨听不出层次。现在素材改为按 T3 马达成分合成的版本
+        // （armature 锯齿 + 齿轮啸叫 + 轴承带噪 + 齿距 AM，RMS 约为旧素材 3.5 倍），
+        // 不再需要靠降速拉长，按 1.0 速率播放保留正确音高；仍延后 200ms 让曝光有交代。
         binding.ivDeveloping.postDelayed({
-            if (isCapturing) playAdvanceSound(rate = 0.75f)
+            if (isCapturing) playAdvanceSound()
         }, 200)
 
-        // 微弱震动：同步挪到马达真正发力之后，让手感与听觉对齐
+        // 微弱震动：跟着 950ms 的马达铺开，让手感的节奏与听觉对齐
         binding.ivDeveloping.postDelayed({ if (isCapturing) vibrate(50, 30) }, 200)
-        binding.ivDeveloping.postDelayed({ if (isCapturing) vibrate(45, 25) }, 380)
-        binding.ivDeveloping.postDelayed({ if (isCapturing) vibrate(45, 25) }, 520)
+        binding.ivDeveloping.postDelayed({ if (isCapturing) vibrate(45, 25) }, 480)
+        binding.ivDeveloping.postDelayed({ if (isCapturing) vibrate(45, 25) }, 760)
+        binding.ivDeveloping.postDelayed({ if (isCapturing) vibrate(60, 35) }, 1080)  // 到位那记
 
         // 480ms 后文案切到 PROCESSING...；真正的完成收尾由 onPhotoCaptured 回调 finally 里做
         binding.ivDeveloping.postDelayed({
