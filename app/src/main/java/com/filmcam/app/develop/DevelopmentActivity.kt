@@ -61,6 +61,8 @@ class DevelopmentActivity : AppCompatActivity(), SensorEventListener {
         private const val TICK_MS = 66L              // 推进节奏 ≈15fps，足够顺滑
         private const val REVEAL_CAP = 0.86f         // 引擎未冲出本帧时进度上限
         private const val STRIP_CELLS = 36
+        private const val HAPTIC_MIN_IMPULSE = 0.22f  // 摇到这个力度才给震动，轻碰不震
+        private const val HAPTIC_GAP_MS = 170L        // 两记震动的最小间隔
         /** 显影液水声：起振阈值，搅动强度低于此值完全静音（静置不吵） */
         private const val WATER_VOL_ONSET = 0.10f
         /** 用力搅动时的音量上限 */
@@ -92,6 +94,8 @@ class DevelopmentActivity : AppCompatActivity(), SensorEventListener {
     private var displayedIndex: Int = -1
     private var sensorManager: SensorManager? = null
     private var lastShakeAtMs: Long = 0L
+    /** 上一次摇动触感的时刻，用于节流 */
+    private var lastHapticMs: Long = 0L
 
     /** 单帧显影进度 0..1：0 = 一片乳剂色，1 = 完全显影 */
     private var reveal = 0f
@@ -514,9 +518,41 @@ class DevelopmentActivity : AppCompatActivity(), SensorEventListener {
         if (delta <= SHAKE_MIN) return
         val impulse = ((delta - SHAKE_MIN) / (SHAKE_FULL - SHAKE_MIN)).coerceIn(0f, 1f)
         agitation = (agitation + impulse * 0.9f).coerceIn(0f, 1f)
+
+        // 触感：摇一记给一记轻震，力度随冲击大小，节流避免连成一片糊震
+        if (impulse >= HAPTIC_MIN_IMPULSE) {
+            val now = System.currentTimeMillis()
+            if (now - lastHapticMs >= HAPTIC_GAP_MS) {
+                lastHapticMs = now
+                vibrate((9 + impulse * 17).toLong())     // 9~26ms，都很轻
+            }
+        }
     }
 
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+
+    /** 触感反馈（amp 用系统默认：自定义低强度在三星上会被忽略，只调时长）。 */
+    private fun vibrate(ms: Long) {
+        runCatching {
+            val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                (getSystemService(android.content.Context.VIBRATOR_MANAGER_SERVICE)
+                    as? android.os.VibratorManager)?.defaultVibrator
+            } else {
+                @Suppress("DEPRECATION")
+                getSystemService(android.content.Context.VIBRATOR_SERVICE) as? android.os.Vibrator
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                vibrator?.vibrate(
+                    android.os.VibrationEffect.createOneShot(
+                        ms, android.os.VibrationEffect.DEFAULT_AMPLITUDE
+                    )
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                vibrator?.vibrate(ms)
+            }
+        }
+    }
 
     // ---------- 权限 ----------
 
