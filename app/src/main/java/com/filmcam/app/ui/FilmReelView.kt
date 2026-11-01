@@ -4,6 +4,7 @@ import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Color
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.RectF
@@ -16,9 +17,9 @@ import kotlin.math.abs
 import kotlin.math.min
 
 /**
- * 过卷动画：**一个胶卷，在原地循环转动**——
- * 图标固定在正中央（不平移），绕自身中心匀速转一圈又一圈，
- * 身后带角度残影（动态模糊），像卷轴被马达带着转。
+ * 过卷动画：**胶卷固定在正中央不动，靠表面纹理循环流过表现转动**——
+ * 胶卷本体不位移、不旋转；表面叠加细密的胶片条纹沿横向匀速流过并无缝循环，
+ * 像卷轴在不停转动时表面纹路被拉着走。
  */
 class FilmReelView @JvmOverloads constructor(
     context: Context,
@@ -30,8 +31,8 @@ class FilmReelView @JvmOverloads constructor(
 
     private var icon: Bitmap? = null
 
-    private var angle = 0f   // 当前转角（deg）
-    private var omega = 0f   // 角速度（deg/s）
+    private var scroll = 0f  // 表面纹理累计位移（px）
+    private var speed = 0f   // 纹理流速（px/s）
 
     private var animator: ValueAnimator? = null
     private var lastFrameMs = 0L
@@ -42,33 +43,37 @@ class FilmReelView @JvmOverloads constructor(
         val h = height.toFloat()
         if (b == null || w <= 4f || h <= 4f) return
 
-        // 图标内接在视图里：转满一圈也不会被裁掉
-        val size = min(w, h) * 0.82f
+        // 胶卷本体：固定在正中，永不位移、不旋转
+        val size = min(w, h) * 0.72f
         val s = min(size / b.width.toFloat(), size / b.height.toFloat())
         val fw = b.width * s
         val fh = b.height * s
         val cx = w / 2f
         val cy = h / 2f
 
-        // 动态模糊：转得越快，身后拖的角度越长
-        val ghost = (abs(omega) / 26f).coerceIn(0f, 30f)
-
-        for (i in 4 downTo 1) {
-            paint.alpha = (74 - i * 14).coerceIn(12, 255)
-            drawRotated(canvas, b, cx, cy, fw, fh, angle - ghost * i / 4f)
-        }
         paint.alpha = 255
-        drawRotated(canvas, b, cx, cy, fw, fh, angle)
-    }
-
-    private fun drawRotated(
-        canvas: Canvas, b: Bitmap, cx: Float, cy: Float, fw: Float, fh: Float, deg: Float
-    ) {
-        canvas.save()
-        canvas.rotate(deg, cx, cy)
         dstRect.set(cx - fw / 2f, cy - fh / 2f, cx + fw / 2f, cy + fh / 2f)
         canvas.drawBitmap(b, null, dstRect, paint)
+
+        // 表面纹理：细密的胶片条纹沿表面横向循环流过（图标本体不动）
+        val left = cx - fw / 2f
+        val top = cy - fh / 2f
+        val period = (fw / 4f).coerceAtLeast(6f)
+        val off = scroll % period
+        canvas.save()
+        canvas.clipRect(left + fw * 0.07f, top + fh * 0.07f, left + fw * 0.93f, top + fh * 0.93f)
+        val count = (fw / period).toInt() + 2
+        for (i in -1..count) {
+            val x = left + off + i * period
+            paint.color = Color.WHITE
+            paint.alpha = 34
+            canvas.drawRect(x, top, x + period * 0.20f, top + fh, paint)
+            paint.color = Color.BLACK
+            paint.alpha = 26
+            canvas.drawRect(x + period * 0.55f, top, x + period * 0.75f, top + fh, paint)
+        }
         canvas.restore()
+        paint.alpha = 255
     }
 
     fun setIcon(resId: Int) {
@@ -81,12 +86,12 @@ class FilmReelView @JvmOverloads constructor(
     }
 
     /**
-     * 开始过片。@param degPerSecond 胶卷转动角速度（度/秒，>0 顺时针）。
+     * 开始过片。@param pxPerSecond 表面纹理流动速度（像素/秒，向右）。
      */
-    fun startSpinning(degPerSecond: Float) {
+    fun startSpinning(pxPerSecond: Float) {
         stopSpinning()
-        omega = degPerSecond
-        applyBlur((abs(degPerSecond) / 420f).coerceIn(0f, 2.5f))
+        speed = pxPerSecond
+        applyBlur((abs(pxPerSecond) / 300f).coerceIn(0f, 1.6f))
         lastFrameMs = 0L
         animator = ValueAnimator.ofFloat(0f, 1f).apply {
             duration = 4000L
@@ -97,7 +102,7 @@ class FilmReelView @JvmOverloads constructor(
                 if (lastFrameMs == 0L) lastFrameMs = now
                 val dt = ((now - lastFrameMs) / 1000f).coerceIn(0f, 0.1f)
                 lastFrameMs = now
-                angle = (angle + degPerSecond * dt) % 360f
+                scroll = (scroll + pxPerSecond * dt) % 100000f
                 invalidate()
             }
             start()
@@ -107,7 +112,7 @@ class FilmReelView @JvmOverloads constructor(
     fun stopSpinning() {
         animator?.cancel()
         animator = null
-        omega = 0f
+        speed = 0f
         applyBlur(0f)
         invalidate()
     }
