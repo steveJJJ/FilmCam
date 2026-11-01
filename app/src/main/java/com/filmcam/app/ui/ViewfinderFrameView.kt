@@ -148,15 +148,12 @@ class ViewfinderFrameView @JvmOverloads constructor(
         val h = height.toFloat()
         if (w <= 0 || h <= 0) return
 
-        // 反推预览内容矩形（与 LutGLSurfaceView 的 shader 几何一致）
-        val screenAspect = w / h
-        val s = screenAspect / CONTENT_ASPECT
-        val contentTop = (0.5f - s * (0.5f - PREVIEW_OFFSET_Y)) * h
-        val contentBottom = (0.5f + s * (0.5f + PREVIEW_OFFSET_Y)) * h
-        val cl = 0f
-        val cr = w
-        val ct = contentTop.coerceIn(0f, h)
-        val cb = contentBottom.coerceIn(0f, h)
+        // 预览内容矩形（几何唯一来源：contentRectFor，与 shader / 对焦映射一致）
+        val content = contentRectFor(w, h)
+        val cl = content.left
+        val cr = content.right
+        val ct = content.top
+        val cb = content.bottom
         val cw = cr - cl
         val ch = cb - ct
 
@@ -530,22 +527,23 @@ class ViewfinderFrameView @JvmOverloads constructor(
      * 因此返回的坐标可直接与 MotionEvent.x/y（相对 glSurfaceView）比较。
      */
     fun contentRect(): RectF {
-        val w = width.toFloat()
-        val h = height.toFloat()
-        if (w <= 0f || h <= 0f) return RectF()
-        val screenAspect = w / h
-        val s = screenAspect / CONTENT_ASPECT
-        val contentTop = (0.5f - s * (0.5f - PREVIEW_OFFSET_Y)) * h
-        val contentBottom = (0.5f + s * (0.5f + PREVIEW_OFFSET_Y)) * h
-        return RectF(0f, contentTop.coerceIn(0f, h), w, contentBottom.coerceIn(0f, h))
+        return contentRectFor(width.toFloat(), height.toFloat())
     }
 
     companion object {
-        /** 预览内容宽高比（1440x1920，与 LutGLSurfaceView.renderTo 一致） */
-        const val CONTENT_ASPECT = 1440f / 1920f
+        /** 竖屏预览内容宽高比 3:4（1440x1920，与 LutGLSurfaceView.renderTo 一致） */
+        const val CONTENT_ASPECT_PORTRAIT = 1440f / 1920f
 
         /**
-         * 预览画面竖向偏移：0 = 在顶栏（铭牌+液晶屏）与底栏（快门条）之间的
+         * 横屏预览内容宽高比 4:3。
+         * 传感器原生就是 4:3 横画面：竖屏时把它旋转 90° 显示成 3:4（JPEG 旋转 90°），
+         * 横屏时直接按原方向显示成 4:3（JPEG 旋转 0°/180°）—— 两者恰好互为 90°，
+         * 所以横屏只是换了内容比例，画面不会躺倒。
+         */
+        const val CONTENT_ASPECT_LANDSCAPE = 1920f / 1440f
+
+        /**
+         * 预览画面竖向偏移（仅竖屏有效）：0 = 在顶栏（铭牌+液晶屏）与底栏（快门条）之间的
          * 剩余空间里垂直居中。负值会把画面上移、导致取景框顶到机顶液晶屏，
          * 正值反之。取景框标记层与预览 shader 共用此常量，必须一致。
          *
@@ -553,5 +551,34 @@ class ViewfinderFrameView @JvmOverloads constructor(
          * （取景框下方、快门条上方）之上，铭牌完全移出预览窗。
          */
         const val PREVIEW_OFFSET_Y = -0.06f
+
+        /** 按屏幕朝向取内容比例：横屏 4:3、竖屏 3:4 */
+        fun contentAspectFor(w: Float, h: Float): Float =
+            if (w >= h) CONTENT_ASPECT_LANDSCAPE else CONTENT_ASPECT_PORTRAIT
+
+        /**
+         * 预览内容矩形——即实际有画面的区域（letterbox 黑边之外）。
+         *
+         * 竖屏：内容满**宽**（左右不留边，上下留黑边）；
+         * 横屏：内容满**高**（上下不留边，左右留黑边，正好给侧边按键腾出位置）。
+         * 判定用"屏幕比例 vs 内容比例"：屏幕比内容更宽就满高，否则满宽。
+         *
+         * 这是**唯一**的几何来源：onDraw、contentRect()、
+         * LutGLSurfaceView 的 shader、Camera2Controller 的对焦映射全部走这里，
+         * 避免四处公式各写一遍导致标记和画面对不上。
+         */
+        fun contentRectFor(w: Float, h: Float): RectF {
+            if (w <= 0f || h <= 0f) return RectF()
+            val ca = contentAspectFor(w, h)
+            return if (w / h <= ca) {
+                val ch = w / ca
+                val cy = h / 2f + PREVIEW_OFFSET_Y * ch
+                RectF(0f, (cy - ch / 2f).coerceIn(0f, h), w, (cy + ch / 2f).coerceIn(0f, h))
+            } else {
+                val cw = h * ca
+                val cx = w / 2f
+                RectF((cx - cw / 2f).coerceIn(0f, w), 0f, (cx + cw / 2f).coerceIn(0f, w), h)
+            }
+        }
     }
 }

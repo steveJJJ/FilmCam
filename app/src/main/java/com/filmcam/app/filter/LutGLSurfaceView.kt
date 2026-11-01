@@ -150,11 +150,15 @@ class LutGLSurfaceView @JvmOverloads constructor(
                 1, false, texMatrix, 0
             )
 
-            val contentAspect = 1440f / 1920f
-            GLES30.glUniform1f(GLES30.glGetUniformLocation(program, "uScreenAspect"),
-                viewW.toFloat() / viewH.toFloat())
+            // 内容比例随屏幕朝向切换：横屏 4:3、竖屏 3:4（与 ViewfinderFrameView 同源）
+            val contentAspect = ViewfinderFrameView.contentAspectFor(viewW.toFloat(), viewH.toFloat())
+            val screenAspect = viewW.toFloat() / viewH.toFloat()
+            GLES30.glUniform1f(GLES30.glGetUniformLocation(program, "uScreenAspect"), screenAspect)
             GLES30.glUniform1f(GLES30.glGetUniformLocation(program, "uContentAspect"),
                 contentAspect)
+            // 屏幕比内容更宽 → 内容满高、左右留黑边（横屏）；否则满宽、上下留黑边（竖屏）
+            GLES30.glUniform1f(GLES30.glGetUniformLocation(program, "uFitHeight"),
+                if (screenAspect > contentAspect) 1f else 0f)
             GLES30.glUniform1f(GLES30.glGetUniformLocation(program, "uOffsetY"), offsetY)
 
             vertexBuffer.position(0)
@@ -225,20 +229,31 @@ class LutGLSurfaceView @JvmOverloads constructor(
         uniform mat4 uTexMatrix;
         uniform float uScreenAspect;
         uniform float uContentAspect;
+        uniform float uFitHeight;
         uniform float uOffsetY;
         in vec2 vTexCoord;
         out vec4 fragColor;
 
         void main() {
             float s = uScreenAspect / uContentAspect;
-            float contentY = (vTexCoord.y - 0.5) / s + 0.5 + uOffsetY;
+            float texX, texY;
+            if (uFitHeight > 0.5) {
+                // 横屏：内容满高 —— 纵向铺满，横向只取中间一条，左右留黑边
+                float sx = uContentAspect / uScreenAspect;
+                texX = (vTexCoord.x - 0.5) / sx + 0.5;
+                texY = vTexCoord.y;
+            } else {
+                // 竖屏：内容满宽 —— 横向铺满，纵向只取中间一段，上下留黑边
+                texX = vTexCoord.x;
+                texY = (vTexCoord.y - 0.5) / s + 0.5 + uOffsetY;
+            }
 
-            if (contentY < 0.0 || contentY > 1.0) {
+            if (texX < 0.0 || texX > 1.0 || texY < 0.0 || texY > 1.0) {
                 fragColor = vec4(0.0, 0.0, 0.0, 1.0);
                 return;
             }
 
-            vec2 uv = (uTexMatrix * vec4(vTexCoord.x, contentY, 0.0, 1.0)).xy;
+            vec2 uv = (uTexMatrix * vec4(texX, texY, 0.0, 1.0)).xy;
             fragColor = texture(uTexture, uv);
         }
         """.trimIndent()

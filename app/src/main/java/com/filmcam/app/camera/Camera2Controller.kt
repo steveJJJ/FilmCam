@@ -104,6 +104,33 @@ class Camera2Controller(private val context: Context) {
     var onViewfinderMeta: ((afState: Int?, exposureSec: Float) -> Unit)? = null
     private var lastMetaPostAt = 0L
 
+    /** 当前设备屏幕旋转（0/90/180/270），拍照方向要用 */
+    private fun deviceRotationDegrees(): Int {
+        val rot = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+            runCatching { context.display?.rotation }.getOrNull()
+        } else null
+        val r = rot ?: @Suppress("DEPRECATION")
+        (context.getSystemService(Context.WINDOW_SERVICE) as android.view.WindowManager)
+            .defaultDisplay.rotation
+        return when (r) {
+            android.view.Surface.ROTATION_90 -> 90
+            android.view.Surface.ROTATION_180 -> 180
+            android.view.Surface.ROTATION_270 -> 270
+            else -> 0
+        }
+    }
+
+    /** Camera2 标准公式：JPEG 旋转角 = (屏幕旋转映射 + 传感器方向 + 270) % 360 */
+    private fun jpegRotationDegrees(sensorOrientation: Int): Int {
+        val mapped = when (deviceRotationDegrees()) {
+            90 -> 0
+            180 -> 270
+            270 -> 180
+            else -> 90
+        }
+        return (mapped + sensorOrientation + 270) % 360
+    }
+
     fun start(surfaceTexture: SurfaceTexture) {
         backgroundThread = HandlerThread("Camera2").also { it.start() }
         backgroundHandler = Handler(backgroundThread!!.looper)
@@ -148,8 +175,11 @@ class Camera2Controller(private val context: Context) {
         val sensorOrientation = chars.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 90
         android.util.Log.i("Camera2", "previewSize=$previewSize sensorOrientation=$sensorOrientation")
 
-        // 归一化到 0/90/180/270（Activity 锁竖屏，无需再叠加设备旋转）
-        val rotationDegrees = (((sensorOrientation % 360) + 360) % 360) / 90 * 90
+        // 拍照方向：Camera2 标准公式 (屏幕旋转映射 + 传感器方向 + 270) % 360。
+        // 竖屏(0°)  : (90 + 90 + 270) % 360 = 90  → 传感器横画面转 90° 成 3:4 竖构图
+        // 横屏(90°) : (0 + 90 + 270) % 360 = 0   → 直接用传感器原生 4:3 横构图
+        // 反向横屏  : (180 + 90 + 270) % 360 = 180
+        // 每次出片时现算设备朝向：Activity 旋转重建后朝向会变，不能只在 start() 取一次。
         imageReader?.setOnImageAvailableListener({ reader ->
             val image = reader.acquireNextImage() ?: return@setOnImageAvailableListener
             val bytes = try {
@@ -158,7 +188,9 @@ class Camera2Controller(private val context: Context) {
             } finally {
                 image.close()
             }
-            onPhotoCaptured?.invoke(bytes, rotationDegrees)
+            onPhotoCaptured?.invoke(bytes, jpegRotationDegrees(sensorOrientation).also {
+                android.util.Log.i("Camera2", "capture jpegRotation=$it deviceRotation=${deviceRotationDegrees()}")
+            })
         }, backgroundHandler)
 
         try {
@@ -317,18 +349,18 @@ class Camera2Controller(private val context: Context) {
             val cropX = active.left + (active.width() - cropW) / 2f
             val cropY = active.top + (active.height() - cropH) / 2f
 
-            // 预览画面 letterbox 几何：内容 3:4 满宽居中 + 上移 0.08（与
-            // LutGLSurfaceView shader / ViewfinderFrameView 同一公式）。
+            // 预览画面 letterbox 几何：唯一来源 ViewfinderFrameView.contentRectFor
+            // （与 shader、取景框标记同一套公式，横屏满高 / 竖屏满宽都在这里统一）。
             // 先把 view 坐标换算到画面内容坐标，再映射传感器，点哪对哪。
-            val screenAspect = viewW.toFloat() / viewH
-            val s = screenAspect / com.filmcam.app.ui.ViewfinderFrameView.CONTENT_ASPECT
-            val contentTop = (0.5f - s * (0.5f - com.filmcam.app.ui.ViewfinderFrameView.PREVIEW_OFFSET_Y)) * viewH
-            val contentH = s * viewH
-
-            val u = (viewX / viewW).coerceIn(0f, 1f)
-            val v = ((viewY - contentTop) / contentH).coerceIn(0f, 1f)
-            val sx = (cropX + v * cropW).toInt()
-            val sy = (cropY + u * cropH).toInt()
+            val rect = com.filmcam.app.ui.ViewfinderFrameView
+                .contentRectFor(viewW.toFloat(), viewH.toFloat())
+            val u = ((viewX - rect.left) / rect.width().coerceAtLeast(1f)).coerceIn(0f, 1f)
+            val v = ((viewY - rect.top) / rect.height().coerceAtLeast(1f)).coerceIn(0f, 1f)
+            // 竖屏：画面是传感器 4:3 横画面旋转 90° 得到的 → 视口横轴对应传感器纵轴（互换）
+            // 横屏：画面就是传感器原生方向 → 横轴对横轴、纵轴对纵轴（不互换）
+            val landscape = viewW > viewH
+            val sx = (cropX + (if (landscape) u else v) * cropW).toInt()
+            val sy = (cropY + (if (landscape) v else u) * cropH).toInt()
             val half = (minOf(cropW, cropH) * 0.1f).toInt().coerceAtLeast(16)
             val region = android.hardware.camera2.params.MeteringRectangle(
                 (sx - half).coerceAtLeast(active.left),

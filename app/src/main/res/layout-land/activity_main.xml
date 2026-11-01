@@ -1,0 +1,233 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  横版取景界面（手机横过来时自动切换）。
+
+  与竖版的区别：预览内容改为 4:3 **满高**（左右留黑边），
+  于是两侧黑边正好变成控制区 —— 左侧放液晶屏与功能键，右侧放胶卷/快门/暗房，
+  全部竖排，符合横握相机时拇指落在机身右侧的握持姿势。
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#000">
+
+    <!-- 相机预览：全屏 -->
+    <com.filmcam.app.filter.LutGLSurfaceView
+        android:id="@+id/glSurfaceView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <!-- 康泰时 T3 取景器常驻标记：四角亮框 + 视差角标 + 中央 AF 圆线 -->
+    <com.filmcam.app.ui.ViewfinderFrameView
+        android:id="@+id/viewfinderFrame"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <!-- ===== 左侧栏：液晶屏 + 机顶功能键（竖排，落在预览左侧黑边上） ===== -->
+    <LinearLayout
+        android:id="@+id/topBar"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="start|center_vertical"
+        android:orientation="vertical"
+        android:gravity="center_horizontal"
+        android:paddingStart="18dp"
+        android:paddingEnd="10dp">
+
+        <!-- 机型文字（隐藏，保留 id）——铭牌已按真机移至机身正面 -->
+        <TextView
+            android:id="@+id/modelText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="T3"
+            android:visibility="gone"
+            android:fontFamily="sans-serif-medium"
+            android:textColor="#CBC7BE"
+            android:textSize="15sp"
+            android:letterSpacing="0.08" />
+
+        <com.filmcam.app.ui.T3LcdView
+            android:id="@+id/lcdDisplay"
+            android:layout_width="148dp"
+            android:layout_height="56dp" />
+
+        <!-- 闪光灯键：关 → 内置 → 外置 → 关 -->
+        <ImageView
+            android:id="@+id/flashKey"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_marginTop="18dp"
+            android:padding="13dp"
+            android:src="@drawable/ic_flash"
+            android:background="@drawable/bg_key"
+            android:clickable="true"
+            android:focusable="true"
+            android:contentDescription="闪光灯" />
+
+        <!-- 曝光补偿键：T3 机顶 ± 按钮样式 -->
+        <TextView
+            android:id="@+id/evKey"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_marginTop="14dp"
+            android:text="+/-"
+            android:textColor="#2A2A30"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:gravity="center"
+            android:background="@drawable/bg_key"
+            android:clickable="true"
+            android:focusable="true" />
+
+        <!-- 设置键 -->
+        <ImageView
+            android:id="@+id/settingsKey"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_marginTop="14dp"
+            android:padding="13dp"
+            android:src="@drawable/ic_tune"
+            android:background="@drawable/bg_key"
+            android:clickable="true"
+            android:focusable="true"
+            android:contentDescription="设置" />
+    </LinearLayout>
+
+    <!-- 机身正面铭牌：CONTAX T3 完整 logo（横屏下放进左栏底部，避免压到画面） -->
+    <ImageView
+        android:id="@+id/brandLogo"
+        android:layout_width="wrap_content"
+        android:layout_height="16dp"
+        android:adjustViewBounds="true"
+        android:layout_gravity="bottom|start"
+        android:layout_marginStart="24dp"
+        android:layout_marginBottom="14dp"
+        android:src="@drawable/ic_t3_logo"
+        android:contentDescription="CONTAX T3" />
+
+    <!-- ===== 右侧栏：胶卷 / 快门 / 暗房（竖排，拇指自然落在这一侧） ===== -->
+    <LinearLayout
+        android:id="@+id/bottomBar"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="end|center_vertical"
+        android:orientation="vertical"
+        android:gravity="center_horizontal"
+        android:paddingStart="10dp"
+        android:paddingEnd="18dp">
+
+        <!-- 上：当前胶卷图标（点击换胶卷） -->
+        <ImageView
+            android:id="@+id/tvFilmName"
+            android:layout_width="56dp"
+            android:layout_height="56dp"
+            android:scaleType="centerCrop"
+            android:background="@drawable/bg_darkroom"
+            android:clickable="true"
+            android:focusable="true"
+            android:contentDescription="当前胶卷" />
+
+        <!-- 中：快门（与两翼留 28dp，避免误触胶卷/暗房） -->
+        <View
+            android:id="@+id/btnShutter"
+            android:layout_width="72dp"
+            android:layout_height="72dp"
+            android:layout_marginTop="28dp"
+            android:layout_marginBottom="28dp"
+            android:background="@drawable/bg_shutter" />
+
+        <!-- 下：暗房（未冲洗卷 + 已冲洗成片） -->
+        <TextView
+            android:id="@+id/btnGallery"
+            android:layout_width="56dp"
+            android:layout_height="56dp"
+            android:gravity="center"
+            android:background="@drawable/bg_darkroom"
+            android:clickable="true"
+            android:focusable="true"
+            android:text="DARKROOM"
+            android:fontFamily="sans-serif-medium"
+            android:textColor="#C9C5BC"
+            android:textSize="9sp"
+            android:letterSpacing="0.12"
+            android:includeFontPadding="false"
+            android:contentDescription="暗房" />
+    </LinearLayout>
+
+    <!-- 隐藏胶卷文字（保留 id，避免破坏逻辑） -->
+    <TextView
+        android:id="@+id/filmInfoText"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:visibility="gone" />
+
+    <!-- ===== 曝光补偿（隐藏，通过上下滑预览调） ===== -->
+    <LinearLayout
+        android:id="@+id/layoutExposure"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:visibility="gone">
+        <TextView android:id="@+id/btnEvMinus" android:layout_width="0dp" android:layout_height="0dp" />
+        <TextView android:id="@+id/tvEvValue" android:layout_width="0dp" android:layout_height="0dp" />
+        <TextView android:id="@+id/btnEvPlus" android:layout_width="0dp" android:layout_height="0dp" />
+    </LinearLayout>
+
+    <!-- 备用/隐藏控件（保留 id 避免破坏 MainActivity） -->
+    <TextView
+        android:id="@+id/tvFlashStatus"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="闪: 关"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/tvProToggle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="专业"
+        android:visibility="gone" />
+
+    <LinearLayout
+        android:id="@+id/proControls"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:visibility="gone">
+        <TextView android:id="@+id/tvIso" android:layout_width="wrap_content" android:layout_height="wrap_content" />
+        <TextView android:id="@+id/tvShutter" android:layout_width="wrap_content" android:layout_height="wrap_content" />
+        <TextView android:id="@+id/tvExposure" android:layout_width="wrap_content" android:layout_height="wrap_content" />
+    </LinearLayout>
+
+    <!-- 自动过卷动画遮罩（T3 风格：胶卷旋转过卷 + 状态文字） -->
+    <FrameLayout
+        android:id="@+id/developingOverlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#000"
+        android:visibility="gone">
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:orientation="vertical"
+            android:gravity="center">
+            <ImageView
+                android:id="@+id/ivDeveloping"
+                android:layout_width="120dp"
+                android:layout_height="120dp"
+                android:scaleType="fitCenter"
+                android:contentDescription="过卷" />
+            <TextView
+                android:id="@+id/tvDevelopingText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="20dp"
+                android:text="FILM ADVANCING..."
+                android:textColor="#FFF"
+                android:textSize="13sp"
+                android:letterSpacing="0.3" />
+        </LinearLayout>
+    </FrameLayout>
+
+</FrameLayout>
