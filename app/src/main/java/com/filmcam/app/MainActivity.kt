@@ -178,13 +178,49 @@ class MainActivity : AppCompatActivity() {
         // 正好满足"点按对焦"的全部条件，于是隔着菜单就对焦了。
         // 真机不存在这种操作，所以没有自己 DOWN 的手势一律不认。
         var touchActive = false
+        var lastDownTime = -1L          // 本手势序列的起始时间（同一序列所有事件共享）
+
+        // 点按对焦判定交给 GestureDetector：它只在「自己收到过 DOWN 的完整序列」上回调
+        // onSingleTapUp。弹窗飘下来的孤立 UP 没有配对 DOWN，从结构上不可能触发对焦——
+        // 这比任何时间窗都可靠（时间窗会过期，序列完整性不会）。
+        val tapDetector = android.view.GestureDetector(
+            this,
+            object : android.view.GestureDetector.SimpleOnGestureListener() {
+                override fun onDown(e: android.view.MotionEvent): Boolean = true
+                override fun onSingleTapUp(e: android.view.MotionEvent): Boolean {
+                    if (dialogDepth > 0) return true
+                    if (SystemClock.uptimeMillis() < suppressTouchUntil) return true
+                    if (touchMoved) return true          // 滑动调过 EV/白平衡就不算点按
+                    val fx = e.x
+                    val fy = e.y
+                    binding.viewfinderFrame.notifyActivity()
+                    // 只有落在预览内容矩形内才对焦：letterbox 黑边、预览窗之外一律忽略
+                    if (!binding.viewfinderFrame.contentRect().contains(fx, fy)) return true
+                    // 点屏对焦：不做任何视觉标记，合焦后仅给一次短震动
+                    cameraController?.focusAt(
+                        fx, fy,
+                        binding.glSurfaceView.width, binding.glSurfaceView.height
+                    ) { vibrate(15) }
+                    return true
+                }
+            }
+        )
+
         binding.glSurfaceView.setOnTouchListener { _, event ->
+            // 弹窗在场时取景器本就不该收到事件，收到就是菜单飘下来的残余
+            if (dialogDepth > 0) return@setOnTouchListener true
+            // 同一手势序列的 downTime 恒定；downTime 对不上说明是别的序列的残余事件
+            if (event.action != android.view.MotionEvent.ACTION_DOWN &&
+                event.downTime != lastDownTime
+            ) return@setOnTouchListener true
+            tapDetector.onTouchEvent(event)
             when (event.action) {
                 android.view.MotionEvent.ACTION_DOWN -> {
                     // 弹窗/设置项刚关闭的一瞬间，抬手事件会落到取景器上被当成点屏对焦。
                     // 真机不存在这种"隔着菜单对焦"，所以这段时间窗内一律不响应触摸。
                     if (SystemClock.uptimeMillis() < suppressTouchUntil) return@setOnTouchListener true
                     touchActive = true
+                    lastDownTime = event.downTime
                     touchStartX = event.rawX
                     touchStartY = event.rawY
                     touchStartEv = exposureComp
@@ -250,25 +286,7 @@ class MainActivity : AppCompatActivity() {
                         return@setOnTouchListener true
                     }
                     if (exposureComp != touchStartEv) saveSettings()
-                    if (event.action == android.view.MotionEvent.ACTION_UP &&
-                        !touchMoved && exposureComp == touchStartEv
-                    ) {
-                        // 点按：点屏对焦（event.x/y 已是相对取景器的坐标，
-                        // 比	rawX 减 getLocationOnScreen 更可靠——小窗/窗口偏移时后者会错位）
-                        val fx = event.x
-                        val fy = event.y
-                        binding.viewfinderFrame.notifyActivity()
-                        // 只有落在预览内容矩形内才对焦：letterbox 黑边、预览窗之外的
-                        // 点按一律忽略（真机 T3 的可视面积就是这块，点外面不该有反应）
-                        if (!binding.viewfinderFrame.contentRect().contains(fx, fy)) {
-                            return@setOnTouchListener true
-                        }
-                        // 点屏对焦：不做任何视觉标记，合焦后仅给一次短震动
-                        cameraController?.focusAt(
-                            fx, fy,
-                            binding.glSurfaceView.width, binding.glSurfaceView.height
-                        ) { vibrate(15) }
-                    }
+                    // 点按对焦已交给 tapDetector（只在完整手势序列上触发）
                 }
             }
             true
@@ -292,6 +310,8 @@ class MainActivity : AppCompatActivity() {
         // 参数每次都照常套用（幂等），但机身提示只在「真正新的一次跳转」给：
         // 横竖屏切换会重建 Activity，此时 savedInstanceState != null，
         // 再提示一遍就成了骚扰。
+        // Activity 重建时旧弹窗已随实例销毁，这里必须复位，否则取景器会永久失联
+        dialogDepth = 0
         applySameRecipe(intent, announce = savedInstanceState == null)
     }
 
@@ -415,10 +435,13 @@ class MainActivity : AppCompatActivity() {
      * 弹窗关闭守卫：无论怎么关的，dismiss 后都补一段取景器触摸屏蔽。
      * 只在点击回调里设不够——点弹窗外部、按返回键关闭时同样会有事件甩给取景器。
      */
-    private fun android.app.Dialog.guardTouchOnDismiss() {
+    private fun <T : android.app.Dialog> T.guardDialog(): T {
+        dialogDepth++
         setOnDismissListener {
+            dialogDepth = (dialogDepth - 1).coerceAtLeast(0)
             suppressTouchUntil = SystemClock.uptimeMillis() + DIALOG_TOUCH_GUARD_MS
         }
+        return this
     }
 
     /** 设置弹窗：只留普通用户项；调试与模拟失焦收进「关于页 → 版本号连点 10 次」的工程师模式 */
@@ -443,8 +466,7 @@ class MainActivity : AppCompatActivity() {
             }
             .setNegativeButton("关闭", null)
             .create()
-        dialog.guardTouchOnDismiss()
-        dialog.show()
+        dialog.guardDialog().show()
     }
 
     /** 胶卷拍满：引导去暗房冲洗 */
@@ -456,6 +478,8 @@ class MainActivity : AppCompatActivity() {
                 activeRollId()?.let { DevelopController.startDevelopment(this, it) }
             }
             .setNegativeButton("稍后", null)
+            .create()
+            .guardDialog()
             .show()
     }
 
@@ -509,6 +533,8 @@ class MainActivity : AppCompatActivity() {
                     "· 冲洗前看不到成片——胶片的惊喜就在这里"
             )
             .setPositiveButton("开拍", null)
+            .create()
+            .guardDialog()
             .show()
     }
 
@@ -594,7 +620,7 @@ class MainActivity : AppCompatActivity() {
                 }
                 .setNegativeButton("取消", null)
                 .create()
-                .also { it.guardTouchOnDismiss() }
+                .also { it.guardDialog() }
                 .show()
         }
 
@@ -652,7 +678,7 @@ class MainActivity : AppCompatActivity() {
                 }
                 .setNegativeButton("取消", null)
                 .create()
-                .also { it.guardTouchOnDismiss() }
+                .also { it.guardDialog() }
                 .show()
         }
 
@@ -676,7 +702,7 @@ class MainActivity : AppCompatActivity() {
                 showSettings()
             }
             .create()
-            .also { it.guardTouchOnDismiss() }
+            .also { it.guardDialog() }
             .show()
     }
 
@@ -766,8 +792,7 @@ class MainActivity : AppCompatActivity() {
             }
         })
 
-        dialog.guardTouchOnDismiss()
-        dialog.show()
+        dialog.guardDialog().show()
         // 横屏下 BottomSheet 默认只展开到 peek 高度，25 支胶卷的大半被压在屏幕外，
         // 也看不出"往上还能滑"——直接强制全展开，让滚动发生在列表内部。
         dialog.behavior.state =
@@ -810,6 +835,10 @@ class MainActivity : AppCompatActivity() {
 
     /** 这个时刻之前忽略取景器触摸：弹窗/设置项关闭后短暂的防误触窗口 */
     private var suppressTouchUntil = 0L
+
+    /** 当前在场弹窗层数（>0 时取景器一律不响应触摸）。用计数不用布尔：
+     *  冲洗参数弹窗里还会再开子选择弹窗，子窗关闭不该撤掉父窗的防护。 */
+    private var dialogDepth = 0
 
     private fun applyWbIndex() {
         cameraController?.setAwbMode(wbPresets[wbIndex].awbMode)
