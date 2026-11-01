@@ -16,9 +16,9 @@ import kotlin.math.abs
 import kotlin.math.min
 
 /**
- * 过卷动画：**胶卷（平面，原样不旋转不缩放）向右走一个图标的宽度，然后原地循环**——
- * 以中心为基准，向左半个图标起步 → 匀速向右走满一个图标 → 立刻回到起点继续，
- * 循环不断。全程画面里只有一个胶卷，身后（左侧）带横向拖影（运动模糊）。
+ * 过卷动画：**胶卷（平面，原样不旋转不缩放）固定在正中不动**，
+ * 只有身后（左侧）的运动拖影沿「一个图标宽」的轨道由左向右快速流过并循环，
+ * 主体始终清晰 —— 用"胶片被不停拉走"的拖影表现过片，胶卷本身不位移。
  *
  * 走过的版本：图标原地空转 → 单卷横掠+自转 → 双卷轴+胶带 → 端面绕 Z 轴转 →
  * 竖直圆柱绕 Y 轴转 → 平面绕竖直轴翻转。用户要的其实是"胶卷从左到右走"。
@@ -52,25 +52,21 @@ class FilmReelView @JvmOverloads constructor(
         val fw = b.width * s
         val fh = b.height * s
         val top = (h - fh) / 2f
+        val cx = (w - fw) / 2f     // 主体固定在正中，全程不动
 
-        // 一个周期 = 一个图标的宽度：图标以中心为基准，向左半个图标 → 向右半个图标，
-        // 走到头立刻回到起点继续，位移正好一个图标大小，原地循环。
-        val x = (w - fw) / 2f - fw / 2f + (scroll % fw)
-
-        val trail = (abs(speed) / 85f).coerceIn(0f, fw * 0.5f)
-
-        // 身后（左侧）的残影：横向运动模糊
-        if (trail > 1.5f) {
-            paint.alpha = 40
-            ghostRect.set(x - trail * 0.55f, top, x - trail * 0.55f + fw, top + fh)
-            canvas.drawBitmap(b, null, ghostRect, paint)
-            paint.alpha = 70
-            ghostRect.set(x - trail * 0.28f, top, x - trail * 0.28f + fw, top + fh)
+        // 身后（左侧）的拖影：多张残影沿「一个图标宽」的轨道由左向右快速流过，
+        // 到主体位置就被主体盖掉并从左边重新进入 → 看起来胶片在被不停拉走。
+        val ghosts = 5
+        for (i in 0 until ghosts) {
+            val t = ((scroll / fw) + i.toFloat() / ghosts) % 1f   // 0=最左 1=贴住主体
+            val off = (t - 1f) * fw
+            paint.alpha = (14f + 40f * t).toInt().coerceIn(0, 255)
+            ghostRect.set(cx + off, top, cx + off + fw, top + fh)
             canvas.drawBitmap(b, null, ghostRect, paint)
         }
 
         paint.alpha = 255
-        dstRect.set(x, top, x + fw, top + fh)
+        dstRect.set(cx, top, cx + fw, top + fh)
         canvas.drawBitmap(b, null, dstRect, paint)
     }
 
