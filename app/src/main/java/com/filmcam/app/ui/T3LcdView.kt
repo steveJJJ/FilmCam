@@ -313,7 +313,7 @@ class T3LcdView @JvmOverloads constructor(
         val ch = rect.height() - padY * 2f
         val paint = Paint(textPaint).apply {
             color = onColor
-            textSize = ch * 0.34f
+            textSize = ch * 0.38f
             isFakeBoldText = true
         }
         // 文案长短差异大，按可用宽度自动缩字号，保证一句放得下
@@ -322,23 +322,9 @@ class T3LcdView @JvmOverloads constructor(
             paint.textSize -= 0.5f * density
         }
 
-        val iconH = paint.textSize * 0.92f
-        val iconW = iconH * 0.24f
-        val gap = 5f * density
-        val totalW = iconW + gap + paint.measureText(msg)
-        val startX = rect.left + (rect.width() - totalW) / 2f
+        val startX = rect.left + (rect.width() - paint.measureText(msg)) / 2f
         val baseline = rect.centerY() - (paint.fontMetrics.ascent + paint.fontMetrics.descent) / 2f
-
-        drawExclamation(canvas, startX, baseline - iconH * 0.82f, iconW, iconH, onColor)
-        canvas.drawText(msg, startX + iconW + gap, baseline, paint)
-    }
-
-    /** 警示叹号：竖条 + 点（不用 emoji，避免字体缺字） */
-    private fun drawExclamation(canvas: Canvas, x: Float, top: Float, w: Float, h: Float, color: Int) {
-        fillPaint.color = color
-        val barBottom = top + h * 0.64f
-        canvas.drawRoundRect(RectF(x, top, x + w, barBottom), w * 0.42f, w * 0.42f, fillPaint)
-        canvas.drawCircle(x + w / 2f, barBottom + h * 0.24f, w * 0.5f, fillPaint)
+        canvas.drawText(msg, startX, baseline, paint)
     }
 
     // ---------------------------------------------------------------

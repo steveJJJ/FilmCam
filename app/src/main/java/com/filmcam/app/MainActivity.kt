@@ -677,7 +677,7 @@ class MainActivity : AppCompatActivity() {
             // 反转片拦截：与原项目一致，本版只支持负片印相纸
             if (!roll.available) {
                 showLcdNotice("反转片不支持印相")
-                vibrate(45, 60)
+                vibrate(60)
                 return
             }
             // 换卷拦截：当前卷有未冲洗帧时禁止换胶卷（对应真机拍完必须回卷才能开盖）
@@ -685,9 +685,11 @@ class MainActivity : AppCompatActivity() {
             val pending = active?.let { UndevelopedFilmStore.shotCount(it.rollId) } ?: 0
             if (active != null && pending > 0) {
                 showLcdNotice("胶卷冲洗后才能换卷")
-                // 被拦下来要有「机身顶住了」的手感：两连震，比单纯给提示更直接
-                vibrate(30, 70)
-                binding.viewfinderFrame.postDelayed({ vibrate(30, 70) }, 110)
+                // 被拦下来要有「机身顶住了」的手感：两连震，比单纯给提示更直接。
+                // 不传振幅走系统默认强度——之前用 70/255 的低振幅在真机上几乎无感，
+                // 三星的马达对低于约 1/3 强度的短脉冲基本不响应。
+                vibrate(90)
+                binding.viewfinderFrame.postDelayed({ vibrate(90) }, 140)
                 return
             }
         }
@@ -695,8 +697,9 @@ class MainActivity : AppCompatActivity() {
         binding.tvFilmName.setImageResource(roll.iconResId)
         updateFilmInfo()
         saveSettings()
-        // 选中一支新胶卷：给一记轻触确认，替换 LUT 的同时手上要有响应
-        if (fromUser) vibrate(22, 45)
+        // 选中一支新胶卷：给一记轻触确认，替换 LUT 的同时手上要有响应。
+        // 同样走系统默认强度，不用自定义低振幅。
+        if (fromUser) vibrate(45)
     }
 
     // ===== T3 机身 UI 交互 =====
@@ -1202,20 +1205,20 @@ class MainActivity : AppCompatActivity() {
         // 过卷等待动画：持续旋转直到处理+保存完成（胶片相机拍完需等冲洗，动画连贯不跳变）
         startDevelopingAnimation()
 
-        // 过卷声音：真机 T3 是马达电动过卷，先「喀」一声叶片曝光 → 停顿一下 →
-        // 马达拖齿轮约 0.95 秒 → 末尾到位一记轻钝响。原先素材只有 340ms 且与快门声
-        // 同帧起播，两者糊成一坨听不出层次。现在素材改为按 T3 马达成分合成的版本
-        // （armature 锯齿 + 齿轮啸叫 + 轴承带噪 + 齿距 AM，RMS 约为旧素材 3.5 倍），
-        // 不再需要靠降速拉长，按 1.0 速率播放保留正确音高；仍延后 200ms 让曝光有交代。
+        // 过卷声音：真实 T3 的顺序是「叶片先喀一声曝光」→ 停顿一下 →「马达拖动齿轮过卷」，
+        // 两段声音之间有明显间隔。原先它与快门声在同一帧触发，82ms 的快门声还没播完
+        // 340ms 的马达声就压上来了，两个音叠成一坨，听不出层次——反馈"过片声不明显"
+        // 其实是听到了，只是被糊在一起分不出来。这里延后 200ms 起播给曝光留出交代，
+        // 并用 0.75 速率把素材拉长到约 450ms、音调略沉（更接近马达带负载的质感）。
+        // 注：曾用合成素材把时长做到 950ms，用户试听后要求回退，待找到真实录音再处理。
         binding.ivDeveloping.postDelayed({
-            if (isCapturing) playAdvanceSound()
+            if (isCapturing) playAdvanceSound(rate = 0.75f)
         }, 200)
 
-        // 微弱震动：跟着 950ms 的马达铺开，让手感的节奏与听觉对齐
+        // 微弱震动：同步挪到马达真正发力之后，让手感与听觉对齐
         binding.ivDeveloping.postDelayed({ if (isCapturing) vibrate(50, 30) }, 200)
-        binding.ivDeveloping.postDelayed({ if (isCapturing) vibrate(45, 25) }, 480)
-        binding.ivDeveloping.postDelayed({ if (isCapturing) vibrate(45, 25) }, 760)
-        binding.ivDeveloping.postDelayed({ if (isCapturing) vibrate(60, 35) }, 1080)  // 到位那记
+        binding.ivDeveloping.postDelayed({ if (isCapturing) vibrate(45, 25) }, 380)
+        binding.ivDeveloping.postDelayed({ if (isCapturing) vibrate(45, 25) }, 520)
 
         // 480ms 后文案切到 PROCESSING...；真正的完成收尾由 onPhotoCaptured 回调 finally 里做
         binding.ivDeveloping.postDelayed({

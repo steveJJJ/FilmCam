@@ -183,7 +183,7 @@ class ViewfinderFrameView @JvmOverloads constructor(
         canvas.drawArc(oval, 110f, 140f, false, centerPaint)
         canvas.drawArc(oval, -70f, 140f, false, centerPaint)
 
-        // ---- 以下为条件显示itten је ----
+        // ---- 以下为条件显示（对焦/曝光/闪光/白平衡随状态浮现）----
         val st = indicators ?: return
         val alpha = indicatorsAlpha()
         if (alpha <= 0f) return
@@ -248,8 +248,10 @@ class ViewfinderFrameView @JvmOverloads constructor(
     private fun drawWbPanel(
         canvas: Canvas, cx: Float, cy: Float, iconSize: Float, st: Indicators, alpha: Float
     ) {
-        val y = cy + iconSize * 4.2f
-        val iconH = iconSize * 2.0f
+        // 图标按 iconSize 的 2.9 倍定高（原为 2.0 倍，真机上看偏小、白线细节糊在一起）；
+        // 同时整体下移到 5.0 倍处，给上方 AF 弧括号留出净空，下方档位点仍有余量。
+        val y = cy + iconSize * 5.0f
+        val iconH = iconSize * 2.9f
         val iconW = iconH * 1.35f
         val arrowH = iconH * 0.55f
         val arrowW = arrowH * 0.72f
@@ -257,7 +259,7 @@ class ViewfinderFrameView @JvmOverloads constructor(
 
         val p = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
-            strokeWidth = stroke * 0.78f
+            strokeWidth = stroke * 0.92f
             strokeCap = Paint.Cap.ROUND
             strokeJoin = Paint.Join.ROUND
             color = Color.argb((0xCC * alpha).toInt(), 255, 255, 255)
@@ -272,8 +274,8 @@ class ViewfinderFrameView @JvmOverloads constructor(
 
         // 下方档位小点：当前档实心，其余空心
         if (st.wbCount > 1) {
-            val dotR = iconSize * 0.155f
-            val dotGap = iconSize * 0.62f
+            val dotR = iconSize * 0.185f
+            val dotGap = iconSize * 0.72f
             val totalW = (st.wbCount - 1) * dotGap
             val dy = y + iconH * 0.72f
             for (i in 0 until st.wbCount) {
