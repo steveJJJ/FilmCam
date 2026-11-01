@@ -70,7 +70,7 @@ class DevelopmentActivity : AppCompatActivity(), SensorEventListener {
          * 素材 v12 起换成真实小溪录音（连续声，不像合成版有间隙，同样 RMS 下听感更响），
          * 所以这里再收一档。静置仍完全静音。
          */
-        private const val WATER_VOL_MAX = 0.05f
+        private const val WATER_VOL_MAX = 0.06f
         /** 静音持续这么久就把循环停掉（省电、避免残留底噪） */
         private const val WATER_SILENT_STOP_MS = 1000L
     }
