@@ -308,7 +308,14 @@ class MainActivity : AppCompatActivity() {
      * 放在这一层比只在取景器的 onTouch 里拦更彻底：任何子 View 都收不到。
      */
     override fun dispatchTouchEvent(ev: android.view.MotionEvent): Boolean {
-        if (SystemClock.uptimeMillis() < suppressTouchUntil) return true
+        if (SystemClock.uptimeMillis() < suppressTouchUntil) {
+            // 只吃掉落在取景器上的事件：快门/胶卷/设置这类机身按键不受影响，
+            // 否则关掉弹窗后立刻按快门会有 400ms 没反应，反而像卡了。
+            val r = android.graphics.Rect()
+            if (binding.glSurfaceView.getGlobalVisibleRect(r) &&
+                r.contains(ev.rawX.toInt(), ev.rawY.toInt())
+            ) return true
+        }
         return super.dispatchTouchEvent(ev)
     }
 
