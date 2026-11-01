@@ -67,10 +67,10 @@ class DevelopmentActivity : AppCompatActivity(), SensorEventListener {
         private const val WATER_VOL_ONSET = 0.10f
         /**
          * 用力搅动时的音量上限。要的是"轻微的水声"，不是冲刷声 ——
-         * 素材里涌动已压到 v3 的约 1/5、气泡也降了 4 成，文件峰值归一从 0.90 降到 0.62，
-         * 这里再降一档（0.90 → 0.38）。静置仍完全静音。
+         * 素材 v6 起按 RMS 归一（目标 0.050，v5 是 0.069），气泡/涌动又各降一档，
+         * 这里再降一档（0.90 → 0.30）。静置仍完全静音。
          */
-        private const val WATER_VOL_MAX = 0.38f
+        private const val WATER_VOL_MAX = 0.30f
         /** 静音持续这么久就把循环停掉（省电、避免残留底噪） */
         private const val WATER_SILENT_STOP_MS = 1000L
     }
@@ -398,7 +398,8 @@ class DevelopmentActivity : AppCompatActivity(), SensorEventListener {
         }
         if (waterStreamId != 0) {
             waterPool?.setVolume(waterStreamId, vol, vol)
-            waterPool?.setRate(waterStreamId, (0.9f + agitation * 0.42f).coerceIn(0.5f, 2f))
+            // 播放速率别拉太高：速率一高，气泡/水滴密度跟着变密、音调变亮，听感就"忙"且吵
+            waterPool?.setRate(waterStreamId, (0.95f + agitation * 0.22f).coerceIn(0.5f, 2f))
         }
 
         // 成片已落盘 → 淡入；停留够了 → 推进下一帧
