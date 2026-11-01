@@ -22,7 +22,6 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.animation.LinearInterpolator
 import android.widget.Button
-import android.widget.ImageView
 import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
@@ -60,25 +59,15 @@ class DevelopmentActivity : AppCompatActivity(), SensorEventListener {
         private const val DWELL_MS = 700L            // 显影完成后停留，给人看清的间隙
         private const val SHARP_FADE_MS = 800L       // 引擎成片淡入时长
         private const val TICK_MS = 66L              // 推进节奏 ≈15fps，足够顺滑
-        private const val EMULSION_CLEAR_END = 0.42f // 乳剂层完全退去时的显影进度
         private const val REVEAL_CAP = 0.86f         // 引擎未冲出本帧时进度上限
-        /** 未显影乳剂的底色（偏暖琥珀褐，红光安全灯下会再被整体压暗） */
-        private const val EMULSION_COLOR = 0xFF7A5A38.toInt()
         private const val STRIP_CELLS = 36
     }
 
     private lateinit var tvTitle: TextView
     private lateinit var tvStockName: TextView
     private lateinit var tvCount: TextView
-    private lateinit var ivFrame: ImageView
-    /** 潜影层：底图去饱和 + 提亮的褪色影像，显影推进中短暂可见 */
-    private lateinit var ivGhost: ImageView
-    /** 成片层：引擎冲洗完成的 JPEG，落盘后淡入 */
-    private lateinit var ivSharp: ImageView
-    /** 乳剂层：整片胶片底色，显影前完全埋住影像 */
-    private lateinit var ivEmulsion: ImageView
-    /** 液面波动层：叠在最上面，随搅动加强 */
-    private lateinit var liquidWave: LiquidWaveView
+    /** 显影液盘：照片浸在液面之下，折射/高光都由它渲染（见 WaterTrayView） */
+    private lateinit var waterTray: WaterTrayView
     private lateinit var tvProgress: TextView
     private lateinit var layoutDone: View
     private lateinit var tvDoneTitle: TextView
@@ -128,7 +117,6 @@ class DevelopmentActivity : AppCompatActivity(), SensorEventListener {
         tvTitle = findViewById(R.id.tvTitle)
         tvStockName = findViewById(R.id.tvStockName)
         tvCount = findViewById(R.id.tvCount)
-        ivFrame = findViewById(R.id.ivFrame)
         tvProgress = findViewById(R.id.tvProgress)
         layoutDone = findViewById(R.id.layoutDone)
         tvDoneTitle = findViewById(R.id.tvDoneTitle)
@@ -138,10 +126,7 @@ class DevelopmentActivity : AppCompatActivity(), SensorEventListener {
         progressBar = findViewById(R.id.progressBar)
         tvShakeHint = findViewById(R.id.tvShakeHint)
         btnBackground = findViewById(R.id.btnBackground)
-        ivGhost = findViewById(R.id.ivGhost)
-        ivSharp = findViewById(R.id.ivSharp)
-        ivEmulsion = findViewById(R.id.ivEmulsion)
-        liquidWave = findViewById(R.id.liquidWaveView)
+        waterTray = findViewById(R.id.waterTray)
         initWaterSound()
 
         // 1) 读 extra
@@ -284,11 +269,11 @@ class DevelopmentActivity : AppCompatActivity(), SensorEventListener {
     /**
      * 开始显影第 index 帧。
      *
-     * 层序（自下而上）：
-     *   ① ivFrame    底图：本帧原始像素（未冲洗的样子）
-     *   ② ivSharp    成片：引擎冲洗完成的 JPEG —— 服务落盘后淡入，盖住 ①
-     *   ③ ivGhost    潜影：去饱和 + 提亮的「褪色底片」，显影推进中短暂可见
-     *   ④ ivEmulsion 乳剂：一整片胶片底色，显影前把影像完全埋住
+     * 层序（自下而上，全部交给 WaterTrayView 合成后再做水面折射）：
+     *   ① 底图    本帧原始像素（未冲洗的样子）
+     *   ② 成片    引擎冲洗完成的 JPEG —— 服务落盘后淡入，盖住 ①
+     *   ③ 潜影    去饱和 + 提亮的「褪色底片」，显影推进中短暂可见
+     *   ④ 乳剂    一整片胶片底色，显影前把影像完全埋住
      *
      * 随进度推进 ④ 先被冲开、③ 再褪去，影像从一片乳剂里浮出来 —— 和拍立得
      * 在显影液里的次序一致：先暗部、后亮部。
@@ -303,32 +288,15 @@ class DevelopmentActivity : AppCompatActivity(), SensorEventListener {
 
         val sharp = decodeSmallFrame(info.rollId, index, 720)
         if (sharp != null) {
-            ivFrame.setImageBitmap(sharp)
-            ivGhost.setImageBitmap(makeLatentGhost(sharp))
-            // 乳剂层与底图同尺寸 → fitCenter 后逐像素对齐，只盖住画面不留黑边
-            ivEmulsion.setImageBitmap(emulsionBitmap(sharp.width, sharp.height))
+            waterTray.setFrame(sharp, makeLatentGhost(sharp))
+        } else {
+            waterTray.setFrame(null, null)
         }
-        ivSharp.setImageDrawable(null)
-        ivSharp.alpha = 0f
-        ivFrame.alpha = 1f
-        ivGhost.alpha = 1f
-        ivEmulsion.alpha = 1f
-        ivGhost.visibility = View.VISIBLE
-        ivEmulsion.visibility = View.VISIBLE
-        ivSharp.visibility = View.GONE
     }
 
-    /** 把当前显影进度映射到各层 alpha。 */
+    /** 把当前显影进度交给液盘换算各层 alpha。 */
     private fun applyReveal() {
-        // 乳剂层先退（看到轮廓）→ 潜影层后退（由虚变实）
-        ivEmulsion.alpha = 1f - smoothstep(0f, EMULSION_CLEAR_END, reveal)
-        ivGhost.alpha = 1f - smoothstep(0.30f, 1f, reveal)
-    }
-
-    private fun smoothstep(a: Float, b: Float, x: Float): Float {
-        if (b <= a) return if (x < a) 0f else 1f
-        val t = ((x - a) / (b - a)).coerceIn(0f, 1f)
-        return t * t * (3f - 2f * t)
+        waterTray.reveal = reveal
     }
 
     private fun startDevelopLoop() {
@@ -396,7 +364,7 @@ class DevelopmentActivity : AppCompatActivity(), SensorEventListener {
         val cap = if (st.done >= displayedIndex) 1f else REVEAL_CAP
         reveal = (reveal + dt / DEVELOP_MS * speed * gain).coerceAtMost(cap)
         applyReveal()
-        liquidWave.setAgitation(agitation)
+        waterTray.setAgitation(agitation)
 
         // 水声：搅得越猛越响、音调越高
         if (waterStreamId != 0) {
@@ -427,27 +395,16 @@ class DevelopmentActivity : AppCompatActivity(), SensorEventListener {
         developHandler.post {
             val developed = decodeSmallFrame(info.rollId, idx, 720)
             if (developed != null && displayedIndex == idx) {
-                ivSharp.setImageBitmap(developed)
-                ivSharp.visibility = View.VISIBLE
+                waterTray.setDeveloped(developed)
                 sharpAnimator?.cancel()
                 sharpAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
                     duration = SHARP_FADE_MS
                     interpolator = LinearInterpolator()
-                    addUpdateListener { va -> ivSharp.alpha = va.animatedValue as Float }
+                    addUpdateListener { va -> waterTray.developedAlpha = va.animatedValue as Float }
                     start()
                 }
             }
         }
-    }
-
-    /** 胶片底色：未显影乳剂那种偏暖的琥珀褐。按底图尺寸生成并缓存，尺寸变了才重建。 */
-    private var emulsionCache: Bitmap? = null
-    private fun emulsionBitmap(w: Int, h: Int): Bitmap {
-        emulsionCache?.let { if (it.width == w && it.height == h) return it }
-        val b = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-        b.eraseColor(EMULSION_COLOR)
-        emulsionCache = b
-        return b
     }
 
     /**

@@ -53,42 +53,9 @@
             android:background="#1A0000"
             android:padding="2dp">
 
-            <ImageView
-                android:id="@+id/ivFrame"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:scaleType="fitCenter"
-                android:contentDescription="当前显影帧" />
-
-            <!-- 成片层：引擎冲洗完成的 JPEG，落盘后淡入，盖住未冲洗底图 -->
-            <ImageView
-                android:id="@+id/ivSharp"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:scaleType="fitCenter"
-                android:visibility="gone"
-                android:contentDescription="冲洗成片" />
-
-            <!-- 潜影层：底图去饱和 + 提亮 + 暖调后的「褪色底片」，显影过程中短暂可见 -->
-            <ImageView
-                android:id="@+id/ivGhost"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:scaleType="fitCenter"
-                android:visibility="gone"
-                android:contentDescription="底片潜影" />
-
-            <!-- 乳剂层：一整片胶片底色，显影开始前把影像完全埋住 -->
-            <ImageView
-                android:id="@+id/ivEmulsion"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:scaleType="fitCenter"
-                android:visibility="gone"
-                android:contentDescription="显影乳剂层" />
-
-            <com.filmcam.app.develop.LiquidWaveView
-                android:id="@+id/liquidWaveView"
+            <!-- 显影液盘：照片浸在晃动的液面之下（真实水面法线驱动折射 + 高光） -->
+            <com.filmcam.app.develop.WaterTrayView
+                android:id="@+id/waterTray"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent" />
 
