@@ -167,11 +167,31 @@ class AboutActivity : AppCompatActivity() {
     }
 
     /**
-     * 标题栏右端的「问题反馈」入口：唤起邮件客户端，并预填 App 版本与设备信息，
-     * 便于拿到能直接复现的诊断数据。收件人来自 strings.xml 的 app_feedback_email。
+     * 标题栏右端的「问题反馈」入口：先给两个渠道选——
+     *  · 邮箱反馈：预填 App 版本与设备信息，便于拿到能直接复现的诊断数据；
+     *  · 加微信进群：复制微信号（LazyRofin）到剪贴板，用户去微信加群当面反馈。
      */
     private fun bindFeedback() {
-        findViewById<TextView>(R.id.tvFeedback).setOnClickListener { sendFeedback() }
+        findViewById<TextView>(R.id.tvFeedback).setOnClickListener { showFeedbackOptions() }
+    }
+
+    private fun showFeedbackOptions() {
+        val channels = arrayOf("发邮件反馈", "加微信进群反馈")
+        androidx.appcompat.app.AlertDialog.Builder(this, R.style.DarkDialog)
+            .setTitle("问题反馈")
+            .setItems(channels) { _, which ->
+                if (which == 0) sendFeedback() else copyWechatId()
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    /** 复制进群微信号到剪贴板（微信号：LazyRofin） */
+    private fun copyWechatId() {
+        val wechatId = "LazyRofin"
+        val clipboard = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
+        clipboard.setPrimaryClip(android.content.ClipData.newPlainText("微信号", wechatId))
+        Toast.makeText(this, "微信号 $wechatId 已复制，去微信搜索加群", Toast.LENGTH_LONG).show()
     }
 
     private fun sendFeedback() {

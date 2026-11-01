@@ -45,6 +45,9 @@ class PhotoViewerActivity : AppCompatActivity() {
         viewPager.adapter = PhotoPagerAdapter(this, uris)
         viewPager.setCurrentItem(position, false)
 
+        // 拍摄同款：把这张的胶卷 + 冲洗参数带回取景器
+        findViewById<View>(R.id.btnShootSame).setOnClickListener { shootSame() }
+
         // 切换照片时同步刷新面板内容
         viewPager.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
             override fun onPageSelected(position: Int) {
@@ -52,6 +55,36 @@ class PhotoViewerActivity : AppCompatActivity() {
                 if (panelVisible) renderPanel(position)
             }
         })
+    }
+
+    /**
+     * 拍摄同款：读取当前成片的 EXIF（胶卷 stockId + 冲洗参数快照），
+     * 通过 Intent extras 交回 MainActivity 套用，然后回到取景器。
+     * 没有 EXIF 或没有胶卷信息的老照片给出提示并留在原处。
+     */
+    private fun shootSame() {
+        val info = ExifReader.read(this, Uri.parse(uris[viewPager.currentItem]))
+        if (info == null || info.filmStockId.isBlank()) {
+            android.widget.Toast.makeText(
+                this, "这张照片没有可复现的拍摄参数", android.widget.Toast.LENGTH_SHORT
+            ).show()
+            return
+        }
+        val intent = android.content.Intent(this, MainActivity::class.java).apply {
+            // 复用栈底的取景器实例（onNewIntent 套用参数），而不是新开一个相机
+            addFlags(android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            putExtra(MainActivity.EXTRA_SAME_FILM, info.filmStockId)
+            if (info.printStockId.isNotBlank()) {
+                putExtra(MainActivity.EXTRA_SAME_PAPER, info.printStockId)
+            }
+            info.params.grainAmount?.let { putExtra(MainActivity.EXTRA_SAME_GRAIN, it) }
+            info.params.halationAmount?.let { putExtra(MainActivity.EXTRA_SAME_HALATION, it) }
+            info.params.glareAmount?.let { putExtra(MainActivity.EXTRA_SAME_GLARE, it) }
+            info.params.printExposure?.let { putExtra(MainActivity.EXTRA_SAME_EXPOSURE, it) }
+        }
+        startActivity(intent)
+        finish()
     }
 
     /** 由 Fragment 在图片被点击时回调，切换面板可见性。 */

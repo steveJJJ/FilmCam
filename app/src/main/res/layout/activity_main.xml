@@ -225,11 +225,11 @@
             android:layout_gravity="center"
             android:orientation="vertical"
             android:gravity="center">
-            <ImageView
+            <!-- 胶卷条：横向滚动 + 运动模糊，模拟胶片被拖过片门 -->
+            <com.filmcam.app.ui.FilmStripView
                 android:id="@+id/ivDeveloping"
-                android:layout_width="120dp"
-                android:layout_height="120dp"
-                android:scaleType="fitCenter"
+                android:layout_width="240dp"
+                android:layout_height="64dp"
                 android:contentDescription="过卷" />
             <TextView
                 android:id="@+id/tvDevelopingText"

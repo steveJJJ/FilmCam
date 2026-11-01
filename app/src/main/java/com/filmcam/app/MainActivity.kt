@@ -53,7 +53,6 @@ class MainActivity : AppCompatActivity() {
     private var shutterSoundId = 0
     private var advanceSoundPool: android.media.SoundPool? = null
     private var advanceSoundId = 0
-    private var developingAnimator: android.animation.ObjectAnimator? = null
     private var currentRoll: FilmRoll = FilmRollRepository.rolls[0]
     /** 拍照保存单线程池：保证帧写入顺序，避免连拍时多个裸线程并发写 */
     private val saveExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
@@ -270,6 +269,58 @@ class MainActivity : AppCompatActivity() {
         binding.tvIso.setOnClickListener { cycleIso() }
         binding.tvShutter.setOnClickListener { cycleShutter() }
         binding.tvExposure.setOnClickListener { cycleEv() }
+
+        // 「拍摄同款」从暗房带参数跳回（进程被杀后冷启动也走这里）
+        applySameRecipe(intent)
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        applySameRecipe(intent)
+    }
+
+    /**
+     * 「拍摄同款」：PhotoViewer 把成片 EXIF 里的胶卷 stockId 与冲洗参数快照
+     * 通过 extras 带回来，这里一次性套用——
+     *  · 冲洗参数写入 filmcam_dev_<param>_<stockId>（与冲洗参数弹窗同一套键）；
+     *  · 胶卷：找到 stockId 对应的 FilmRoll 直接切换（fromUser=false，绕开换卷
+     *    拦截——这是用户显式要求的换卷）；当前卷还有未冲洗帧时不强行换卷，
+     *    参数先行生效，LCD 提示等这卷冲洗后再拍才是同款。
+     */
+    private fun applySameRecipe(intent: android.content.Intent?) {
+        if (intent == null) return
+        val stockId = intent.getStringExtra(EXTRA_SAME_FILM)?.trim().orEmpty()
+        if (stockId.isEmpty()) return
+
+        val prefs = getSharedPreferences("filmcam", MODE_PRIVATE)
+        val editor = prefs.edit()
+        fun putDev(param: String, key: String) {
+            if (intent.hasExtra(key)) {
+                editor.putFloat("filmcam_dev_${param}_$stockId", intent.getFloatExtra(key, 1f))
+            }
+        }
+        putDev("grain", EXTRA_SAME_GRAIN)
+        putDev("halation", EXTRA_SAME_HALATION)
+        putDev("glare", EXTRA_SAME_GLARE)
+        putDev("print_exposure", EXTRA_SAME_EXPOSURE)
+        intent.getStringExtra(EXTRA_SAME_PAPER)?.takeIf { it.isNotBlank() }?.let {
+            editor.putString("filmcam_dev_paper_$stockId", it)
+        }
+        editor.apply()
+
+        val roll = FilmRollRepository.rolls.firstOrNull {
+            runCatching { FilmStockMapper.filmStockIdFor(it.name) }.getOrNull() == stockId
+        }
+        val rollName = runCatching { FilmStockMapper.stockDisplayName(stockId) }.getOrDefault(stockId)
+        if (roll != null && roll != currentRoll) {
+            if (currentShotCount() > 0) {
+                showLcdNotice("本卷拍完冲洗后换$rollName")
+            } else {
+                selectFilmRoll(roll, fromUser = false)
+            }
+        }
+        showLcdNotice("已套用同款参数")
     }
 
     /** 恢复上次退出的设置 */
@@ -351,14 +402,14 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * 回卷动画：胶卷拍满后模拟手动回卷——胶卷图标逆时针快速旋转
+     * 回卷动画：胶卷拍满后模拟手动回卷——胶卷条快速回卷
      * + 过卷声，营造"这卷拍完了，卷回去送冲"的仪式感。结束后回调。
      */
     private fun showRewindAnimation(onEnd: () -> Unit) {
         if (isCapturing) return
         isCapturing = true
         binding.developingOverlay.visibility = android.view.View.VISIBLE
-        binding.ivDeveloping.setImageResource(currentRoll.iconResId)
+        binding.ivDeveloping.setIcon(currentRoll.iconResId)
         binding.ivDeveloping.visibility = android.view.View.VISIBLE
         binding.tvDevelopingText.text = "REWIND FILM..."
         binding.tvDevelopingText.visibility = android.view.View.VISIBLE
@@ -366,13 +417,14 @@ class MainActivity : AppCompatActivity() {
         playAdvanceSound()
         vibrate(40, 30)
 
-        android.animation.ObjectAnimator.ofFloat(binding.ivDeveloping, "rotation", 0f, -720f).apply {
+        // 快速回卷：胶卷条高速滚动（速度越快动态模糊越强），1.6s 后收尾
+        binding.ivDeveloping.startScrolling(2200f)
+        android.animation.ObjectAnimator.ofFloat(binding.ivDeveloping, "alpha", 1f, 1f).apply {
             duration = 1600
-            interpolator = android.view.animation.AccelerateDecelerateInterpolator()
             addListener(object : android.animation.Animator.AnimatorListener {
                 override fun onAnimationEnd(a: android.animation.Animator) {
+                    binding.ivDeveloping.stopScrolling()
                     binding.developingOverlay.visibility = android.view.View.GONE
-                    binding.ivDeveloping.rotation = 0f
                     isCapturing = false
                     onEnd()
                 }
@@ -630,6 +682,10 @@ class MainActivity : AppCompatActivity() {
         touchHelper.attachToRecyclerView(rv)
 
         dialog.show()
+        // 横屏下 BottomSheet 默认只展开到 peek 高度，25 支胶卷的大半被压在屏幕外，
+        // 也看不出"往上还能滑"——直接强制全展开，让滚动发生在列表内部。
+        dialog.behavior.state =
+            com.google.android.material.bottomsheet.BottomSheetBehavior.STATE_EXPANDED
     }
 
     // ===== 机身提示 =====
@@ -1199,39 +1255,38 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** 自动过卷动画：拍照后模拟 T3 自动过卷（胶卷旋转动画 + 过卷声 + 微弱震动），照片在后台处理 */
+    /** 自动过卷动画：拍照后模拟 T3 自动过卷（胶卷条滚动动画 + 过卷声 + 微弱震动），照片在后台处理 */
     private fun showDevelopingAnimation() {
         binding.developingOverlay.visibility = android.view.View.VISIBLE
 
-        // 显示当前胶卷图标，模拟过卷旋转
-        binding.ivDeveloping.setImageResource(currentRoll.iconResId)
+        // 显示当前胶卷条，模拟胶片被马达拖过片门
+        binding.ivDeveloping.setIcon(currentRoll.iconResId)
         binding.ivDeveloping.visibility = android.view.View.VISIBLE
-        binding.ivDeveloping.rotation = 0f
         binding.tvDevelopingText.text = "FILM ADVANCING..."
         binding.tvDevelopingText.visibility = android.view.View.VISIBLE
 
-        // 过卷等待动画：持续旋转直到处理+保存完成（胶片相机拍完需等冲洗，动画连贯不跳变）
+        // 过卷等待动画：胶卷条匀速滚动，持续到处理+保存完成（胶片相机拍完需等冲洗，动画连贯不跳变）
         startDevelopingAnimation()
 
         // 过卷声音：真实 T3 的顺序是「叶片先喀一声曝光」→ 停顿一下 →「马达拖动齿轮过卷」，
-        // 两段声音之间有明显间隔。原先它与快门声在同一帧触发，82ms 的快门声还没播完
-        // 340ms 的马达声就压上来了，两个音叠成一坨，听不出层次——反馈"过片声不明显"
-        // 其实是听到了，只是被糊在一起分不出来。这里延后 200ms 起播给曝光留出交代，
-        // 并用 0.75 速率把素材拉长到约 450ms、音调略沉（更接近马达带负载的质感）。
-        // 注：曾用合成素材把时长做到 950ms，用户试听后要求回退，待找到真实录音再处理。
+        // 两段声音之间有明显间隔。快门素材本身只有 82ms，但人耳需要约 300ms 的静默
+        // 才能把前后两个声音感知成"两件事"——之前 200ms 起播只留 118ms 间隙，
+        // 用户反馈"没有停顿、不好听"。这里延后 420ms：快门结束后留出约 340ms 的
+        // 明确静默，再让马达进场；0.75 速率把素材拉长到约 450ms、音调略沉
+        // （更接近马达带负载的质感）。
         binding.ivDeveloping.postDelayed({
             if (isCapturing) playAdvanceSound(rate = 0.75f)
-        }, 200)
+        }, 420)
 
         // 微弱震动：同步挪到马达真正发力之后，让手感与听觉对齐
-        binding.ivDeveloping.postDelayed({ if (isCapturing) vibrate(50, 30) }, 200)
-        binding.ivDeveloping.postDelayed({ if (isCapturing) vibrate(45, 25) }, 380)
-        binding.ivDeveloping.postDelayed({ if (isCapturing) vibrate(45, 25) }, 520)
+        binding.ivDeveloping.postDelayed({ if (isCapturing) vibrate(50, 30) }, 420)
+        binding.ivDeveloping.postDelayed({ if (isCapturing) vibrate(45, 25) }, 600)
+        binding.ivDeveloping.postDelayed({ if (isCapturing) vibrate(45, 25) }, 740)
 
-        // 480ms 后文案切到 PROCESSING...；真正的完成收尾由 onPhotoCaptured 回调 finally 里做
+        // 750ms 后文案切到 PROCESSING...；真正的完成收尾由 onPhotoCaptured 回调 finally 里做
         binding.ivDeveloping.postDelayed({
             binding.tvDevelopingText.text = "PROCESSING..."
-        }, 480)
+        }, 750)
 
         // 看门狗：相机回调迟迟不来（>20s）时兜底复位，避免卡死在过卷界面
         binding.ivDeveloping.postDelayed({
@@ -1244,21 +1299,14 @@ class MainActivity : AppCompatActivity() {
         }, 20_000)
     }
 
-    /** 过卷等待动画：无限旋转，持续到后台处理+保存完成（连贯不跳变） */
+    /** 过卷等待动画：胶卷条匀速滚动，持续到后台处理+保存完成（连贯不跳变） */
     private fun startDevelopingAnimation() {
         stopDevelopingAnimation()
-        binding.ivDeveloping.rotation = 0f
-        developingAnimator = android.animation.ObjectAnimator.ofFloat(binding.ivDeveloping, "rotation", 0f, 360f).apply {
-            duration = 1200   // 慢速匀速旋转，模拟机械过卷/冲洗等待的从容节奏
-            repeatCount = android.animation.ValueAnimator.INFINITE
-            interpolator = android.view.animation.LinearInterpolator()
-            start()
-        }
+        binding.ivDeveloping.startScrolling(420f)
     }
 
     private fun stopDevelopingAnimation() {
-        developingAnimator?.cancel()
-        developingAnimator = null
+        binding.ivDeveloping.stopScrolling()
     }
 
     override fun onDestroy() {
@@ -1276,5 +1324,13 @@ class MainActivity : AppCompatActivity() {
         private const val REQ_CODE = 1001
         /** 临时调试：允许音量上键循环切换横屏预览采样映射（默认关闭，避免抢快门） */
         private const val DEBUG_ROTATE_TEST = false
+
+        // 「拍摄同款」Intent extras（写入方见 PhotoViewerActivity.shootSame）
+        const val EXTRA_SAME_FILM = "same_film_stock"
+        const val EXTRA_SAME_PAPER = "same_print_stock"
+        const val EXTRA_SAME_GRAIN = "same_grain"
+        const val EXTRA_SAME_HALATION = "same_halation"
+        const val EXTRA_SAME_GLARE = "same_glare"
+        const val EXTRA_SAME_EXPOSURE = "same_exposure"
     }
 }

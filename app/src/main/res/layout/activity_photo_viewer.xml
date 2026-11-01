@@ -24,13 +24,36 @@
         android:paddingBottom="18dp"
         android:visibility="gone">
 
-        <!-- 顶部提示条 -->
-        <View
-            android:layout_width="36dp"
-            android:layout_height="3dp"
-            android:layout_gravity="center_horizontal"
-            android:layout_marginBottom="10dp"
-            android:background="#8B1A1A" />
+        <!-- 顶部：提示条 + 右侧「拍摄同款」入口 -->
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content">
+
+            <View
+                android:layout_width="36dp"
+                android:layout_height="3dp"
+                android:layout_gravity="center_horizontal"
+                android:layout_marginTop="6dp"
+                android:layout_marginBottom="10dp"
+                android:background="#8B1A1A" />
+
+            <!-- 拍摄同款：按这张的 EXIF 套用胶卷与冲洗参数，回到取景器直接拍 -->
+            <TextView
+                android:id="@+id/btnShootSame"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="end|center_vertical"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:paddingTop="6dp"
+                android:paddingBottom="6dp"
+                android:background="@drawable/bg_chip_same"
+                android:text="拍摄同款"
+                android:textColor="#FFD7C4"
+                android:textSize="12sp"
+                android:clickable="true"
+                android:focusable="true" />
+        </FrameLayout>
 
         <!-- 胶卷名（主标题） -->
         <TextView
