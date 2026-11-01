@@ -67,9 +67,10 @@ class DevelopmentActivity : AppCompatActivity(), SensorEventListener {
         private const val WATER_VOL_ONSET = 0.10f
         /**
          * 用力搅动时的音量上限。要的是"轻微的水声"，不是冲刷声 ——
-         * 素材里涌动事件已经压到 v3 的 1/3，这里再整体降一半（0.90 → 0.45）。
+         * 素材里涌动已压到 v3 的约 1/5、气泡也降了 4 成，文件峰值归一从 0.90 降到 0.62，
+         * 这里再降一档（0.90 → 0.38）。静置仍完全静音。
          */
-        private const val WATER_VOL_MAX = 0.45f
+        private const val WATER_VOL_MAX = 0.38f
         /** 静音持续这么久就把循环停掉（省电、避免残留底噪） */
         private const val WATER_SILENT_STOP_MS = 1000L
     }
