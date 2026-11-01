@@ -177,8 +177,8 @@ class MainActivity : AppCompatActivity() {
         // UP/MOVE，带着上一次手势的陈旧状态（touchMoved=false、EV 没变），
         // 正好满足"点按对焦"的全部条件，于是隔着菜单就对焦了。
         // 真机不存在这种操作，所以没有自己 DOWN 的手势一律不认。
-        var touchActive = false
-        var lastDownTime = -1L          // 本手势序列的起始时间（同一序列所有事件共享）
+        touchActive = false
+        lastDownTime = -1L
 
         // 点按对焦判定交给 GestureDetector：它只在「自己收到过 DOWN 的完整序列」上回调
         // onSingleTapUp。弹窗飘下来的孤立 UP 没有配对 DOWN，从结构上不可能触发对焦——
@@ -440,6 +440,9 @@ class MainActivity : AppCompatActivity() {
         setOnDismissListener {
             dialogDepth = (dialogDepth - 1).coerceAtLeast(0)
             suppressTouchUntil = SystemClock.uptimeMillis() + DIALOG_TOUCH_GUARD_MS
+            // 弹窗一关就把手势状态清零：漏进来的事件不会续上一次手势
+            touchActive = false
+            lastDownTime = -1L
         }
         return this
     }
@@ -455,18 +458,36 @@ class MainActivity : AppCompatActivity() {
         suppressTouchUntil = SystemClock.uptimeMillis() + DIALOG_TOUCH_GUARD_MS
         val dialog = androidx.appcompat.app.AlertDialog.Builder(this, R.style.DarkDialog)
             .setTitle("设置")
-            .setItems(items) { _, which ->
-                suppressTouchUntil = SystemClock.uptimeMillis() + DIALOG_TOUCH_GUARD_MS
-                when (which) {
-                    0 -> { dateStampEnabled = !dateStampEnabled; saveSettings() }
-                    1 -> showDevParamsDialog()
-                    2 -> startActivity(android.content.Intent(this, AboutActivity::class.java))
-                }
-                if (which == 0) showSettings()
-            }
+            .setItems(items) { _, which -> onSettingsItem(which) }
             .setNegativeButton("关闭", null)
             .create()
-        dialog.guardDialog().show()
+        dialog.guardDialog()
+        dialog.setOnShowListener {
+            // 日期水印是「开关」不是「动作」：就地翻转文案、弹窗不关。
+            // 原先是点了就 dismiss 再 show 一个新弹窗——弹窗消失与重建之间的那几帧
+            // 正是触摸事件最容易漏到取景器、被误判成点屏对焦的窗口。现在没有这个
+            // 窗口了：整个开关过程弹窗一直在场，取景器根本收不到事件。
+            dialog.listView?.setOnItemClickListener { _, _, which, _ ->
+                if (which == 0) {
+                    dateStampEnabled = !dateStampEnabled
+                    saveSettings()
+                    items[0] = "日期水印: ${if (dateStampEnabled) "开" else "关"}"
+                    (dialog.listView?.adapter as? android.widget.BaseAdapter)?.notifyDataSetChanged()
+                } else {
+                    dialog.dismiss()
+                    onSettingsItem(which)
+                }
+            }
+        }
+        dialog.show()
+    }
+
+    private fun onSettingsItem(which: Int) {
+        suppressTouchUntil = SystemClock.uptimeMillis() + DIALOG_TOUCH_GUARD_MS
+        when (which) {
+            1 -> showDevParamsDialog()
+            2 -> startActivity(android.content.Intent(this, AboutActivity::class.java))
+        }
     }
 
     /** 胶卷拍满：引导去暗房冲洗 */
@@ -839,6 +860,10 @@ class MainActivity : AppCompatActivity() {
     /** 当前在场弹窗层数（>0 时取景器一律不响应触摸）。用计数不用布尔：
      *  冲洗参数弹窗里还会再开子选择弹窗，子窗关闭不该撤掉父窗的防护。 */
     private var dialogDepth = 0
+
+    /** 取景器手势状态（提为字段，弹窗关闭时可强制复位，避免残余状态被新事件续上） */
+    private var touchActive = false
+    private var lastDownTime = -1L
 
     private fun applyWbIndex() {
         cameraController?.setAwbMode(wbPresets[wbIndex].awbMode)
