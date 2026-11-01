@@ -9,10 +9,10 @@
         <shape android:shape="oval">
             <gradient
                 android:angle="270"
-                android:startColor="#565A61"
-                android:centerColor="#22262B"
+                android:startColor="#74787F"
+                android:centerColor="#2C3036"
                 android:centerY="0.18"
-                android:endColor="#30343A" />
+                android:endColor="#565A61" />
         </shape>
     </item>
 
@@ -23,7 +23,7 @@
         android:right="4.5dp"
         android:bottom="4.5dp">
         <shape android:shape="oval">
-            <solid android:color="#1F2125" />
+            <solid android:color="#24262A" />
             <stroke
                 android:width="0.6dp"
                 android:color="#0E1013" />
