@@ -61,6 +61,14 @@ class DevelopmentActivity : AppCompatActivity(), SensorEventListener {
         private const val TICK_MS = 66L              // 推进节奏 ≈15fps，足够顺滑
         private const val REVEAL_CAP = 0.86f         // 引擎未冲出本帧时进度上限
         private const val STRIP_CELLS = 36
+        /**
+         * 显影液水声：静置时的底噪音量。
+         * 素材已按手机喇叭重配频谱（85% 能量在 800Hz 以上），0.38 大约是过卷声可听段的 1.5 倍 ——
+         * 能清楚听见，又不至于盖过快门/过卷。
+         */
+        private const val WATER_VOL_IDLE = 0.38f
+        /** 用力搅动时往上推，顶到 0.9 */
+        private const val WATER_VOL_GAIN = 0.52f
     }
 
     private lateinit var tvTitle: TextView
@@ -368,7 +376,7 @@ class DevelopmentActivity : AppCompatActivity(), SensorEventListener {
 
         // 水声：搅得越猛越响、音调越高
         if (waterStreamId != 0) {
-            val v = (0.16f + agitation * 0.62f).coerceIn(0f, 1f)
+            val v = (WATER_VOL_IDLE + agitation * WATER_VOL_GAIN).coerceIn(0f, 1f)
             waterPool?.setVolume(waterStreamId, v, v)
             waterPool?.setRate(waterStreamId, (0.9f + agitation * 0.42f).coerceIn(0.5f, 2f))
         }
@@ -519,23 +527,20 @@ class DevelopmentActivity : AppCompatActivity(), SensorEventListener {
 
     private fun initWaterSound() {
         runCatching {
+            // 用和快门/过卷一致的默认音频通道：之前挂在 ASSISTANCE_SONIFICATION 上，
+            // 那个通道的音量被系统压得很低，实测几乎听不见。
             waterPool = android.media.SoundPool.Builder()
                 .setMaxStreams(1)
-                .setAudioAttributes(
-                    android.media.AudioAttributes.Builder()
-                        .setUsage(android.media.AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
-                        .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                        .build()
-                )
                 .build()
             waterSoundId = waterPool?.load(this, R.raw.develop_water, 1) ?: 0
         }
     }
 
-    /** 起播（循环）。音量从 0 起，实际响度由 tickDevelop 按搅动强度推上去。 */
+    /** 起播（循环）。静置时就是能听见的底噪，搅动时推到最响（见 tickDevelop）。 */
     private fun startWaterSound() {
         if (waterSoundId == 0 || waterStreamId != 0) return
-        waterStreamId = waterPool?.play(waterSoundId, 0f, 0f, 1, -1, 1f) ?: 0
+        waterStreamId = waterPool?.play(waterSoundId, WATER_VOL_IDLE, WATER_VOL_IDLE, 1, -1, 1f) ?: 0
+        Log.d(TAG, "水声起播 streamId=$waterStreamId vol=$WATER_VOL_IDLE")
     }
 
     private fun stopWaterSound() {
