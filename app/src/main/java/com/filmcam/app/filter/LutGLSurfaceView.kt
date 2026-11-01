@@ -270,9 +270,9 @@ class LutGLSurfaceView @JvmOverloads constructor(
             // 横屏时 HAL 交付的是竖向内容缓冲，按设备旋转方向预旋转 90° 采样
             vec2 uv;
             if (uQuarter > 2.5) {
-                uv = vec2(1.0 - texY, texX);
-            } else if (uQuarter > 0.5) {
                 uv = vec2(texY, 1.0 - texX);
+            } else if (uQuarter > 0.5) {
+                uv = vec2(1.0 - texY, texX);
             } else {
                 uv = (uTexMatrix * vec4(texX, texY, 0.0, 1.0)).xy;
             }

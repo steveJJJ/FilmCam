@@ -1,26 +1,29 @@
-import javax.imageio.ImageIO; import java.io.*; import java.awt.image.BufferedImage;
+import java.awt.Graphics2D;
+import java.awt.image.BufferedImage;
+import java.io.File;
+import javax.imageio.ImageIO;
+
 public class Ascii {
-  public static void main(String[] a) throws Exception {
-    BufferedImage im = ImageIO.read(new File(a[0]));
-    int x0=0,y0=0,w=im.getWidth(),h=im.getHeight();
-    if(a.length>=6){x0=Integer.parseInt(a[1]);y0=Integer.parseInt(a[2]);w=Integer.parseInt(a[3]);h=Integer.parseInt(a[4]);}
-    int cols=Integer.parseInt(a[a.length-1]);
-    double sx=(double)w/cols; double sy=sx*2.1;
-    int rows=(int)(h/sy);
-    char[] ramp=" .:-=+*#%@".toCharArray();
-    System.out.println("region ["+x0+","+y0+" "+w+"x"+h+"] cols="+cols+" rows="+rows);
-    for(int r=0;r<rows;r++){
-      StringBuilder sb=new StringBuilder();
-      for(int c=0;c<cols;c++){
-        double sum=0; int n=0;
-        for(int y=(int)(y0+r*sy); y<Math.min(y0+h,(int)(y0+(r+1)*sy)); y++)
-          for(int x=(int)(x0+c*sx); x<Math.min(x0+w,(int)(x0+(c+1)*sx)); x++){
-            int p=im.getRGB(x,y); int v=(int)(0.299*((p>>16)&255)+0.587*((p>>8)&255)+0.114*(p&255)); sum+=v; n++;
-          }
-        double v=n>0?sum/n:0;
-        sb.append(ramp[(int)Math.min(9, v/25.6)]);
-      }
-      System.out.println(sb);
+    static final String RAMP = " .:-=+*#%@";
+    public static void main(String[] args) throws Exception {
+        BufferedImage src = ImageIO.read(new File(args[0]));
+        int x = Integer.parseInt(args[1]), y = Integer.parseInt(args[2]);
+        int w = Integer.parseInt(args[3]), h = Integer.parseInt(args[4]);
+        int cols = args.length > 5 ? Integer.parseInt(args[5]) : 76;
+        BufferedImage crop = src.getSubimage(x, y, w, h);
+        int rows = Math.max(4, cols * h / w / 2);
+        BufferedImage small = new BufferedImage(cols, rows, BufferedImage.TYPE_INT_RGB);
+        Graphics2D g = small.createGraphics();
+        g.drawImage(crop, 0, 0, cols, rows, null); g.dispose();
+        for (int r = 0; r < rows; r++) {
+            StringBuilder sb = new StringBuilder();
+            for (int c = 0; c < cols; c++) {
+                int rgb = small.getRGB(c, r);
+                double lum = (0.299*((rgb>>16)&0xFF) + 0.587*((rgb>>8)&0xFF) + 0.114*(rgb&0xFF)) / 255.0;
+                int i = (int) Math.min(RAMP.length()-1, Math.max(0, Math.round(lum * (RAMP.length()-1))));
+                sb.append(RAMP.charAt(i));
+            }
+            System.out.println(sb);
+        }
     }
-  }
 }
