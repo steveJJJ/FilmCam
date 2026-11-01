@@ -172,12 +172,19 @@ class MainActivity : AppCompatActivity() {
         var touchMoved = false
         var wbDragging = false          // 本次手势是否已进入横滑调白平衡
         var touchStartWbIndex = 0
+        // 本次手势是不是从取景器自己的 DOWN 开始的。
+        // 弹窗/菜单上的手指抬起时，事件会连着飘到下面的取景器——那是没有 DOWN 的孤立
+        // UP/MOVE，带着上一次手势的陈旧状态（touchMoved=false、EV 没变），
+        // 正好满足"点按对焦"的全部条件，于是隔着菜单就对焦了。
+        // 真机不存在这种操作，所以没有自己 DOWN 的手势一律不认。
+        var touchActive = false
         binding.glSurfaceView.setOnTouchListener { _, event ->
             when (event.action) {
                 android.view.MotionEvent.ACTION_DOWN -> {
                     // 弹窗/设置项刚关闭的一瞬间，抬手事件会落到取景器上被当成点屏对焦。
                     // 真机不存在这种"隔着菜单对焦"，所以这段时间窗内一律不响应触摸。
                     if (SystemClock.uptimeMillis() < suppressTouchUntil) return@setOnTouchListener true
+                    touchActive = true
                     touchStartX = event.rawX
                     touchStartY = event.rawY
                     touchStartEv = exposureComp
@@ -186,6 +193,7 @@ class MainActivity : AppCompatActivity() {
                     touchStartWbIndex = wbIndex
                 }
                 android.view.MotionEvent.ACTION_MOVE -> {
+                    if (!touchActive) return@setOnTouchListener true
                     binding.viewfinderFrame.notifyActivity()
                     if (Math.abs(event.rawX - touchStartX) > 24f ||
                         Math.abs(event.rawY - touchStartY) > 24f
@@ -227,6 +235,9 @@ class MainActivity : AppCompatActivity() {
                 }
                 android.view.MotionEvent.ACTION_UP,
                 android.view.MotionEvent.ACTION_CANCEL -> {
+                    // 没有自己 DOWN 的孤立抬手（弹窗点击飘过来的）直接丢弃
+                    if (!touchActive) return@setOnTouchListener true
+                    touchActive = false
                     if (wbDragging) {
                         if (wbIndex != touchStartWbIndex) saveSettings()
                         wbDragging = false
@@ -288,6 +299,17 @@ class MainActivity : AppCompatActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         applySameRecipe(intent, announce = true)
+    }
+
+    /**
+     * 弹窗关闭后的防误触总闸。
+     * 弹窗本身是独立 Window（它的触摸不走这里），所以这只影响弹窗关闭后那一小段
+     * 时间里落到 Activity 上的事件——正是从菜单飘下来、会被误判成点屏对焦的那些。
+     * 放在这一层比只在取景器的 onTouch 里拦更彻底：任何子 View 都收不到。
+     */
+    override fun dispatchTouchEvent(ev: android.view.MotionEvent): Boolean {
+        if (SystemClock.uptimeMillis() < suppressTouchUntil) return true
+        return super.dispatchTouchEvent(ev)
     }
 
     /**
@@ -382,6 +404,16 @@ class MainActivity : AppCompatActivity() {
         prefs.apply()
     }
 
+    /**
+     * 弹窗关闭守卫：无论怎么关的，dismiss 后都补一段取景器触摸屏蔽。
+     * 只在点击回调里设不够——点弹窗外部、按返回键关闭时同样会有事件甩给取景器。
+     */
+    private fun android.app.Dialog.guardTouchOnDismiss() {
+        setOnDismissListener {
+            suppressTouchUntil = SystemClock.uptimeMillis() + DIALOG_TOUCH_GUARD_MS
+        }
+    }
+
     /** 设置弹窗：只留普通用户项；调试与模拟失焦收进「关于页 → 版本号连点 10 次」的工程师模式 */
     private fun showSettings() {
         val items = arrayOf(
@@ -390,11 +422,11 @@ class MainActivity : AppCompatActivity() {
             "关于 FILMCAM"
         )
         // 弹窗刚关闭的一瞬间，抬手事件会穿透到取景器被当成点屏对焦 → 短暂屏蔽触摸
-        suppressTouchUntil = SystemClock.uptimeMillis() + 350
-        androidx.appcompat.app.AlertDialog.Builder(this, R.style.DarkDialog)
+        suppressTouchUntil = SystemClock.uptimeMillis() + DIALOG_TOUCH_GUARD_MS
+        val dialog = androidx.appcompat.app.AlertDialog.Builder(this, R.style.DarkDialog)
             .setTitle("设置")
             .setItems(items) { _, which ->
-                suppressTouchUntil = SystemClock.uptimeMillis() + 350
+                suppressTouchUntil = SystemClock.uptimeMillis() + DIALOG_TOUCH_GUARD_MS
                 when (which) {
                     0 -> { dateStampEnabled = !dateStampEnabled; saveSettings() }
                     1 -> showDevParamsDialog()
@@ -403,7 +435,9 @@ class MainActivity : AppCompatActivity() {
                 if (which == 0) showSettings()
             }
             .setNegativeButton("关闭", null)
-            .show()
+            .create()
+        dialog.guardTouchOnDismiss()
+        dialog.show()
     }
 
     /** 胶卷拍满：引导去暗房冲洗 */
@@ -473,7 +507,7 @@ class MainActivity : AppCompatActivity() {
 
     /** 冲洗参数弹窗：颗粒/辉光/眩光强度（键量纲与 FilmStockMapper 冻结契约一致） */
     private fun showDevParamsDialog() {
-        suppressTouchUntil = SystemClock.uptimeMillis() + 350
+        suppressTouchUntil = SystemClock.uptimeMillis() + DIALOG_TOUCH_GUARD_MS
         val prefs = getSharedPreferences("filmcam", MODE_PRIVATE)
         val view = LayoutInflater.from(this).inflate(R.layout.dialog_dev_params, null)
 
@@ -552,6 +586,8 @@ class MainActivity : AppCompatActivity() {
                     syncUi()
                 }
                 .setNegativeButton("取消", null)
+                .create()
+                .also { it.guardTouchOnDismiss() }
                 .show()
         }
 
@@ -608,6 +644,8 @@ class MainActivity : AppCompatActivity() {
                     d.dismiss()
                 }
                 .setNegativeButton("取消", null)
+                .create()
+                .also { it.guardTouchOnDismiss() }
                 .show()
         }
 
@@ -630,6 +668,8 @@ class MainActivity : AppCompatActivity() {
                 d.dismiss()
                 showSettings()
             }
+            .create()
+            .also { it.guardTouchOnDismiss() }
             .show()
     }
 
@@ -719,6 +759,7 @@ class MainActivity : AppCompatActivity() {
             }
         })
 
+        dialog.guardTouchOnDismiss()
         dialog.show()
         // 横屏下 BottomSheet 默认只展开到 peek 高度，25 支胶卷的大半被压在屏幕外，
         // 也看不出"往上还能滑"——直接强制全展开，让滚动发生在列表内部。
@@ -1393,6 +1434,12 @@ class MainActivity : AppCompatActivity() {
         const val EXTRA_SAME_HALATION = "same_halation"
         const val EXTRA_SAME_GLARE = "same_glare"
         const val EXTRA_SAME_EXPOSURE = "same_exposure"
+
+        /**
+         * 弹窗关闭后的取景器触摸屏蔽时长（ms）。
+         * 弹窗是独立 Window，但关闭那一刻手指余下的事件会落到下面的取景器被当成点屏对焦。
+         */
+        const val DIALOG_TOUCH_GUARD_MS = 400L
 
         /** 套用完后要摘掉的 extras（避免横竖屏重建时重复套用 + 重复提示） */
         val EXTRA_SAME_KEYS = arrayOf(
