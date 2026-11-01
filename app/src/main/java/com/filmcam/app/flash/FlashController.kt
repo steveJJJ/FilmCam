@@ -27,8 +27,10 @@ class FlashController(
     // ---- EXTERNAL 模式的 BLE 逻辑 ----
     private var bleFlash: FotorGearFlash? = null
 
-    // ---- BUILT_IN 模式：通过 CameraX 控制 ----
-    // MainActivity 设置这个回调，桥接到 Camera2Controller.enableFlash()
+    // ---- BUILT_IN 模式：交给相机 HAL ----
+    // 内置闪光不再是「快门那一刻点亮手电筒 200ms」，而是把相机切成拍照闪光模式
+    // （CONTROL_AE_MODE_ON_ALWAYS_FLASH）：HAL 在快门开启瞬间打满功率脉冲，并按有闪光
+    // 重新测光。MainActivity 把开关状态桥接到 Camera2Controller.setFlashEnabled()。
     var onBuiltInFlash: ((Boolean) -> Unit)? = null
 
     override fun startScan() {
@@ -42,19 +44,17 @@ class FlashController(
 
     override fun trigger() {
         when (mode) {
-            FlashMode.BUILT_IN -> flashBuiltInLed()
+            // 内置闪光由相机 HAL 在快门那一刻自己打，这里不需要再动什么
+            FlashMode.BUILT_IN -> {}
             FlashMode.EXTERNAL -> bleFlash?.trigger()
             FlashMode.OFF -> {}
         }
     }
 
-    /** 手机自带 LED 短闪（通过 CameraX CameraControl） */
-    private fun flashBuiltInLed() {
+    /** 内置闪光灯的「开 / 关」状态变化（切档、恢复设置时调用） */
+    fun setBuiltInEnabled(enabled: Boolean) {
         try {
-            onBuiltInFlash?.invoke(true)
-            handler.postDelayed({
-                onBuiltInFlash?.invoke(false)
-            }, 200)
+            onBuiltInFlash?.invoke(enabled)
         } catch (e: Exception) {
             onStatusChange?.invoke("LED_ERROR: ${e.message}")
         }

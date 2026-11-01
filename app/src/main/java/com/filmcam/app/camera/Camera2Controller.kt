@@ -21,6 +21,12 @@ import java.lang.Exception
  */
 class Camera2Controller(private val context: Context) {
 
+    /** 闪光预闪最长等待：超时就直接开快门，绝不让用户干等 */
+    private companion object {
+        const val FLASH_PRECAPTURE_TIMEOUT_MS = 700L
+        const val TAG = "Camera2Controller"
+    }
+
     private var cameraDevice: CameraDevice? = null
     private var captureSession: android.hardware.camera2.CameraCaptureSession? = null
     private var backgroundThread: HandlerThread? = null
@@ -54,6 +60,52 @@ class Camera2Controller(private val context: Context) {
     private val focusTimeout = Runnable {
         if (!afLocked) { afLocked = true; fireFocusCallback() }
     }
+
+    /** 预览 Surface：闪光预闪（AE precapture）要往这里发一次请求 */
+    private var previewSurface: Surface? = null
+
+    /** 拍照结果的闪光状态回读：验证「到底闪没闪」，日志里能看到 */
+    private val flashStateCallback =
+        object : android.hardware.camera2.CameraCaptureSession.CaptureCallback() {
+            override fun onCaptureCompleted(
+                session: android.hardware.camera2.CameraCaptureSession,
+                request: CaptureRequest,
+                result: android.hardware.camera2.TotalCaptureResult,
+            ) {
+                val st = result.get(android.hardware.camera2.CaptureResult.FLASH_STATE)
+                val ae = result.get(android.hardware.camera2.CaptureResult.CONTROL_AE_STATE)
+                android.util.Log.i(
+                    TAG,
+                    "拍照完成 flashState=${
+                        when (st) {
+                            android.hardware.camera2.CameraMetadata.FLASH_STATE_UNAVAILABLE -> "UNAVAILABLE"
+                            android.hardware.camera2.CameraMetadata.FLASH_STATE_CHARGING -> "CHARGING"
+                            android.hardware.camera2.CameraMetadata.FLASH_STATE_READY -> "READY"
+                            android.hardware.camera2.CameraMetadata.FLASH_STATE_FIRED -> "FIRED"
+                            android.hardware.camera2.CameraMetadata.FLASH_STATE_PARTIAL -> "PARTIAL"
+                            else -> "$st"
+                        }
+                    } aeState=$ae"
+                )
+            }
+        }
+
+    /**
+     * 内置闪光灯是否开启。
+     *
+     * 注意语义变化：以前「闪光灯」是用常亮手电（FLASH_MODE_TORCH）在快门那一刻亮 200ms
+     * 顶一下 —— torch 是降功率常亮，亮度远低于真正的拍照闪光脉冲，且拍照的 capture
+     * request 压根不带闪光参数，所以成片几乎看不出闪过。现在改成相机 HAL 的拍照闪光：
+     * 预览与拍照都挂 CONTROL_AE_MODE_ON_ALWAYS_FLASH，HAL 会在快门开启的瞬间打满功率
+     * 脉冲，并按「有闪光」重新测光（主体提亮、背景压暗），这才是直闪该有的样子。
+     */
+    @Volatile private var flashEnabled: Boolean = false
+
+    /** 设备是否有闪光灯单元；没有的话只能退回 torch 常亮补光 */
+    @Volatile private var hasFlashUnit: Boolean = true
+
+    /** 无闪光灯单元时的兜底：torch 常亮的开启状态 */
+    @Volatile private var torchOn: Boolean = false
 
     // 复刻康泰时 T3 35mm 视角：主摄等效约23mm，裁切至35mm ≈ 1.52x
     private var zoomRatio = 1.52f
@@ -150,6 +202,9 @@ class Camera2Controller(private val context: Context) {
             if (r.upper > r.lower) aeCompRange = r.lower..r.upper
         }
 
+        // 设备有没有真闪光灯：没有的话 HAL 闪光模式无效，退回手电筒顶一下的老办法
+        hasFlashUnit = chars.get(CameraCharacteristics.FLASH_INFO_AVAILABLE) == true
+
         // 预览分辨率：限制在 1920 宽以内。部分机型（三星 S25/Adreno + Android 16）
         // 把 12MP 全尺寸作为 SurfaceTexture 私有流时，GL 消费者绑定 EGLImage 会
         // 持续失败（bindTextureImage 0x502），取景器黑屏；且预览远超屏幕分辨率
@@ -213,12 +268,14 @@ class Camera2Controller(private val context: Context) {
     private fun createSession(surfaceTexture: SurfaceTexture) {
         val camera = cameraDevice ?: return
         val previewSurface = Surface(surfaceTexture)
+        this.previewSurface = previewSurface
         val readerSurface = imageReader!!.surface
 
         previewRequestBuilder = camera.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW).apply {
             addTarget(previewSurface)
             set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
             applyManualSettings(this)
+            applyFlashSettings(this)
             // 白平衡预设可能在相机开启前就被设置（restoreSettings 早于会话建立），此处补挂
             set(
                 CaptureRequest.CONTROL_AWB_MODE,
@@ -260,9 +317,122 @@ class Camera2Controller(private val context: Context) {
                     set(CaptureRequest.CONTROL_AF_MODE, android.hardware.camera2.CameraMetadata.CONTROL_AF_MODE_OFF)
                     set(CaptureRequest.LENS_FOCUS_DISTANCE, minFocusDistance * 0.6f)
                 }
+                applyFlashSettings(this)
             }
-            captureSession?.capture(captureBuilder.build(), null, backgroundHandler)
+            submitStillCapture(captureBuilder)
         } catch (_: Exception) {}
+    }
+
+    /**
+     * 把拍照请求真正下发。
+     *
+     * 开闪光灯时先跑一次 AE 预闪（precapture）：HAL 借这一步完成闪光测光与充电，
+     * 等 AE 收敛（或超时兜底）再开快门，否则第一张常常曝光过亮/过暗、甚至错过闪。
+     * 关闪光时走原路径，不加任何等待。
+     */
+    private fun submitStillCapture(captureBuilder: CaptureRequest.Builder) {
+        val session = captureSession
+        val camera = cameraDevice
+        val surface = previewSurface
+        val handler = backgroundHandler
+        if (session == null || camera == null || handler == null) {
+            session?.capture(captureBuilder.build(), null, handler)
+            return
+        }
+        if (!flashEnabled || manualIso != null || manualExposure != null || surface == null) {
+            // 未开闪光 / 手动曝光（HAL 不会闪）→ 直接拍
+            session.capture(captureBuilder.build(), null, handler)
+            return
+        }
+
+        var fired = false
+        val fire = {
+            if (!fired) {
+                fired = true
+                runCatching {
+                    session.capture(captureBuilder.build(), flashStateCallback, handler)
+                }
+            }
+        }
+        // 超时兜底：任何情况下都不能把快门卡住（最多等 700ms，够 HAL 完成测光充电）
+        val timeout = Runnable { fire() }
+        handler.postDelayed(timeout, FLASH_PRECAPTURE_TIMEOUT_MS)
+
+        val preBuilder = camera.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW).apply {
+            addTarget(surface)
+            applyManualSettings(this)
+            applyFlashSettings(this)
+            set(
+                CaptureRequest.CONTROL_AWB_MODE,
+                currentAwbMode ?: CaptureRequest.CONTROL_AWB_MODE_AUTO
+            )
+            set(
+                CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER,
+                android.hardware.camera2.CameraMetadata.CONTROL_AE_PRECAPTURE_TRIGGER_START
+            )
+        }
+        val preCb = object : android.hardware.camera2.CameraCaptureSession.CaptureCallback() {
+            override fun onCaptureCompleted(
+                s: android.hardware.camera2.CameraCaptureSession,
+                request: CaptureRequest,
+                result: android.hardware.camera2.TotalCaptureResult,
+            ) {
+                val ae = result.get(android.hardware.camera2.CaptureResult.CONTROL_AE_STATE)
+                // CONVERGED / FLASH_REQUIRED = 测光完成，可以开快门；PRECAPTURE = 还在跑，继续等
+                if (ae == null ||
+                    ae == android.hardware.camera2.CameraMetadata.CONTROL_AE_STATE_CONVERGED ||
+                    ae == android.hardware.camera2.CameraMetadata.CONTROL_AE_STATE_FLASH_REQUIRED ||
+                    ae == android.hardware.camera2.CameraMetadata.CONTROL_AE_STATE_LOCKED
+                ) {
+                    handler.removeCallbacks(timeout)
+                    fire()
+                }
+            }
+        }
+        runCatching { session.capture(preBuilder.build(), preCb, handler) }
+            .onFailure { handler.removeCallbacks(timeout); fire() }
+    }
+
+    /**
+     * 闪光请求参数：必须在 applyManualSettings 之后调用，否则会被自动测光分支覆盖。
+     * 只在自动曝光下生效 —— 手动 ISO/快门（外置闪光灯那条路）AE 是 OFF，HAL 不闪。
+     */
+    private fun applyFlashSettings(builder: CaptureRequest.Builder) {
+        if (!flashEnabled) return
+        if (!hasFlashUnit) return          // 没有闪光灯单元：走 torch，见 setFlashEnabled
+        if (manualIso != null || manualExposure != null) return
+        builder.set(
+            CaptureRequest.CONTROL_AE_MODE,
+            android.hardware.camera2.CameraMetadata.CONTROL_AE_MODE_ON_ALWAYS_FLASH
+        )
+    }
+
+    /** 内置闪光灯开关：切换后预览立即刷新（HAL 会在随后的拍照里打闪光脉冲） */
+    fun setFlashEnabled(enabled: Boolean) {
+        val changed = flashEnabled != enabled
+        flashEnabled = enabled
+        if (!hasFlashUnit) {
+            // 设备没有闪光灯单元：HAL 闪光模式无效，退回常亮手电补光
+            if (torchOn != enabled) {
+                torchOn = enabled
+                enableFlash(enabled)
+            }
+            return
+        }
+        if (!changed) return
+        previewRequestBuilder?.let {
+            if (!enabled) {
+                // 关闪光：把 AE 模式从 ALWAYS_FLASH 拨回普通自动
+                it.set(
+                    CaptureRequest.CONTROL_AE_MODE,
+                    android.hardware.camera2.CameraMetadata.CONTROL_AE_MODE_ON
+                )
+            }
+            applyFlashSettings(it)
+            runCatching {
+                captureSession?.setRepeatingRequest(it.build(), previewMetaCallback, backgroundHandler)
+            }
+        }
     }
 
     private fun applyManualSettings(builder: CaptureRequest.Builder) {

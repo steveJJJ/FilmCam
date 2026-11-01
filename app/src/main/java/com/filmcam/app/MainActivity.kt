@@ -424,6 +424,10 @@ class MainActivity : AppCompatActivity() {
             // 白平衡预设只在闪光开着时有意义；恢复时同步下发，成片与预览一致
             cameraController?.setAwbMode(wbPresets[wbIndex].awbMode)
         }
+        if (flash.mode == FlashMode.BUILT_IN) {
+            // 上次退出时开着内置闪光：相机建好会话后补挂（会话未建立时由 startCamera 兜底）
+            cameraController?.setFlashEnabled(true)
+        }
         val rollIndex = prefs.getInt("rollIndex", 0).coerceIn(0, FilmRollRepository.rolls.size - 1)
         // 上次选中的若是反转片（本版不支持），回退到第一支可用胶卷，避免带着禁用卷启动
         val restored = FilmRollRepository.rolls[rollIndex].takeIf { it.available }
@@ -1274,6 +1278,8 @@ class MainActivity : AppCompatActivity() {
         if (flash.mode == FlashMode.EXTERNAL) {
             flash.startScan()
         }
+        // 内置闪光灯档位变化要同步给相机：切进来 = 拍照闪光模式，切走 = 关掉
+        flash.setBuiltInEnabled(flash.mode == FlashMode.BUILT_IN)
         applyExposure()
         updateLcd()
         // 点亮取景器内的闪光指示
@@ -1417,10 +1423,12 @@ class MainActivity : AppCompatActivity() {
     private fun startCamera(surfaceTexture: SurfaceTexture) {
         cameraController = Camera2Controller(this)
         cameraController?.start(surfaceTexture)
-        // 桥接 FlashController → Camera2Controller 控制 LED
+        // 桥接 FlashController → Camera2Controller：内置闪光交给相机 HAL（拍照闪光模式）
         flash.onBuiltInFlash = { enabled ->
-            cameraController?.enableFlash(enabled)
+            cameraController?.setFlashEnabled(enabled)
         }
+        // 相机可能已经先于闪光灯档位恢复而建好会话，这里补一次当前档位
+        cameraController?.setFlashEnabled(flash.mode == FlashMode.BUILT_IN)
         // 实时元数据 → 取景器内的 T3 指示灯（合焦灯 / 快门档位）
         cameraController?.onViewfinderMeta = { afState, exposureSec ->
             updateViewfinderIndicators(afState, exposureSec)
