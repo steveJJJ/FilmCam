@@ -32,8 +32,9 @@ class FilmReelView @JvmOverloads constructor(
 
     private var icon: Bitmap? = null
 
-    /** 与取景器底部胶卷图标一致的显示尺寸（56dp 见方，居中裁切） */
-    private val iconSizeDp = 56f
+    /** 显示宽度（dp），高度按胶卷的竖长比例 3:4 算 */
+    private val iconWidthDp = 72f
+    private val iconAspect = 4f / 3f   // 高 / 宽，竖长的胶卷比例
 
     /** 累计进度，单位＝周期（1.0 = 胶卷走完一趟并回到起点） */
     private var flow = 0f
@@ -48,13 +49,18 @@ class FilmReelView @JvmOverloads constructor(
         val h = height.toFloat()
         if (b == null || w <= 4f || h <= 4f) return
 
-        // 原样显示（保持原图长宽比，不裁切不拉伸），整体装进 56dp 的方框里，
-        // 跟取景器底部的胶卷图标一样大。
-        val box = iconSizeDp * resources.displayMetrics.density
-        val s = min(box / b.width.toFloat(), box / b.height.toFloat())
-        val fw = b.width * s
-        val fh = b.height * s
+        // 竖长的胶卷比例 3:4（宽:高），从原图居中裁出这一块再铺满，
+        // 显示出来就是一枚竖着的胶卷。
+        val fw = iconWidthDp * resources.displayMetrics.density
+        val fh = fw * iconAspect
         val top = (h - fh) / 2f
+
+        val srcH = b.height
+        val srcW = min(b.width, (srcH / iconAspect).toInt())
+        srcRect.set(
+            (b.width - srcW) / 2, (b.height - srcH) / 2,
+            (b.width + srcW) / 2, (b.height + srcH) / 2
+        )
 
         // 胶卷一个紧挨一个排成队列（略微重叠，彻底没有缝隙），
         // 整体匀速平移：窗口里永远填着胶卷，看不到接头和空档。
@@ -63,7 +69,7 @@ class FilmReelView @JvmOverloads constructor(
         while (x < w) {
             paint.alpha = 255
             dstRect.set(x, top, x + fw, top + fh)
-            canvas.drawBitmap(b, null, dstRect, paint)
+            canvas.drawBitmap(b, srcRect, dstRect, paint)
             x += step
         }
     }
