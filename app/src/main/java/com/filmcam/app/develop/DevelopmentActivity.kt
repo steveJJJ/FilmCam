@@ -62,13 +62,15 @@ class DevelopmentActivity : AppCompatActivity(), SensorEventListener {
         private const val REVEAL_CAP = 0.86f         // 引擎未冲出本帧时进度上限
         private const val STRIP_CELLS = 36
         /**
-         * 显影液水声：静置时的底噪音量。
-         * 素材已按手机喇叭重配频谱（85% 能量在 800Hz 以上），0.38 大约是过卷声可听段的 1.5 倍 ——
-         * 能清楚听见，又不至于盖过快门/过卷。
+         * 显影液水声：静置时的底噪音量。连续底噪要"存在但退到背景里"，
+         * 所以压得比之前低一半多（0.38 → 0.17），避免吵。
          */
-        private const val WATER_VOL_IDLE = 0.38f
-        /** 用力搅动时往上推，顶到 0.9 */
-        private const val WATER_VOL_GAIN = 0.52f
+        private const val WATER_VOL_IDLE = 0.17f
+        /**
+         * 摇动时的增量：拉大到 0.73（顶到 0.9），静置与搅动差 5 倍多 ——
+         * 手一晃水声立刻涌起来，静置时几乎只剩背景，层次更清楚。
+         */
+        private const val WATER_VOL_GAIN = 0.73f
     }
 
     private lateinit var tvTitle: TextView
