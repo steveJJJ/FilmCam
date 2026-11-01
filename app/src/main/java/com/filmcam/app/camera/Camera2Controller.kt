@@ -72,6 +72,26 @@ class Camera2Controller(private val context: Context) {
         }
     }
 
+    /** 当前生效的白平衡预设（takePicture 的独立 builder 需要带上，否则成片不跟随预览） */
+    private var currentAwbMode: Int? = null
+
+    /**
+     * 白平衡预设（闪光开启后横滑调 WB 用）。
+     * @param awbMode CaptureRequest.CONTROL_AWB_MODE_* 常量；null = 恢复相机自动白平衡。
+     * 走 ISP 级 CONTROL_AWB_MODE 而非 COLOR_CORRECTION_GAINS：前者对预览与成片
+     * 同时生效且不需要机型校准，预设语义（日光/阴天…）也更贴合胶片机的滤镜片直觉。
+     */
+    fun setAwbMode(awbMode: Int?) {
+        currentAwbMode = awbMode
+        previewRequestBuilder?.let {
+            it.set(
+                CaptureRequest.CONTROL_AWB_MODE,
+                awbMode ?: CaptureRequest.CONTROL_AWB_MODE_AUTO
+            )
+            captureSession?.setRepeatingRequest(it.build(), previewMetaCallback, backgroundHandler)
+        }
+    }
+
     // 拍照回调
     /**
      * 拍照回调：相机 ISP 输出的原始 JPEG 字节 + 像素需顺时针旋转的角度（0/90/180/270）。
@@ -167,6 +187,11 @@ class Camera2Controller(private val context: Context) {
             addTarget(previewSurface)
             set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
             applyManualSettings(this)
+            // 白平衡预设可能在相机开启前就被设置（restoreSettings 早于会话建立），此处补挂
+            set(
+                CaptureRequest.CONTROL_AWB_MODE,
+                currentAwbMode ?: CaptureRequest.CONTROL_AWB_MODE_AUTO
+            )
         }
 
         camera.createCaptureSession(
@@ -193,6 +218,11 @@ class Camera2Controller(private val context: Context) {
                 addTarget(readerSurface)
                 set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
                 applyManualSettings(this)
+                // 白平衡跟随预览当前预设（STILL_CAPTURE 是独立 builder，不带会回到 AUTO）
+                set(
+                    CaptureRequest.CONTROL_AWB_MODE,
+                    currentAwbMode ?: CaptureRequest.CONTROL_AWB_MODE_AUTO
+                )
                 // 模拟偶发失焦：手动对焦到失焦距离（只影响本次拍照，预览不受影响）
                 if (defocus && minFocusDistance > 0f) {
                     set(CaptureRequest.CONTROL_AF_MODE, android.hardware.camera2.CameraMetadata.CONTROL_AF_MODE_OFF)

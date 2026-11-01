@@ -9,6 +9,7 @@ import android.os.Build
 import android.os.Bundle
 import android.view.KeyEvent
 import android.view.LayoutInflater
+import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
@@ -170,6 +171,8 @@ class MainActivity : AppCompatActivity() {
         var touchStartY = 0f
         var touchStartEv = 0
         var touchMoved = false
+        var wbDragging = false          // 本次手势是否已进入横滑调白平衡
+        var touchStartWbIndex = 0
         binding.glSurfaceView.setOnTouchListener { _, event ->
             when (event.action) {
                 android.view.MotionEvent.ACTION_DOWN -> {
@@ -177,12 +180,35 @@ class MainActivity : AppCompatActivity() {
                     touchStartY = event.rawY
                     touchStartEv = exposureComp
                     touchMoved = false
+                    wbDragging = false
+                    touchStartWbIndex = wbIndex
                 }
                 android.view.MotionEvent.ACTION_MOVE -> {
                     binding.viewfinderFrame.notifyActivity()
                     if (Math.abs(event.rawX - touchStartX) > 24f ||
                         Math.abs(event.rawY - touchStartY) > 24f
                     ) touchMoved = true
+
+                    // 闪光开启后的横滑手势：调白平衡（上下滑仍是 EV，竖直方向优先）
+                    val dx = event.rawX - touchStartX
+                    val dy = event.rawY - touchStartY
+                    if (!wbDragging && flash.mode != FlashMode.OFF &&
+                        Math.abs(dx) > 32f && Math.abs(dx) > Math.abs(dy) * 1.4f
+                    ) {
+                        wbDragging = true
+                        showWbStrip()
+                    }
+                    if (wbDragging) {
+                        val idx = (touchStartWbIndex + (dx / 90f).toInt())
+                            .coerceIn(0, wbPresets.size - 1)
+                        if (idx != wbIndex) {
+                            wbIndex = idx
+                            applyWbIndex()
+                            vibrate(12)
+                        }
+                        return@setOnTouchListener true
+                    }
+
                     val delta = (touchStartY - event.rawY) / 100f
                     val newEv = (touchStartEv + delta.toInt()).coerceIn(-3, 3)
                     if (newEv != exposureComp) {
@@ -193,6 +219,12 @@ class MainActivity : AppCompatActivity() {
                 }
                 android.view.MotionEvent.ACTION_UP,
                 android.view.MotionEvent.ACTION_CANCEL -> {
+                    if (wbDragging) {
+                        if (wbIndex != touchStartWbIndex) saveSettings()
+                        wbDragging = false
+                        hideWbStripDelayed()
+                        return@setOnTouchListener true
+                    }
                     if (exposureComp != touchStartEv) saveSettings()
                     if (event.action == android.view.MotionEvent.ACTION_UP &&
                         !touchMoved && exposureComp == touchStartEv
@@ -248,6 +280,11 @@ class MainActivity : AppCompatActivity() {
         flash.mode = try {
             FlashMode.valueOf(prefs.getString("flashMode", FlashMode.OFF.name) ?: FlashMode.OFF.name)
         } catch (_: Exception) { FlashMode.OFF }
+        wbIndex = prefs.getInt("wbIndex", 0).coerceIn(0, wbPresets.size - 1)
+        if (flash.mode != FlashMode.OFF) {
+            // 白平衡预设只在闪光开着时有意义；恢复时同步下发，成片与预览一致
+            cameraController?.setAwbMode(wbPresets[wbIndex].awbMode)
+        }
         val rollIndex = prefs.getInt("rollIndex", 0).coerceIn(0, FilmRollRepository.rolls.size - 1)
         // 上次选中的若是反转片（本版不支持），回退到第一支可用胶卷，避免带着禁用卷启动
         val restored = FilmRollRepository.rolls[rollIndex].takeIf { it.available }
@@ -268,6 +305,7 @@ class MainActivity : AppCompatActivity() {
         // 旧 filmCount 键不再写入；权威张数来自 UndevelopedFilmStore
         prefs.putBoolean("debug_instant_develop", debugInstantDevelop)
         prefs.putString("flashMode", flash.mode.name)
+        prefs.putInt("wbIndex", wbIndex)
         prefs.putInt("rollIndex", FilmRollRepository.rolls.indexOf(currentRoll))
         prefs.apply()
     }
@@ -620,6 +658,70 @@ class MainActivity : AppCompatActivity() {
             .setInterpolator(android.view.animation.AccelerateInterpolator())
             .withEndAction { plate.visibility = android.view.View.GONE }
             .start()
+    }
+
+    // ===== 白平衡（闪光开启后，预览上左右拖动浮现选择条） =====
+
+    private data class WbPreset(val label: String, val awbMode: Int)
+
+    /** 白平衡预设：语义对应胶片机的校色滤镜片，顺序即横滑从左到右的档位 */
+    private val wbPresets = listOf(
+        WbPreset("AUTO", android.hardware.camera2.CameraMetadata.CONTROL_AWB_MODE_AUTO),
+        WbPreset("白炽灯", android.hardware.camera2.CameraMetadata.CONTROL_AWB_MODE_INCANDESCENT),
+        WbPreset("荧光灯", android.hardware.camera2.CameraMetadata.CONTROL_AWB_MODE_FLUORESCENT),
+        WbPreset("日光", android.hardware.camera2.CameraMetadata.CONTROL_AWB_MODE_DAYLIGHT),
+        WbPreset("阴天", android.hardware.camera2.CameraMetadata.CONTROL_AWB_MODE_CLOUDY_DAYLIGHT),
+        WbPreset("阴影", android.hardware.camera2.CameraMetadata.CONTROL_AWB_MODE_SHADE),
+        WbPreset("暮光", android.hardware.camera2.CameraMetadata.CONTROL_AWB_MODE_TWILIGHT)
+    )
+    private var wbIndex = 0
+
+    /** 选择条生成：琥珀等宽小字，选中档加白描边框——与 LCD/铭牌同一套暗房色板 */
+    private fun setupWbStrip() {
+        val strip = binding.wbStrip
+        strip.removeAllViews()
+        wbPresets.forEachIndexed { i, preset ->
+            val tv = TextView(this).apply {
+                text = preset.label
+                setTextColor(0xFFE8E4DA.toInt())
+                textSize = 11f
+                letterSpacing = 0.1f
+                setPadding(18, 7, 18, 7)
+                if (i == wbIndex) {
+                    background = android.graphics.drawable.GradientDrawable().apply {
+                        setColor(0x33FFC100)
+                        setStroke(1, 0xFFFFC100.toInt())
+                        cornerRadius = 2f
+                    }
+                }
+            }
+            strip.addView(tv)
+        }
+    }
+
+    private fun applyWbIndex() {
+        cameraController?.setAwbMode(wbPresets[wbIndex].awbMode)
+        setupWbStrip()   // 重画选中框
+    }
+
+    private fun showWbStrip() {
+        setupWbStrip()
+        val strip = binding.wbStrip
+        strip.animate().cancel()
+        strip.visibility = android.view.View.VISIBLE
+        strip.alpha = 0f
+        strip.animate().alpha(1f).setDuration(140).start()
+    }
+
+    private fun hideWbStripDelayed() {
+        noticeHandler.postDelayed({
+            binding.wbStrip.animate().cancel()
+            binding.wbStrip.animate()
+                .alpha(0f)
+                .setDuration(180)
+                .withEndAction { binding.wbStrip.visibility = android.view.View.GONE }
+                .start()
+        }, 700)
     }
 
     /** 选中胶卷：切换 LUT + 更新图标。fromUser=false 用于启动时恢复设置（不做拦截）。 */
