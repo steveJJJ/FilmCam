@@ -104,6 +104,33 @@ object BodyTheme {
     /** SeekBar 轨道底色 */
     val trackBg: Int get() = if (isTitan) 0xFFA79E90.toInt() else 0xFF3A3A40.toInt()
 
+    /** 开关（Switch/CheckBox）未选中时的滑块色：跟轨道要有区分，钛银下用深灰 */
+    val switchThumbOff: Int get() = if (isTitan) 0xFF6E6A63.toInt() else 0xFF9A9A9E.toInt()
+
+    /**
+     * 开关滑轨两态色：选中=强调色（琥珀），未选中=轨道底。
+     * Material 默认走 colorControlActivated/未设 tint 时用系统浅灰滑块，
+     * 钛银浅面板上就是一道白条，必须钉住。
+     */
+    fun switchTrackTint(): android.content.res.ColorStateList =
+        android.content.res.ColorStateList(
+            arrayOf(
+                intArrayOf(android.R.attr.state_checked),
+                intArrayOf(-android.R.attr.state_checked)
+            ),
+            intArrayOf(accent, trackBg)
+        )
+
+    /** 开关滑块两态色：选中=强调色，未选中=灰滑块 */
+    fun switchThumbTint(): android.content.res.ColorStateList =
+        android.content.res.ColorStateList(
+            arrayOf(
+                intArrayOf(android.R.attr.state_checked),
+                intArrayOf(-android.R.attr.state_checked)
+            ),
+            intArrayOf(accent, switchThumbOff)
+        )
+
     /** 卡片底（关于页许可证这类"深底浅字"的整块内容） */
     val cardBg: Int get() = if (isTitan) 0xFFD3CBBD.toInt() else 0xFF141416.toInt()
 
@@ -156,6 +183,12 @@ object BodyTheme {
         0xFFC9C5BC.toInt() to 0xFF3A3630.toInt(),
         0xFFB8B8BC.toInt() to 0xFF5F5A52.toInt(),
         0xFF9A9A9E.toInt() to 0xFF5F5A52.toInt(),
+        // 工程师模式面板里那几行未登记的中性灰（#888 / #AAA 等），漏了它们在钛银下就是灰白糊字
+        0xFFBCBCBC.toInt() to 0xFF3A3630.toInt(),
+        0xFFAAAAAA.toInt() to 0xFF5F5A52.toInt(),
+        0xFF9E9E9E.toInt() to 0xFF5F5A52.toInt(),
+        0xFF888888.toInt() to 0xFF5F5A52.toInt(),
+        0xFF757575.toInt() to 0xFF5F5A52.toInt(),
         0xFF8A8A8E.toInt() to 0xFF5F5A52.toInt(),
         0xFF9A8C6A.toInt() to 0xFF6B5A2E.toInt(),   // 关于页 CC BY-SA 说明的暖灰金
         0xFF7C7C80.toInt() to 0xFF5F5A52.toInt(),
@@ -195,8 +228,26 @@ object BodyTheme {
     private val BG_TO_TITAN = BG_PAIRS
     private val BG_TO_BLACK = BG_PAIRS.entries.associate { (k, v) -> v to k }
 
-    fun remapText(color: Int): Int =
-        (if (isTitan) TEXT_TO_TITAN[color] else TEXT_TO_BLACK[color]) ?: remapAccent(color)
+    fun remapText(color: Int): Int {
+        (if (isTitan) TEXT_TO_TITAN[color] else TEXT_TO_BLACK[color])?.let { return it }
+        val acc = remapAccent(color)
+        if (acc != color) return acc
+        // 兜底：钛银面板上的字，凡是「偏亮的中性灰/白」一律压成蚀刻深字。
+        // 免得哪个漏登记在表里的灰白字（工程师模式的选项字就是这么隐形的）
+        // 糊在浅钛面板上；带明显色相的（琥珀、暗房红）不参与，保住品牌色与氛围。
+        return if (isTitan && isLightNeutral(color)) onBodyText else color
+    }
+
+    /** 接近中性（无明显色相）且偏亮：这种颜色压在浅钛底上必糊 */
+    private fun isLightNeutral(color: Int): Boolean {
+        val r = Color.red(color) / 255f
+        val g = Color.green(color) / 255f
+        val b = Color.blue(color) / 255f
+        val max = maxOf(r, g, b)
+        val min = minOf(r, g, b)
+        if (max - min > 0.09f) return false
+        return (r + g + b) / 3f > 0.55f
+    }
 
     fun remapAccent(color: Int): Int =
         (if (isTitan) ACCENT_TO_TITAN[color] else ACCENT_TO_BLACK[color]) ?: color
@@ -232,6 +283,31 @@ object BodyTheme {
             root.progressTintList = android.content.res.ColorStateList.valueOf(accent)
             root.thumbTintList = android.content.res.ColorStateList.valueOf(accent)
             root.progressBackgroundTintList = android.content.res.ColorStateList.valueOf(trackBg)
+        }
+        // 开关/勾选框：轨道与滑块默认是 Material 的浅灰，钛银面板上等于隐形。
+        // 字色也一样 —— framework Switch 的文字色继承自 Activity 主题（深色版），
+        // 重映射表不一定命中，这里直接按面板底钉死（上面 TextView 分支会覆盖回来）。
+        if (root is android.widget.CompoundButton && root.tag != KEEP_TEXT_COLOR) {
+            when (root) {
+                is androidx.appcompat.widget.SwitchCompat -> {
+                    root.trackTintList = switchTrackTint()
+                    root.thumbTintList = switchThumbTint()
+                }
+                is android.widget.Switch -> {
+                    if (android.os.Build.VERSION.SDK_INT >= 23) {
+                        root.trackTintList = switchTrackTint()
+                        root.thumbTintList = switchThumbTint()
+                    } else {
+                        androidx.core.widget.CompoundButtonCompat.setButtonTintList(
+                            root, switchTrackTint()
+                        )
+                    }
+                }
+                else -> androidx.core.widget.CompoundButtonCompat.setButtonTintList(
+                    root, switchTrackTint()
+                )
+            }
+            root.setTextColor(panelText)
         }
         if (root is android.view.ViewGroup) {
             for (i in 0 until root.childCount) applyToViewTree(root.getChildAt(i))
