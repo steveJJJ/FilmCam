@@ -65,8 +65,11 @@ class DevelopmentActivity : AppCompatActivity(), SensorEventListener {
         private const val HAPTIC_GAP_MS = 170L        // 两记震动的最小间隔
         /** 显影液水声：起振阈值，搅动强度低于此值完全静音（静置不吵） */
         private const val WATER_VOL_ONSET = 0.10f
-        /** 用力搅动时的音量上限 */
-        private const val WATER_VOL_MAX = 0.90f
+        /**
+         * 用力搅动时的音量上限。要的是"轻微的水声"，不是冲刷声 ——
+         * 素材里涌动事件已经压到 v3 的 1/3，这里再整体降一半（0.90 → 0.45）。
+         */
+        private const val WATER_VOL_MAX = 0.45f
         /** 静音持续这么久就把循环停掉（省电、避免残留底噪） */
         private const val WATER_SILENT_STOP_MS = 1000L
     }
