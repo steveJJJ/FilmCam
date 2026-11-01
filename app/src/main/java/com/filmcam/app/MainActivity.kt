@@ -574,18 +574,73 @@ class MainActivity : AppCompatActivity() {
         dialog.show()
     }
 
+    // ===== 机身提示铭牌 =====
+
+    private val noticeHandler by lazy { android.os.Handler(android.os.Looper.getMainLooper()) }
+    private var noticeHideRunnable: Runnable? = null
+
+    /**
+     * 机身提示铭牌：替代原生 Toast。
+     *
+     * 系统 Toast 浮在屏幕最底部，样式是一坨圆角灰底——既不处视线自然停留处，也完全脱离
+     * 机身质感的语境。这里换成机顶下方的一块蚀刻铭牌：深玻璃底 + 琥珀发丝边框 +
+     * 左侧琥珀竖条，标题用等宽大写（与 FILM ADVANCING... 等机身状态文案同一套语汇），
+     * 正文用中文补一句为什么。下滑浮现、到时自动收起。
+     */
+    private fun showBodyNotice(title: String, body: String, durationMs: Long = 2800L) {
+        val plate = binding.bodyNotice
+        binding.tvNoticeTitle.text = title
+        binding.tvNoticeBody.text = body
+
+        // 连续触发时重置计时，避免上一条的收起动画把新一条抹掉
+        noticeHideRunnable?.let { noticeHandler.removeCallbacks(it) }
+
+        plate.animate().cancel()
+        plate.visibility = android.view.View.VISIBLE
+        plate.translationY = -14f
+        plate.alpha = 0f
+        plate.animate()
+            .translationY(0f)
+            .alpha(1f)
+            .setDuration(200)
+            .setInterpolator(android.view.animation.DecelerateInterpolator())
+            .start()
+
+        noticeHideRunnable = Runnable { hideBodyNotice() }
+        noticeHandler.postDelayed(noticeHideRunnable!!, durationMs)
+    }
+
+    private fun hideBodyNotice() {
+        val plate = binding.bodyNotice
+        plate.animate().cancel()
+        plate.animate()
+            .translationY(-14f)
+            .alpha(0f)
+            .setDuration(180)
+            .setInterpolator(android.view.animation.AccelerateInterpolator())
+            .withEndAction { plate.visibility = android.view.View.GONE }
+            .start()
+    }
+
     /** 选中胶卷：切换 LUT + 更新图标。fromUser=false 用于启动时恢复设置（不做拦截）。 */
     private fun selectFilmRoll(roll: FilmRoll, fromUser: Boolean = true) {
         if (fromUser) {
             // 反转片拦截：与原项目一致，本版只支持负片印相纸
             if (!roll.available) {
-                Toast.makeText(this, "反转片（幻灯）不能印到相纸上——本版暂只支持负片", Toast.LENGTH_SHORT).show()
+                showBodyNotice(
+                    "SLIDE FILM NOT SUPPORTED",
+                    "反转片是供幻灯放映的，本版只能把负片印到相纸上"
+                )
                 return
             }
-            // 换卷拦截：当前卷有未冲洗帧时禁止换胶卷
+            // 换卷拦截：当前卷有未冲洗帧时禁止换胶卷（对应真机拍完必须回卷才能开盖）
             val active = UndevelopedFilmStore.currentRoll()
-            if (active != null && UndevelopedFilmStore.shotCount(active.rollId) > 0) {
-                Toast.makeText(this, "请先冲洗当前胶卷", Toast.LENGTH_SHORT).show()
+            val pending = active?.let { UndevelopedFilmStore.shotCount(it.rollId) } ?: 0
+            if (active != null && pending > 0) {
+                showBodyNotice(
+                    "CHANGE FILM LOCKED",
+                    "这卷已拍 $pending 张还没冲洗 —— 真机上不回卷也开不了后盖"
+                )
                 return
             }
         }
