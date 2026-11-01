@@ -210,11 +210,11 @@
             android:layout_gravity="center"
             android:orientation="vertical"
             android:gravity="center">
-            <!-- 过片动画：35mm 胶片带在两个旋转卷轴之间被拖过片门 -->
-            <com.filmcam.app.ui.FilmStripView
+            <!-- 过片动画：一个胶卷（卷轴端面）被马达带着转 -->
+            <com.filmcam.app.ui.FilmReelView
                 android:id="@+id/ivDeveloping"
-                android:layout_width="280dp"
-                android:layout_height="104dp"
+                android:layout_width="136dp"
+                android:layout_height="136dp"
                 android:contentDescription="过卷" />
             <TextView
                 android:id="@+id/tvDevelopingText"

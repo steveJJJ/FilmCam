@@ -419,12 +419,12 @@ class MainActivity : AppCompatActivity() {
         startGearHaptics(fromMs = 0, toMs = 1400, stepMs = 58)
 
         // 快速回卷：胶片带高速倒着被卷回暗盒（速度越快拖影越长），1.6s 后收尾
-        binding.ivDeveloping.startScrolling(2600f)
+        binding.ivDeveloping.startSpinning(1500f)
         android.animation.ObjectAnimator.ofFloat(binding.ivDeveloping, "alpha", 1f, 1f).apply {
             duration = 1600
             addListener(object : android.animation.Animator.AnimatorListener {
                 override fun onAnimationEnd(a: android.animation.Animator) {
-                    binding.ivDeveloping.stopScrolling()
+                    binding.ivDeveloping.stopSpinning()
                     binding.developingOverlay.visibility = android.view.View.GONE
                     isCapturing = false
                     onEnd()
@@ -1339,11 +1339,11 @@ class MainActivity : AppCompatActivity() {
     private fun startDevelopingAnimation() {
         stopDevelopingAnimation()
         // 900px/s：卷轴约 0.7s 转一圈，齿孔快速掠过——够快才看得出"卷在转"
-        binding.ivDeveloping.startScrolling(900f)
+        binding.ivDeveloping.startSpinning(520f)
     }
 
     private fun stopDevelopingAnimation() {
-        binding.ivDeveloping.stopScrolling()
+        binding.ivDeveloping.stopSpinning()
     }
 
     override fun onDestroy() {
