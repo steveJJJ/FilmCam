@@ -49,10 +49,15 @@ class GalleryActivity : AppCompatActivity() {
     private var lastDevPhase: String? = null
 
     /**
-     * 观察到「完成」这一刻的时间戳。DevelopmentState 是进程级单例，上一次冲洗的
-     * 完成态会一直留着 —— 没有这个标记，用户隔天进暗房还会看到一条陈旧的完成条。
+     * 本页亲眼看着洗过的那一卷。DevelopmentState 是进程级单例，上一次冲洗的完成态
+     * 会一直留着 —— 没有这个标记，用户隔天进暗房还会看到一条陈旧的完成条；
+     * 反过来说，只要这一卷是本页看着它从「显影中」走到「完成」的，就必须认账：
+     * 弹完成条 + 刷列表相册 + Toast。
      */
-    private var devDoneObservedMs: Long = 0L
+    private var devTrackedRollId: String? = null
+
+    /** 陈旧完成态（上一轮留下的）只要静默对齐一次数据，不必反复刷 */
+    private var staleDoneRefreshed = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -115,12 +120,23 @@ class GalleryActivity : AppCompatActivity() {
             return
         }
         devProgressCard.visibility = View.VISIBLE
+        // 只要这卷还在洗（准备/显影/失败），就记住它 —— 等它跨到 DONE 时这条路认得出
+        if (st.phase != com.filmcam.app.develop.DevelopmentState.PHASE_DONE) {
+            devTrackedRollId = rollId
+        }
         when (st.phase) {
             com.filmcam.app.develop.DevelopmentState.PHASE_DONE -> {
-                if (devDoneObservedMs == 0L) {
-                    // 本次进暗房之前就已经完成了（进程里留着上一次的完成态）→ 不再打扰
+                if (devTrackedRollId != rollId) {
+                    // 这不是本页看着洗完的卷，是进程里留着的旧完成态（用户可能是隔天进来、
+                    // 或者从冲洗页之外的地方回到暗房）→ 不打扰：不弹完成条、不 Toast。
+                    // 但数据必须静默对齐一次，否则列表/相册会停在上一次的旧画面上。
                     devProgressCard.visibility = View.GONE
                     lastDevPhase = st.phase
+                    if (!staleDoneRefreshed) {
+                        staleDoneRefreshed = true
+                        loadUndevelopedRolls()
+                        loadPhotos()
+                    }
                     return
                 }
                 tvDevProgress.text = getString(R.string.pf_dev_bar_done, st.done)
@@ -134,7 +150,8 @@ class GalleryActivity : AppCompatActivity() {
                 }
                 if (lastDevPhase != st.phase) {
                     // 刚完成：立即把成片与未冲洗列表刷成最新
-                    devDoneObservedMs = android.os.SystemClock.uptimeMillis()
+                    // （刚完成的这一路一定要刷 —— 用户从冲洗页点「后台冲洗」回到暗房后，
+                    //  完成回调是从状态监听来的，不走 onResume，漏了这里列表就一直挂着老画面）
                     loadUndevelopedRolls()
                     loadPhotos()
                     Toast.makeText(

@@ -39,7 +39,7 @@ Memory available: %10$d MB / %11$d MB total
 
     <!-- Credits: name | author/org | license | link | modification note (optional) -->
     <string-array name="oss_credits">
-        <item>SpektraLab for Android (Vulkan backend port, JNI, native Android engine library)|SAINTTaiYi (formerly steveJJJ)|GPL-3.0-or-later|https://github.com/SAINTTaiYi/SpektraLab-Android|Uses the native engine library and project structure of this port directly, trimmed and adjusted for this app</item>
+        <item>SpektraLab for Android (Vulkan backend port, JNI, native Android engine library)|SAINTTaiYi|GPL-3.0-or-later|https://github.com/SAINTTaiYi/SpektraLab-Android|Uses the native engine library and project structure of this port directly, trimmed and adjusted for this app</item>
         <item>SpektraLab physical film / paper simulation engine (upstream)|JamesQiu2005 and SpektraLab contributors|GPL-3.0-or-later|https://github.com/JamesQiu2005/SpektraLab</item>
         <item>spektrafilm film models, 28 measured profiles and enlargement LUTs|Andrea Volpato|CC BY-SA 4.0|https://github.com/andreavolpato/spektrafilm|Original assets adjusted for this project (ISO adaptation and localized naming), distributed under CC BY-SA 4.0 as well</item>
         <item>SpektraFilm engine resources (profiles / LUT / constant tables)|SpektraLab · JamesQiu2005|CC BY-SA 4.0|https://creativecommons.org/licenses/by-sa/4.0/|Resource pack trimmed to the stocks in use, distributed under CC BY-SA 4.0 as well</item>

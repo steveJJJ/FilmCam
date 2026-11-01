@@ -47,7 +47,7 @@ App 版本：%1$s (%2$d)
 
     <!-- 开源致谢：名称 | 作者/组织 | 许可证 | 链接 | 修改说明(可选) -->
     <string-array name="oss_credits">
-        <item>SpektraLab for Android（Vulkan 后端适配、JNI、Android 原生引擎库）|SAINTTaiYi（原 steveJJJ）|GPL-3.0-or-later|https://github.com/SAINTTaiYi/SpektraLab-Android|本项目直接使用该移植提供的原生引擎库与工程结构，并按 App 需求做了裁剪与调整</item>
+        <item>SpektraLab for Android（Vulkan 后端适配、JNI、Android 原生引擎库）|SAINTTaiYi|GPL-3.0-or-later|https://github.com/SAINTTaiYi/SpektraLab-Android|本项目直接使用该移植提供的原生引擎库与工程结构，并按 App 需求做了裁剪与调整</item>
         <item>SpektraLab 物理胶片 / 相纸模拟引擎（上游）|JamesQiu2005 及 SpektraLab 贡献者|GPL-3.0-or-later|https://github.com/JamesQiu2005/SpektraLab</item>
         <item>spektrafilm 胶片模型、28 款实测配置与放大 LUT|Andrea Volpato|CC BY-SA 4.0|https://github.com/andreavolpato/spektrafilm|原素材已按本项目需求调整（ISO 适配与本地化命名），同样以 CC BY-SA 4.0 分发</item>
         <item>SpektraFilm 引擎资源（profiles / LUT / 常量表）|SpektraLab · JamesQiu2005|CC BY-SA 4.0|https://creativecommons.org/licenses/by-sa/4.0/|资源包已按本项目需要裁剪（仅保留所用型号），同样以 CC BY-SA 4.0 分发</item>
