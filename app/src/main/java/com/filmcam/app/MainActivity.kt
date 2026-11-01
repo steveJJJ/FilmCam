@@ -681,6 +681,25 @@ class MainActivity : AppCompatActivity() {
         )
         touchHelper.attachToRecyclerView(rv)
 
+        // 滑动选胶卷时的"齿轮感"：列表每滚过一格（约 1/4 个条目高）给一记极轻触感，
+        // 像拨动过片齿轮的齿——让"往上滑换卷"这件事在手上能被数出来。
+        // 只用 dy 的绝对值累加，方向无关的连续刻度感；惯性滑行时也会持续给到，
+        // 但太密的震动会变成嗡嗡声，故阈值取条目高的约 1/4 并做 40ms 节流。
+        var tickAccum = 0
+        var lastTickMs = 0L
+        rv.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+            override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
+                tickAccum += kotlin.math.abs(dy)
+                val threshold = (recyclerView.height / 8).coerceAtLeast(40)
+                val now = android.os.SystemClock.elapsedRealtime()
+                if (tickAccum >= threshold && now - lastTickMs > 40) {
+                    tickAccum = 0
+                    lastTickMs = now
+                    vibrate(8)
+                }
+            }
+        })
+
         dialog.show()
         // 横屏下 BottomSheet 默认只展开到 peek 高度，25 支胶卷的大半被压在屏幕外，
         // 也看不出"往上还能滑"——直接强制全展开，让滚动发生在列表内部。
@@ -1203,13 +1222,16 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * 播放 T3 自动过卷声（res/raw/t3_advance.wav：340ms / 48kHz / 16bit / 单声道）。
-     * @param rate 播放速率。小于 1 会拉长时长并压低音调，接近马达带负载时的质感。
+     * 播放自动过卷声（res/raw/t3_advance.wav：真实 35mm 相机马达过卷录音，
+     * 700ms / 44.1kHz / 16bit / 单声道，已淡入淡出并归一到 peak 0.85）。
+     * 素材本身是真实录音，原先的合成音在手机上显得又尖又响，这里用较低的
+     * 播放音量（ADVANCE_VOLUME）把"马达在机壳里闷响"的分寸压回来。
+     * @param rate 播放速率。小于 1 会拉长时长并压低音调。
      */
-    private fun playAdvanceSound(rate: Float = 1f) {
+    private fun playAdvanceSound(rate: Float = 1f, volume: Float = ADVANCE_VOLUME) {
         try {
             if (advanceSoundId != 0) {
-                advanceSoundPool?.play(advanceSoundId, 1f, 1f, 1, 0, rate.coerceIn(0.5f, 2f))
+                advanceSoundPool?.play(advanceSoundId, volume, volume, 1, 0, rate.coerceIn(0.5f, 2f))
             }
         } catch (_: Exception) {}
     }
@@ -1275,7 +1297,7 @@ class MainActivity : AppCompatActivity() {
         // 明确静默，再让马达进场；0.75 速率把素材拉长到约 450ms、音调略沉
         // （更接近马达带负载的质感）。
         binding.ivDeveloping.postDelayed({
-            if (isCapturing) playAdvanceSound(rate = 0.75f)
+            if (isCapturing) playAdvanceSound()
         }, 420)
 
         // 微弱震动：同步挪到马达真正发力之后，让手感与听觉对齐
@@ -1324,6 +1346,9 @@ class MainActivity : AppCompatActivity() {
         private const val REQ_CODE = 1001
         /** 临时调试：允许音量上键循环切换横屏预览采样映射（默认关闭，避免抢快门） */
         private const val DEBUG_ROTATE_TEST = false
+
+        /** 过卷声播放音量：真实录音 + 0.45 音量，避免像合成音那样"炸耳朵" */
+        const val ADVANCE_VOLUME = 0.45f
 
         // 「拍摄同款」Intent extras（写入方见 PhotoViewerActivity.shootSame）
         const val EXTRA_SAME_FILM = "same_film_stock"
