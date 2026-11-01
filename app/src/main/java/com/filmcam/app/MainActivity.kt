@@ -415,10 +415,11 @@ class MainActivity : AppCompatActivity() {
         binding.tvDevelopingText.visibility = android.view.View.VISIBLE
 
         playAdvanceSound()
-        vibrate(40, 30)
+        // 手动回卷：同样是齿孔一格一格退回去的手感，全程 1.4s 连续轻震
+        startGearHaptics(fromMs = 0, toMs = 1400, stepMs = 58)
 
-        // 快速回卷：胶卷条高速滚动（速度越快动态模糊越强），1.6s 后收尾
-        binding.ivDeveloping.startScrolling(2200f)
+        // 快速回卷：胶片带高速倒着被卷回暗盒（速度越快拖影越长），1.6s 后收尾
+        binding.ivDeveloping.startScrolling(2600f)
         android.animation.ObjectAnimator.ofFloat(binding.ivDeveloping, "alpha", 1f, 1f).apply {
             duration = 1600
             addListener(object : android.animation.Animator.AnimatorListener {
@@ -1300,10 +1301,9 @@ class MainActivity : AppCompatActivity() {
             if (isCapturing) playAdvanceSound()
         }, 420)
 
-        // 微弱震动：同步挪到马达真正发力之后，让手感与听觉对齐
-        binding.ivDeveloping.postDelayed({ if (isCapturing) vibrate(50, 30) }, 420)
-        binding.ivDeveloping.postDelayed({ if (isCapturing) vibrate(45, 25) }, 600)
-        binding.ivDeveloping.postDelayed({ if (isCapturing) vibrate(45, 25) }, 740)
+        // 过卷触感：马达带动胶卷时齿孔被齿轮一格一格啃过去——用连续的短促轻震
+        // 模拟"卷在转"的颗粒感，与马达声同步起（420ms），收尾再补一记顿挫。
+        startGearHaptics(fromMs = 420, toMs = 1060, stepMs = 58)
 
         // 750ms 后文案切到 PROCESSING...；真正的完成收尾由 onPhotoCaptured 回调 finally 里做
         binding.ivDeveloping.postDelayed({
@@ -1321,10 +1321,25 @@ class MainActivity : AppCompatActivity() {
         }, 20_000)
     }
 
-    /** 过卷等待动画：胶卷条匀速滚动，持续到后台处理+保存完成（连贯不跳变） */
+    /**
+     * 「齿轮过片」触感：在 [fromMs, toMs] 区间里按 stepMs 连续给短促轻震，
+     * 模拟胶片齿孔被齿轮一格一格啃过去的手感（不是单次"嗡"一下），
+     * 末尾再给一记稍明显的顿挫表示这一格走完了。
+     */
+    private fun startGearHaptics(fromMs: Long, toMs: Long, stepMs: Long) {
+        var t = fromMs
+        while (t <= toMs) {
+            binding.ivDeveloping.postDelayed({ if (isCapturing) vibrate(12, 48) }, t)
+            t += stepMs
+        }
+        binding.ivDeveloping.postDelayed({ if (isCapturing) vibrate(26, 95) }, toMs + 60)
+    }
+
+    /** 过卷等待动画：胶片带匀速被拖过片门，持续到后台处理+保存完成（连贯不跳变） */
     private fun startDevelopingAnimation() {
         stopDevelopingAnimation()
-        binding.ivDeveloping.startScrolling(420f)
+        // 900px/s：卷轴约 0.7s 转一圈，齿孔快速掠过——够快才看得出"卷在转"
+        binding.ivDeveloping.startScrolling(900f)
     }
 
     private fun stopDevelopingAnimation() {

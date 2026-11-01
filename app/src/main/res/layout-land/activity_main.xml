@@ -210,11 +210,11 @@
             android:layout_gravity="center"
             android:orientation="vertical"
             android:gravity="center">
-            <!-- 胶卷条：横向滚动 + 运动模糊，模拟胶片被拖过片门 -->
+            <!-- 过片动画：35mm 胶片带在两个旋转卷轴之间被拖过片门 -->
             <com.filmcam.app.ui.FilmStripView
                 android:id="@+id/ivDeveloping"
-                android:layout_width="240dp"
-                android:layout_height="64dp"
+                android:layout_width="280dp"
+                android:layout_height="104dp"
                 android:contentDescription="过卷" />
             <TextView
                 android:id="@+id/tvDevelopingText"
