@@ -48,16 +48,13 @@ class FilmReelView @JvmOverloads constructor(
         val h = height.toFloat()
         if (b == null || w <= 4f || h <= 4f) return
 
-        // 与取景器底部胶卷图标完全同宽（56dp 见方，居中裁切，和 centerCrop 一致）
-        val size = iconSizeDp * resources.displayMetrics.density
-        val fw = size
-        val fh = size
+        // 原样显示（保持原图长宽比，不裁切不拉伸），整体装进 56dp 的方框里，
+        // 跟取景器底部的胶卷图标一样大。
+        val box = iconSizeDp * resources.displayMetrics.density
+        val s = min(box / b.width.toFloat(), box / b.height.toFloat())
+        val fw = b.width * s
+        val fh = b.height * s
         val top = (h - fh) / 2f
-        val side = min(b.width, b.height)
-        srcRect.set(
-            (b.width - side) / 2, (b.height - side) / 2,
-            (b.width + side) / 2, (b.height + side) / 2
-        )
 
         // 胶卷一个紧挨一个排成队列（略微重叠，彻底没有缝隙），
         // 整体匀速平移：窗口里永远填着胶卷，看不到接头和空档。
@@ -66,7 +63,7 @@ class FilmReelView @JvmOverloads constructor(
         while (x < w) {
             paint.alpha = 255
             dstRect.set(x, top, x + fw, top + fh)
-            canvas.drawBitmap(b, srcRect, dstRect, paint)
+            canvas.drawBitmap(b, null, dstRect, paint)
             x += step
         }
     }
