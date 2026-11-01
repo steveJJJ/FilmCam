@@ -81,6 +81,25 @@ Memory available: %10$d MB / %11$d MB total
     <string name="haptic_mid">Medium</string>
     <string name="haptic_strong">Strong</string>
 
+    <!-- Settings panel built as a camera nameplate: one small line under the title, then six rows -->
+    <string name="set_subtitle">CAMERA SETUP</string>
+    <string-array name="set_labels">
+        <item>@string/set_body</item>
+        <item>@string/set_datestamp</item>
+        <item>@string/set_haptic</item>
+        <item>@string/set_language</item>
+        <item>@string/set_dev</item>
+        <item>@string/set_about</item>
+    </string-array>
+    <string-array name="set_hints">
+        <item>Black titan or titanium silver shell</item>
+        <item>Print the shooting date on each frame</item>
+        <item>Motor strength for winding and keys</item>
+        <item>Follow system / 简体中文 / English</item>
+        <item>Grain, halation and glare strength</item>
+        <item>Nameplate and licenses</item>
+    </string-array>
+
     <!-- ===== Main screen MainActivity / shared layout copy ===== -->
 
     <!-- Common buttons -->

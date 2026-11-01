@@ -123,6 +123,18 @@ object BodyTheme {
     val dialogTheme: Int get() =
         if (isTitan) com.filmcam.app.R.style.TitanDialog else com.filmcam.app.R.style.DarkDialog
 
+    /**
+     * 面板外框（Dialog 的 window 背景）：2~3dp 圆角 + 1px 蚀刻边。
+     * Material 默认给 dialog 的是大圆角卡片，跟机身面板不是一个东西 —— 这里换成
+     * 机加工件该有的样子，同时让底面跟随机身档位（黑钛深面板 / 钛银钛面板）。
+     */
+    fun panelDrawable(cornerPx: Float = 9f): Drawable =
+        android.graphics.drawable.GradientDrawable().apply {
+            setColor(panelBg)
+            cornerRadius = cornerPx
+            setStroke(1, cardStroke)
+        }
+
     /** 过卷/冲洗遮罩：黑钛是全黑，钛银是"机身面板盖上来"的钛面 */
     val overlayColor: Int get() = if (isTitan) 0xFFC6BEB0.toInt() else Color.BLACK
 

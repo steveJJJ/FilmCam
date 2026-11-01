@@ -488,89 +488,141 @@ class MainActivity : AppCompatActivity() {
         theme.applySystemBars(window)
     }
 
-    /** 设置弹窗：只留普通用户项；调试与模拟失焦收进「关于页 → 版本号连点 10 次」的工程师模式 */
+    /**
+     * 设置面板（dialog_settings.xml）：做成机身上的一块铭牌 / 说明书内页，
+     * 一行一项「名称 + 说明 + 当前读数」，而不是系统 AlertDialog 的条目列表。
+     * 真机机顶的模式窗上，当前值是一眼就能读到的，不需要点进去才知道 ——
+     * 这也是为什么"机身/日期/震动"用就地翻转：开关过程面板一直在场，
+     * 不存在"弹窗消失的那几帧"，触摸不会漏到取景器被当成点屏对焦。
+     */
     private fun showSettings() {
-        val items = arrayOf(
-            "${getString(R.string.set_body)}: ${com.filmcam.app.ui.BodyTheme.name(this)}",
-            "${getString(R.string.set_datestamp)}: ${
-                if (dateStampEnabled) getString(R.string.common_on) else getString(R.string.common_off)
-            }",
-            "${getString(R.string.set_haptic)}: ${hapticLevelName()}",
-            "${getString(R.string.set_language)}: ${languageName()}",
-            getString(R.string.set_dev),
-            getString(R.string.set_about)
-        )
-        // 弹窗刚关闭的一瞬间，抬手事件会穿透到取景器被当成点屏对焦 → 短暂屏蔽触摸
         suppressTouchUntil = SystemClock.uptimeMillis() + DIALOG_TOUCH_GUARD_MS
-        val dialog = androidx.appcompat.app.AlertDialog.Builder(this, com.filmcam.app.ui.BodyTheme.dialogTheme)
-            .setTitle(getString(R.string.set_title))
-            .setItems(items) { _, which -> onSettingsItem(which) }
-            .setNegativeButton(getString(R.string.set_close), null)
+        val view = LayoutInflater.from(this).inflate(R.layout.dialog_settings, null)
+        val labels = resources.getStringArray(R.array.set_labels)
+        val hints = resources.getStringArray(R.array.set_hints)
+        val rows = intArrayOf(
+            R.id.rowSetBody, R.id.rowSetDatestamp, R.id.rowSetHaptic,
+            R.id.rowSetLanguage, R.id.rowSetDev, R.id.rowSetAbout
+        )
+        val theme = com.filmcam.app.ui.BodyTheme
+        fun row(id: Int): android.view.View = view.findViewById(id)
+        fun value(id: Int): android.widget.TextView = row(id).findViewById(R.id.tvSetValue)
+
+        rows.forEachIndexed { i, id ->
+            row(id).findViewById<android.widget.TextView>(R.id.tvSetLabel).text = labels[i]
+            row(id).findViewById<android.widget.TextView>(R.id.tvSetHint).text = hints[i]
+        }
+        // 机身行右侧是「色版」—— 一块当前外壳色的圆点，比单看文字更直白。
+        // 这两块装饰常驻 XML 只在这里点亮：运行时 addView 出来的控件会漏掉主题重映射。
+        val swatch = row(R.id.rowSetBody).findViewById<android.view.View>(R.id.viewSetSwatch)
+        swatch.visibility = android.view.View.VISIBLE
+        val ticks = row(R.id.rowSetHaptic).findViewById<android.view.View>(R.id.setTicks)
+        ticks.visibility = android.view.View.VISIBLE
+        val tvClose = view.findViewById<android.widget.TextView>(R.id.tvSetClose)
+
+        /**
+         * 把面板刷成当前机身档位。重映射是幂等的（表里没有反向 key），
+         * 所以切换机身色时可以连着刷好几次 —— 面板跟着机身当场变色，不需要重建弹窗。
+         */
+        fun paintPanel() {
+            theme.applyToViewTree(view)
+            rows.forEach { id ->
+                row(id).findViewById<android.widget.ImageView>(R.id.ivSetChevron)
+                    .setColorFilter(theme.onBodyTextSecondary)
+            }
+            view.findViewById<android.widget.ImageView>(R.id.ivSetLogo).setImageResource(
+                if (theme.isTitan) R.drawable.ic_t3_logo_ink else R.drawable.ic_t3_logo
+            )
+            // 关闭 chip 是透明底 + 刻线框，字色得跟着面板底而不是机身底
+            tvClose.setTextColor(theme.panelText)
+            tvClose.background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(android.graphics.Color.TRANSPARENT)
+                cornerRadius = 2f * resources.displayMetrics.density
+                setStroke(1, theme.cardStroke)
+            }
+            swatch.background = android.graphics.drawable.GradientDrawable().apply {
+                shape = android.graphics.drawable.GradientDrawable.OVAL
+                setColor(theme.bodyColor)
+                setStroke(1, theme.cardStroke)
+            }
+            val level = hapticLevel.coerceIn(0, 2)
+            val corner = 1.5f * resources.displayMetrics.density
+            listOf(R.id.tick1, R.id.tick2, R.id.tick3).forEachIndexed { i, tid ->
+                ticks.findViewById<android.view.View>(tid).background =
+                    android.graphics.drawable.GradientDrawable().apply {
+                        setColor(if (i <= level) theme.accent else theme.trackBg)
+                        cornerRadius = corner
+                    }
+            }
+        }
+
+        fun refreshValues() {
+            value(R.id.rowSetBody).text = theme.name(this@MainActivity)
+            value(R.id.rowSetDatestamp).text =
+                if (dateStampEnabled) getString(R.string.common_on) else getString(R.string.common_off)
+            value(R.id.rowSetHaptic).text = hapticLevelName()
+            value(R.id.rowSetLanguage).text = languageName()
+            value(R.id.rowSetDev).text = ""          // 动作项没有"当前读数"
+            value(R.id.rowSetAbout).text = versionLabel()
+            paintPanel()
+        }
+
+        val dialog = androidx.appcompat.app.AlertDialog.Builder(this, theme.dialogTheme)
+            .setView(view)
             .create()
         dialog.guardDialog()
         dialog.setOnShowListener {
-            // 列表项文字色由 dialog style 钉住；再补一道重映射，防某些 ROM 的
-            // Material 主题不走 textColorAlertDialogListItem，银底上仍是浅字。
-            dialog.listView?.post {
-                dialog.listView?.let { com.filmcam.app.ui.BodyTheme.applyToViewTree(it) }
-            }
-            // 日期水印是「开关」不是「动作」：就地翻转文案、弹窗不关。
-            // 原先是点了就 dismiss 再 show 一个新弹窗——弹窗消失与重建之间的那几帧
-            // 正是触摸事件最容易漏到取景器、被误判成点屏对焦的窗口。现在没有这个
-            // 窗口了：整个开关过程弹窗一直在场，取景器根本收不到事件。
-            dialog.listView?.setOnItemClickListener { _, _, which, _ ->
-                when (which) {
-                    0 -> {
-                        // 机身配色：就地切换并立刻刷一遍机身，弹窗本身不重建
-                        // （重建会留出「弹窗消失的那几帧」，那正是触摸漏到取景器的窗口）。
-                        // 弹窗自己的配色等下次打开时才跟着换。
-                        items[0] = "${getString(R.string.set_body)}: ${
-                            com.filmcam.app.ui.BodyTheme.cycle(this@MainActivity)
-                        }"
-                        (dialog.listView?.adapter as? android.widget.BaseAdapter)?.notifyDataSetChanged()
-                        applyBodyTheme()
-                        vibrate(26, 175)
-                    }
-                    1 -> {
-                        dateStampEnabled = !dateStampEnabled
-                        saveSettings()
-                        items[1] = "${getString(R.string.set_datestamp)}: ${
-                            if (dateStampEnabled) getString(R.string.common_on) else getString(R.string.common_off)
-                        }"
-                        (dialog.listView?.adapter as? android.widget.BaseAdapter)?.notifyDataSetChanged()
-                    }
-                    2 -> {
-                        // 震动强度：同样是「开关型」项，就地循环切换不关弹窗，
-                        // 顺手给一记当前档位的实震，让用户当场比出差别。
-                        hapticLevel = (hapticLevel + 1) % HAPTIC_LEVEL_SCALE.size
-                        saveSettings()
-                        items[2] = "${getString(R.string.set_haptic)}: ${hapticLevelName()}"
-                        (dialog.listView?.adapter as? android.widget.BaseAdapter)?.notifyDataSetChanged()
-                        vibrate(26, 200)
-                    }
-                    3 -> {
-                        // 语言：切档会重建 Activity，弹窗必须走正常 dismiss（守卫计数归位），
-                        // 不能像开关项那样就地留下。重建后的无归属窗口由 lastChangeMs 兜住。
-                        dialog.dismiss()
-                        com.filmcam.app.ui.AppLocale.cycle(this@MainActivity)
-                    }
-                    else -> {
-                        dialog.dismiss()
-                        onSettingsItem(which)
-                    }
-                }
-            }
+            // 面板宽度：横屏时不至于撑满，竖屏时留出两侧余量；高度交回 wrap_content
+            val dm = resources.displayMetrics
+            val w = (dm.widthPixels * 0.86f).toInt().coerceAtMost((400 * dm.density).toInt())
+            dialog.window?.setLayout(w, android.view.ViewGroup.LayoutParams.WRAP_CONTENT)
+            // Material 默认给 dialog 的是大圆角卡片，换成机加工面板的外框
+            dialog.window?.setBackgroundDrawable(theme.panelDrawable())
         }
+
+        refreshValues()
+
+        row(R.id.rowSetBody).hapticClick {
+            // 就地换外壳：面板不关，跟着机身一起翻色
+            theme.cycle(this@MainActivity)
+            applyBodyTheme()
+            refreshValues()
+            dialog.window?.setBackgroundDrawable(theme.panelDrawable())
+        }
+        row(R.id.rowSetDatestamp).hapticClick {
+            dateStampEnabled = !dateStampEnabled
+            saveSettings()
+            refreshValues()
+        }
+        row(R.id.rowSetHaptic).hapticClick {
+            hapticLevel = (hapticLevel + 1) % HAPTIC_LEVEL_SCALE.size
+            saveSettings()
+            refreshValues()
+            // 按键感之后隔一下，再按「新档位」实震一回，让用户当场比出差别
+            row(R.id.rowSetHaptic).postDelayed({ vibrate(30, 200) }, 180)
+        }
+        row(R.id.rowSetLanguage).hapticClick {
+            // 切档会重建 Activity，弹窗必须走正常 dismiss（守卫计数归位）
+            dialog.dismiss()
+            com.filmcam.app.ui.AppLocale.cycle(this@MainActivity)
+        }
+        row(R.id.rowSetDev).hapticClick {
+            dialog.dismiss()
+            showDevParamsDialog()
+        }
+        row(R.id.rowSetAbout).hapticClick {
+            dialog.dismiss()
+            startActivity(android.content.Intent(this, AboutActivity::class.java))
+        }
+        tvClose.hapticClick { dialog.dismiss() }
+
         dialog.show()
     }
 
-    private fun onSettingsItem(which: Int) {
-        suppressTouchUntil = SystemClock.uptimeMillis() + DIALOG_TOUCH_GUARD_MS
-        when (which) {
-            4 -> showDevParamsDialog()
-            5 -> startActivity(android.content.Intent(this, AboutActivity::class.java))
-        }
-    }
+    /** 设置面板「关于」行右侧的刻字版本号（v1.2.3） */
+    private fun versionLabel(): String = runCatching {
+        "v${packageManager.getPackageInfo(packageName, 0).versionName}"
+    }.getOrDefault("")
 
     /** 震动强度当前档位名（低/中/强） */
     private fun hapticLevelName(): String = when (hapticLevel.coerceIn(0, 2)) {

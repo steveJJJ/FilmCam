@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 设置行的右指向箭头：一根 6dp 宽的正 V，跟机身上的刻度指示一个调性（不做成粗 Tab 箭头） -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#8A8A8E"
+        android:pathData="M9.4,5.3 L16.1,12 L9.4,18.7 L8.1,17.4 L13.5,12 L8.1,6.6 Z" />
+</vector>

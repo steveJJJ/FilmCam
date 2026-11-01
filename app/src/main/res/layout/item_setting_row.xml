@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  设置面板里的一行：机身铭牌式的「名称 + 说明 + 当前读数」。
+   · 名称是刻字，说明是小一号的副蚀刻，右侧读数是等宽字（铭牌上刻的是规格，不是正文）
+   · 右侧两块装饰（机身色版 / 震动三格刻度）常驻 XML 但默认 GONE，由代码按项点亮 ——
+     运行时 addView 出来的控件会漏掉主题重映射（RecyclerView 那条踩过一次）
+   · 行高靠 padding 撑：横屏可用高度紧张时要能塞得下
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="?attr/selectableItemBackground"
+    android:clickable="true"
+    android:focusable="true"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:paddingStart="17dp"
+    android:paddingTop="11dp"
+    android:paddingEnd="14dp"
+    android:paddingBottom="11dp">
+
+    <!-- 名称 + 说明 -->
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/tvSetLabel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:letterSpacing="0.03"
+            android:textColor="#E8E4DA"
+            android:textSize="13sp" />
+
+        <TextView
+            android:id="@+id/tvSetHint"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="3dp"
+            android:letterSpacing="0.02"
+            android:lineSpacingMultiplier="1.35"
+            android:maxLines="2"
+            android:textColor="#8A8A8E"
+            android:textSize="9.5sp" />
+    </LinearLayout>
+
+    <!-- 当前值：等宽读数 -->
+    <TextView
+        android:id="@+id/tvSetValue"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="10dp"
+        android:fontFamily="monospace"
+        android:gravity="end"
+        android:includeFontPadding="false"
+        android:letterSpacing="0.05"
+        android:textColor="#FFC100"
+        android:textSize="12.5sp" />
+
+    <!-- 机身色版：当前外壳的颜色本体（黑钛纯黑 / 钛银暖钛面），代码上色 -->
+    <View
+        android:id="@+id/viewSetSwatch"
+        android:layout_width="12dp"
+        android:layout_height="12dp"
+        android:layout_marginStart="9dp"
+        android:visibility="gone" />
+
+    <!-- 震动刻度：三格竖条，像机顶的模式刻度窗，代码上色 -->
+    <LinearLayout
+        android:id="@+id/setTicks"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="10dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:visibility="gone">
+
+        <View
+            android:id="@+id/tick1"
+            android:layout_width="3dp"
+            android:layout_height="11dp" />
+
+        <View
+            android:id="@+id/tick2"
+            android:layout_width="3dp"
+            android:layout_height="11dp"
+            android:layout_marginStart="3dp" />
+
+        <View
+            android:id="@+id/tick3"
+            android:layout_width="3dp"
+            android:layout_height="11dp"
+            android:layout_marginStart="3dp" />
+    </LinearLayout>
+
+    <ImageView
+        android:id="@+id/ivSetChevron"
+        android:layout_width="14dp"
+        android:layout_height="14dp"
+        android:layout_marginStart="10dp"
+        android:contentDescription="@null"
+        android:src="@drawable/ic_set_chevron" />
+</LinearLayout>
