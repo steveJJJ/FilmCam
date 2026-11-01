@@ -56,12 +56,12 @@ class FilmReelView @JvmOverloads constructor(
         val x = -fw + (flow % 1f) * period
 
         // 进出场淡入淡出，避免边缘生硬
-        val fadeIn = ((x + fw) / (fw * 0.55f)).coerceIn(0.25f, 1f)
-        val fadeOut = ((w - x) / (fw * 0.55f)).coerceIn(0.25f, 1f)
+        val fadeIn = ((x + fw) / (fw * 0.85f)).coerceIn(0.35f, 1f)
+        val fadeOut = ((w - x) / (fw * 0.85f)).coerceIn(0.35f, 1f)
         val fade = min(fadeIn, fadeOut)
 
         // 身后的残影（运动感）
-        val trail = fw * 0.30f
+        val trail = fw * 0.42f
         paint.alpha = (38 * fade).toInt()
         dstRect.set(x - trail * 0.65f, top, x - trail * 0.65f + fw, top + fh)
         canvas.drawBitmap(b, null, dstRect, paint)
