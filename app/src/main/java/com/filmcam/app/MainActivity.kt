@@ -7,6 +7,7 @@ import android.content.pm.PackageManager
 import android.graphics.SurfaceTexture
 import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
 import android.view.KeyEvent
 import android.view.LayoutInflater
 import android.widget.Toast
@@ -174,6 +175,9 @@ class MainActivity : AppCompatActivity() {
         binding.glSurfaceView.setOnTouchListener { _, event ->
             when (event.action) {
                 android.view.MotionEvent.ACTION_DOWN -> {
+                    // 弹窗/设置项刚关闭的一瞬间，抬手事件会落到取景器上被当成点屏对焦。
+                    // 真机不存在这种"隔着菜单对焦"，所以这段时间窗内一律不响应触摸。
+                    if (SystemClock.uptimeMillis() < suppressTouchUntil) return@setOnTouchListener true
                     touchStartX = event.rawX
                     touchStartY = event.rawY
                     touchStartEv = exposureComp
@@ -216,6 +220,9 @@ class MainActivity : AppCompatActivity() {
                         // 统一入口：原先这里只调 setExposureComp + notifyActivity，
                         // 漏了 applyExposure（外置闪光开关会失效）与 updateLcd（LCD 读数不更新）
                         setEv(newEv, persist = false)   // 抬手时统一 saveSettings
+                        // 每过一档给一记轻震：曝光补偿是「档位」机械感，
+                        // 手指要能感觉到自己拨过了一格（与胶卷列表滑动触感同一套语言）
+                        vibrate(10)
                     }
                 }
                 android.view.MotionEvent.ACTION_UP,
@@ -271,13 +278,16 @@ class MainActivity : AppCompatActivity() {
         binding.tvExposure.setOnClickListener { cycleEv() }
 
         // 「拍摄同款」从暗房带参数跳回（进程被杀后冷启动也走这里）
-        applySameRecipe(intent)
+        // 参数每次都照常套用（幂等），但机身提示只在「真正新的一次跳转」给：
+        // 横竖屏切换会重建 Activity，此时 savedInstanceState != null，
+        // 再提示一遍就成了骚扰。
+        applySameRecipe(intent, announce = savedInstanceState == null)
     }
 
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        applySameRecipe(intent)
+        applySameRecipe(intent, announce = true)
     }
 
     /**
@@ -288,7 +298,7 @@ class MainActivity : AppCompatActivity() {
      *    拦截——这是用户显式要求的换卷）；当前卷还有未冲洗帧时不强行换卷，
      *    参数先行生效，LCD 提示等这卷冲洗后再拍才是同款。
      */
-    private fun applySameRecipe(intent: android.content.Intent?) {
+    private fun applySameRecipe(intent: android.content.Intent?, announce: Boolean) {
         if (intent == null) return
         val stockId = intent.getStringExtra(EXTRA_SAME_FILM)?.trim().orEmpty()
         if (stockId.isEmpty()) return
@@ -315,12 +325,16 @@ class MainActivity : AppCompatActivity() {
         val rollName = runCatching { FilmStockMapper.stockDisplayName(stockId) }.getOrDefault(stockId)
         if (roll != null && roll != currentRoll) {
             if (currentShotCount() > 0) {
-                showLcdNotice("本卷拍完冲洗后换$rollName")
+                if (announce) showLcdNotice("本卷拍完冲洗后换$rollName")
             } else {
                 selectFilmRoll(roll, fromUser = false)
             }
         }
-        showLcdNotice("已套用同款参数")
+        if (announce) showLcdNotice("已套用同款参数")
+
+        // 用完就把 extras 摘掉：同一个 Intent 对象在配置变更（横竖屏）后会被复用，
+        // 留着会在重建时再套一次、再提示一次。
+        EXTRA_SAME_KEYS.forEach { intent.removeExtra(it) }
     }
 
     /** 恢复上次退出的设置 */
@@ -375,9 +389,12 @@ class MainActivity : AppCompatActivity() {
             "冲洗参数: 颗粒/辉光/眩光",
             "关于 FILMCAM"
         )
+        // 弹窗刚关闭的一瞬间，抬手事件会穿透到取景器被当成点屏对焦 → 短暂屏蔽触摸
+        suppressTouchUntil = SystemClock.uptimeMillis() + 350
         androidx.appcompat.app.AlertDialog.Builder(this, R.style.DarkDialog)
             .setTitle("设置")
             .setItems(items) { _, which ->
+                suppressTouchUntil = SystemClock.uptimeMillis() + 350
                 when (which) {
                     0 -> { dateStampEnabled = !dateStampEnabled; saveSettings() }
                     1 -> showDevParamsDialog()
@@ -456,6 +473,7 @@ class MainActivity : AppCompatActivity() {
 
     /** 冲洗参数弹窗：颗粒/辉光/眩光强度（键量纲与 FilmStockMapper 冻结契约一致） */
     private fun showDevParamsDialog() {
+        suppressTouchUntil = SystemClock.uptimeMillis() + 350
         val prefs = getSharedPreferences("filmcam", MODE_PRIVATE)
         val view = LayoutInflater.from(this).inflate(R.layout.dialog_dev_params, null)
 
@@ -741,6 +759,9 @@ class MainActivity : AppCompatActivity() {
 
     /** 白平衡面板是否在取景器里显示（横滑期间显示，抬手后收起） */
     private var wbVisible = false
+
+    /** 这个时刻之前忽略取景器触摸：弹窗/设置项关闭后短暂的防误触窗口 */
+    private var suppressTouchUntil = 0L
 
     private fun applyWbIndex() {
         cameraController?.setAwbMode(wbPresets[wbIndex].awbMode)
@@ -1372,5 +1393,11 @@ class MainActivity : AppCompatActivity() {
         const val EXTRA_SAME_HALATION = "same_halation"
         const val EXTRA_SAME_GLARE = "same_glare"
         const val EXTRA_SAME_EXPOSURE = "same_exposure"
+
+        /** 套用完后要摘掉的 extras（避免横竖屏重建时重复套用 + 重复提示） */
+        val EXTRA_SAME_KEYS = arrayOf(
+            EXTRA_SAME_FILM, EXTRA_SAME_PAPER, EXTRA_SAME_GRAIN,
+            EXTRA_SAME_HALATION, EXTRA_SAME_GLARE, EXTRA_SAME_EXPOSURE
+        )
     }
 }

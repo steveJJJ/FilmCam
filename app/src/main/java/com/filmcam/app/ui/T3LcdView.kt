@@ -1,6 +1,7 @@
 package com.filmcam.app.ui
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.LinearGradient
@@ -301,9 +302,14 @@ class T3LcdView @JvmOverloads constructor(
     // ---------------------------------------------------------------
 
     /**
-     * 整屏机身提示：警示叹号 + 一句话，居中，1.4Hz 闪烁。
+     * 整屏机身提示：居中，1.4Hz 闪烁。
      * 闪烁是液晶报警的通用语汇（数码相机报错、机身异常都这么做），
      * 比常亮更能表达「这是一个阻止你操作的互锁状态」。
+     *
+     * 字体走**点阵化**路径：先用小字号（关抗锯齿 + 等宽 + 字距）画到离屏位图，
+     * 再整数倍硬放大贴回屏幕。小字号关抗锯齿后笔画是硬边锯齿，放大就是
+     * 一格一格的像素块——这才是点阵液晶的字形，而不是普通黑体放大后的圆滑轮廓。
+     * （试过内嵌像素字体包，GitHub 下载反复中断，这条零依赖路径效果等价且不加体积。）
      */
     private fun drawMessage(canvas: Canvas, rect: RectF, onColor: Int) {
         if ((SystemClock.uptimeMillis() / 350L) % 2L == 1L) return
@@ -311,20 +317,50 @@ class T3LcdView @JvmOverloads constructor(
 
         val padY = 5f * density
         val ch = rect.height() - padY * 2f
-        val paint = Paint(textPaint).apply {
+        val scale = 2                                  // 硬放大倍数（整数倍才有整块像素）
+        val maxW = (rect.width() - 16f * density) / scale
+
+        val src = Paint().apply {
+            typeface = Typeface.MONOSPACE
+            isAntiAlias = false                        // 关抗锯齿 = 硬边 = 点阵感
             color = onColor
-            textSize = ch * 0.38f
+            textSize = (ch * 0.38f / scale).coerceAtLeast(9f)
             isFakeBoldText = true
+            letterSpacing = 0.08f                      // 字距拉开，液晶段之间本就有间隙
         }
         // 文案长短差异大，按可用宽度自动缩字号，保证一句放得下
-        val maxW = rect.width() - 16f * density
-        while (paint.measureText(msg) > maxW && paint.textSize > ch * 0.16f) {
-            paint.textSize -= 0.5f * density
-        }
+        while (src.measureText(msg) > maxW && src.textSize > 8f) src.textSize -= 0.5f
 
-        val startX = rect.left + (rect.width() - paint.measureText(msg)) / 2f
-        val baseline = rect.centerY() - (paint.fontMetrics.ascent + paint.fontMetrics.descent) / 2f
-        canvas.drawText(msg, startX, baseline, paint)
+        val bmp = messageBitmap(msg, src)
+        val dw = bmp.width * scale.toFloat()
+        val dh = bmp.height * scale.toFloat()
+        val left = rect.left + (rect.width() - dw) / 2f
+        val top = rect.centerY() - dh / 2f
+        dstRect.set(left, top, left + dw, top + dh)
+        canvas.drawBitmap(bmp, null, dstRect, bitmapPaint)
+    }
+
+    /** 提示位图缓存：闪烁时每 80ms 重绘一次，缓存避免反复建图 */
+    private var msgBmpKey = ""
+    private var msgBmp: Bitmap? = null
+    private val dstRect = RectF()
+    private val bitmapPaint = Paint().apply { isFilterBitmap = false }
+    private val msgCanvas = Canvas()
+
+    private fun messageBitmap(msg: String, src: Paint): Bitmap {
+        val key = msg + "|" + src.textSize.toInt()
+        val cached = msgBmp
+        if (cached != null && key == msgBmpKey) return cached
+        val w = (src.measureText(msg) + 4f).toInt().coerceAtLeast(1)
+        val h = (src.textSize * 1.5f).toInt().coerceAtLeast(1)
+        val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        msgCanvas.setBitmap(bmp)
+        bmp.eraseColor(Color.TRANSPARENT)
+        val baseline = h * 0.5f - (src.fontMetrics.ascent + src.fontMetrics.descent) / 2f
+        msgCanvas.drawText(msg, 2f, baseline, src)
+        msgBmp = bmp
+        msgBmpKey = key
+        return bmp
     }
 
     // ---------------------------------------------------------------
