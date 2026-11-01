@@ -1025,11 +1025,14 @@ class MainActivity : AppCompatActivity() {
         } catch (_: Exception) {}
     }
 
-    /** 播放 T3 过卷声（res/raw/t3_advance.wav，素材已就位） */
-    private fun playAdvanceSound() {
+    /**
+     * 播放 T3 自动过卷声（res/raw/t3_advance.wav：340ms / 48kHz / 16bit / 单声道）。
+     * @param rate 播放速率。小于 1 会拉长时长并压低音调，接近马达带负载时的质感。
+     */
+    private fun playAdvanceSound(rate: Float = 1f) {
         try {
             if (advanceSoundId != 0) {
-                advanceSoundPool?.play(advanceSoundId, 1f, 1f, 1, 0, 1f)
+                advanceSoundPool?.play(advanceSoundId, 1f, 1f, 1, 0, rate.coerceIn(0.5f, 2f))
             }
         } catch (_: Exception) {}
     }
@@ -1089,13 +1092,19 @@ class MainActivity : AppCompatActivity() {
         // 过卷等待动画：持续旋转直到处理+保存完成（胶片相机拍完需等冲洗，动画连贯不跳变）
         startDevelopingAnimation()
 
-        // 过卷声音（真实 T3 自动过卷音，与过卷动画同步）
-        playAdvanceSound()
+        // 过卷声音：真实 T3 的顺序是「叶片先喀一声曝光」→ 停顿一下 →「马达拖动齿轮过卷」，
+        // 两段声音之间有明显间隔。原先它与快门声在同一帧触发，82ms 的快门声还没播完
+        // 340ms 的马达声就压上来了，两个音叠成一坨，听不出层次——用户反馈"没有过片声"
+        // 其实是听到了，只是被糊在一起分不出来。这里延后 200ms 起播给曝光留出交代，
+        // 并用 0.75 速率把素材拉长到约 450ms、音调略沉（更接近马达带负载的质感）。
+        binding.ivDeveloping.postDelayed({
+            if (isCapturing) playAdvanceSound(rate = 0.75f)
+        }, 200)
 
-        // 微弱震动（过卷期间低幅触感，模拟机械过卷）
-        vibrate(60, 40)
-        binding.ivDeveloping.postDelayed({ vibrate(50, 30) }, 160)
-        binding.ivDeveloping.postDelayed({ vibrate(50, 30) }, 260)
+        // 微弱震动：同步挪到马达真正发力之后，让手感与听觉对齐
+        binding.ivDeveloping.postDelayed({ if (isCapturing) vibrate(50, 30) }, 200)
+        binding.ivDeveloping.postDelayed({ if (isCapturing) vibrate(45, 25) }, 380)
+        binding.ivDeveloping.postDelayed({ if (isCapturing) vibrate(45, 25) }, 520)
 
         // 480ms 后文案切到 PROCESSING...；真正的完成收尾由 onPhotoCaptured 回调 finally 里做
         binding.ivDeveloping.postDelayed({
