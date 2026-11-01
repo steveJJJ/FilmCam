@@ -16,12 +16,9 @@ import kotlin.math.abs
 import kotlin.math.min
 
 /**
- * 过卷动画：**胶卷（平面，原样不旋转不缩放）固定在正中不动**，
- * 只有身后（左侧）的运动拖影沿「一个图标宽」的轨道由左向右快速流过并循环，
- * 主体始终清晰 —— 用"胶片被不停拉走"的拖影表现过片，胶卷本身不位移。
- *
- * 走过的版本：图标原地空转 → 单卷横掠+自转 → 双卷轴+胶带 → 端面绕 Z 轴转 →
- * 竖直圆柱绕 Y 轴转 → 平面绕竖直轴翻转。用户要的其实是"胶卷从左到右走"。
+ * 过卷动画：**一个胶卷，在原地循环转动**——
+ * 图标固定在正中央（不平移），绕自身中心匀速转一圈又一圈，
+ * 身后带角度残影（动态模糊），像卷轴被马达带着转。
  */
 class FilmReelView @JvmOverloads constructor(
     context: Context,
@@ -30,13 +27,11 @@ class FilmReelView @JvmOverloads constructor(
 
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     private val dstRect = RectF()
-    private val ghostRect = RectF()
 
     private var icon: Bitmap? = null
 
-    /** 累计位移（px），只增不减 */
-    private var scroll = 0f
-    private var speed = 0f   // px/s
+    private var angle = 0f   // 当前转角（deg）
+    private var omega = 0f   // 角速度（deg/s）
 
     private var animator: ValueAnimator? = null
     private var lastFrameMs = 0L
@@ -47,27 +42,33 @@ class FilmReelView @JvmOverloads constructor(
         val h = height.toFloat()
         if (b == null || w <= 4f || h <= 4f) return
 
-        // 胶卷按自身比例放进视图高度
-        val s = min(w * 0.34f / b.width.toFloat(), h * 0.58f / b.height.toFloat())
+        // 图标内接在视图里：转满一圈也不会被裁掉
+        val size = min(w, h) * 0.82f
+        val s = min(size / b.width.toFloat(), size / b.height.toFloat())
         val fw = b.width * s
         val fh = b.height * s
-        val top = (h - fh) / 2f
-        val cx = (w - fw) / 2f     // 主体固定在正中，全程不动
+        val cx = w / 2f
+        val cy = h / 2f
 
-        // 身后（左侧）的拖影：多张残影沿「一个图标宽」的轨道由左向右快速流过，
-        // 到主体位置就被主体盖掉并从左边重新进入 → 看起来胶片在被不停拉走。
-        val ghosts = 5
-        for (i in 0 until ghosts) {
-            val t = ((scroll / fw) + i.toFloat() / ghosts) % 1f   // 0=最左 1=贴住主体
-            val off = (t - 1f) * fw
-            paint.alpha = (14f + 40f * t).toInt().coerceIn(0, 255)
-            ghostRect.set(cx + off, top, cx + off + fw, top + fh)
-            canvas.drawBitmap(b, null, ghostRect, paint)
+        // 动态模糊：转得越快，身后拖的角度越长
+        val ghost = (abs(omega) / 26f).coerceIn(0f, 30f)
+
+        for (i in 4 downTo 1) {
+            paint.alpha = (74 - i * 14).coerceIn(12, 255)
+            drawRotated(canvas, b, cx, cy, fw, fh, angle - ghost * i / 4f)
         }
-
         paint.alpha = 255
-        dstRect.set(cx, top, cx + fw, top + fh)
+        drawRotated(canvas, b, cx, cy, fw, fh, angle)
+    }
+
+    private fun drawRotated(
+        canvas: Canvas, b: Bitmap, cx: Float, cy: Float, fw: Float, fh: Float, deg: Float
+    ) {
+        canvas.save()
+        canvas.rotate(deg, cx, cy)
+        dstRect.set(cx - fw / 2f, cy - fh / 2f, cx + fw / 2f, cy + fh / 2f)
         canvas.drawBitmap(b, null, dstRect, paint)
+        canvas.restore()
     }
 
     fun setIcon(resId: Int) {
@@ -80,13 +81,12 @@ class FilmReelView @JvmOverloads constructor(
     }
 
     /**
-     * 开始过片。@param pxPerSecond 胶卷横向移动速度（像素/秒，从左到右），
-     * 速度越快拖影越长、整体模糊越强。
+     * 开始过片。@param degPerSecond 胶卷转动角速度（度/秒，>0 顺时针）。
      */
-    fun startSpinning(pxPerSecond: Float) {
+    fun startSpinning(degPerSecond: Float) {
         stopSpinning()
-        speed = pxPerSecond
-        applyBlur((abs(pxPerSecond) / 420f).coerceIn(0f, 3f))
+        omega = degPerSecond
+        applyBlur((abs(degPerSecond) / 420f).coerceIn(0f, 2.5f))
         lastFrameMs = 0L
         animator = ValueAnimator.ofFloat(0f, 1f).apply {
             duration = 4000L
@@ -97,7 +97,7 @@ class FilmReelView @JvmOverloads constructor(
                 if (lastFrameMs == 0L) lastFrameMs = now
                 val dt = ((now - lastFrameMs) / 1000f).coerceIn(0f, 0.1f)
                 lastFrameMs = now
-                scroll += pxPerSecond * dt
+                angle = (angle + degPerSecond * dt) % 360f
                 invalidate()
             }
             start()
@@ -107,7 +107,7 @@ class FilmReelView @JvmOverloads constructor(
     fun stopSpinning() {
         animator?.cancel()
         animator = null
-        speed = 0f
+        omega = 0f
         applyBlur(0f)
         invalidate()
     }
