@@ -4,9 +4,11 @@ import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.graphics.Color
+import android.graphics.BitmapShader
 import android.graphics.Canvas
+import android.graphics.Matrix
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.RectF
 import android.graphics.Shader
 import android.os.Build
@@ -17,9 +19,9 @@ import kotlin.math.abs
 import kotlin.math.min
 
 /**
- * 过卷动画：**胶卷固定在正中央不动，靠表面纹理循环流过表现转动**——
- * 胶卷本体不位移、不旋转；表面叠加细密的胶片条纹沿横向匀速流过并无缝循环，
- * 像卷轴在不停转动时表面纹路被拉着走。
+ * 过卷动画：**胶卷外框固定不动，图案（封面画面）在里面横向循环流过**——
+ * 图标本体不位移、不旋转；窗口内的画面用「原图 + 水平镜像」无缝拼接成一条带，
+ * 以 REPEAT 平铺并随时间匀速平移，看起来就是胶卷表面被不停拉走（转动感）。
  */
 class FilmReelView @JvmOverloads constructor(
     context: Context,
@@ -27,12 +29,19 @@ class FilmReelView @JvmOverloads constructor(
 ) : View(context, attrs) {
 
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+    private val flowPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     private val dstRect = RectF()
+    private val flowRect = RectF()
+    private val flowPath = Path()
+    private val flowMatrix = Matrix()
 
     private var icon: Bitmap? = null
+    /** 无缝拼接带：原图 + 水平镜像图，宽 2×原图 */
+    private var tile: Bitmap? = null
 
-    private var scroll = 0f  // 表面纹理累计位移（px）
-    private var speed = 0f   // 纹理流速（px/s）
+    /** 累计流动量，单位＝图标宽（1.0 = 画面走了一个图标宽） */
+    private var flow = 0f
+    private var laps = 0f   // 每秒流动几个图标宽
 
     private var animator: ValueAnimator? = null
     private var lastFrameMs = 0L
@@ -48,32 +57,40 @@ class FilmReelView @JvmOverloads constructor(
         val s = min(size / b.width.toFloat(), size / b.height.toFloat())
         val fw = b.width * s
         val fh = b.height * s
-        val cx = w / 2f
-        val cy = h / 2f
+        val left = (w - fw) / 2f
+        val top = (h - fh) / 2f
 
         paint.alpha = 255
-        dstRect.set(cx - fw / 2f, cy - fh / 2f, cx + fw / 2f, cy + fh / 2f)
+        dstRect.set(left, top, left + fw, top + fh)
         canvas.drawBitmap(b, null, dstRect, paint)
 
-        // 表面纹理：细密的胶片条纹沿表面横向循环流过（图标本体不动）
-        val left = cx - fw / 2f
-        val top = cy - fh / 2f
-        val period = (fw / 4f).coerceAtLeast(6f)
-        val off = scroll % period
-        canvas.save()
-        canvas.clipRect(left + fw * 0.07f, top + fh * 0.07f, left + fw * 0.93f, top + fh * 0.93f)
-        val count = (fw / period).toInt() + 2
-        for (i in -1..count) {
-            val x = left + off + i * period
-            paint.color = Color.WHITE
-            paint.alpha = 34
-            canvas.drawRect(x, top, x + period * 0.20f, top + fh, paint)
-            paint.color = Color.BLACK
-            paint.alpha = 26
-            canvas.drawRect(x + period * 0.55f, top, x + period * 0.75f, top + fh, paint)
+        // 画面流动：窗口（胶卷内部）固定，图案带在里面横向平移
+        val t = tile
+        if (t == null || abs(laps) < 0.01f) return
+
+        val insetX = fw * 0.10f
+        val insetY = fh * 0.10f
+        flowRect.set(left + insetX, top + insetY, left + fw - insetX, top + fh - insetY)
+
+        // 采样坐标：把屏幕坐标平移 -flow*fw 后映射回 bitmap 空间
+        val off = (flow % 2f) * fw
+        flowMatrix.reset()
+        flowMatrix.setScale(1f / s, 1f / s)
+        flowMatrix.postTranslate(-(left - off) / s, -top / s)
+        if (flowPaint.shader == null) {
+            flowPaint.shader = BitmapShader(t, Shader.TileMode.REPEAT, Shader.TileMode.CLAMP)
         }
+        (flowPaint.shader as? BitmapShader)?.setLocalMatrix(flowMatrix)
+
+        val r = min(flowRect.width(), flowRect.height()) * 0.22f
+        flowPath.reset()
+        flowPath.addRoundRect(flowRect, r, r, Path.Direction.CW)
+
+        canvas.save()
+        canvas.clipPath(flowPath)
+        flowPaint.alpha = 255
+        canvas.drawRect(flowRect, flowPaint)
         canvas.restore()
-        paint.alpha = 255
     }
 
     fun setIcon(resId: Int) {
@@ -82,16 +99,31 @@ class FilmReelView @JvmOverloads constructor(
         } catch (_: Exception) {
             null
         }
+        tile = icon?.let(::buildMirroredTile)
+        flowPaint.shader = null
         invalidate()
     }
 
+    /** 原图 + 水平镜像拼成 2 倍宽带子，循环平铺时接缝左右对称、看不出跳变 */
+    private fun buildMirroredTile(b: Bitmap): Bitmap {
+        val out = Bitmap.createBitmap(b.width * 2, b.height, Bitmap.Config.ARGB_8888)
+        val c = Canvas(out)
+        c.drawBitmap(b, 0f, 0f, null)
+        val m = Matrix().apply {
+            setScale(-1f, 1f)
+            postTranslate((b.width * 2).toFloat(), 0f)
+        }
+        c.drawBitmap(b, m, null)
+        return out
+    }
+
     /**
-     * 开始过片。@param pxPerSecond 表面纹理流动速度（像素/秒，向右）。
+     * 开始过片。@param lapsPerSecond 画面每秒流过几个图标宽（1.0 = 一卷/秒）。
      */
-    fun startSpinning(pxPerSecond: Float) {
+    fun startSpinning(lapsPerSecond: Float) {
         stopSpinning()
-        speed = pxPerSecond
-        applyBlur((abs(pxPerSecond) / 300f).coerceIn(0f, 1.6f))
+        laps = lapsPerSecond
+        applyBlur((abs(lapsPerSecond) * 0.9f).coerceIn(0f, 2f))
         lastFrameMs = 0L
         animator = ValueAnimator.ofFloat(0f, 1f).apply {
             duration = 4000L
@@ -102,7 +134,7 @@ class FilmReelView @JvmOverloads constructor(
                 if (lastFrameMs == 0L) lastFrameMs = now
                 val dt = ((now - lastFrameMs) / 1000f).coerceIn(0f, 0.1f)
                 lastFrameMs = now
-                scroll = (scroll + pxPerSecond * dt) % 100000f
+                flow = (flow + lapsPerSecond * dt) % 2f
                 invalidate()
             }
             start()
@@ -112,7 +144,7 @@ class FilmReelView @JvmOverloads constructor(
     fun stopSpinning() {
         animator?.cancel()
         animator = null
-        speed = 0f
+        laps = 0f
         applyBlur(0f)
         invalidate()
     }
