@@ -62,6 +62,8 @@ class MainActivity : AppCompatActivity() {
     private var softFocusEnabled = false  // 模拟失焦：拍摄时对焦故意不准
     private var softFocusProb = 0         // 模拟失焦概率 0-100（工程师模式可调；0=关）
     private var filmRollMode = false  // 胶卷模式开关（旧设置保留兼容，计数改由 UndevelopedFilmStore 权威）
+    /** 触感强度档位：0=低 1=中 2=强（用户可在设置里切，见 vibrate() 的缩放系数） */
+    private var hapticLevel = 1
     private var debugInstantDevelop = false  // 调试：拍完立即后台冲洗出片
     private val FILM_MAX = 36  // 一卷36张
 
@@ -395,6 +397,7 @@ class MainActivity : AppCompatActivity() {
         // 失焦概率缺省：开过模拟失焦的老用户 → 40%（旧版硬编码值）；否则 0
         softFocusProb = prefs.getInt("softFocus_prob", if (softFocusEnabled) 40 else 0)
         filmRollMode = prefs.getBoolean("filmRollMode", false)
+        hapticLevel = prefs.getInt("hapticLevel", 1).coerceIn(0, 2)
         // 旧 filmCount 键仅作迁移保留读取，不再作为权威（张数一律读 UndevelopedFilmStore.shotCount）
         @Suppress("UNUSED_VARIABLE") val legacyFilmCount = prefs.getInt("filmCount", 0)
         debugInstantDevelop = prefs.getBoolean("debug_instant_develop", false)
@@ -423,6 +426,7 @@ class MainActivity : AppCompatActivity() {
         prefs.putInt("ev", exposureComp)
         prefs.putBoolean("softFocus", softFocusEnabled)
         prefs.putBoolean("filmRollMode", filmRollMode)
+        prefs.putInt("hapticLevel", hapticLevel)
         // 旧 filmCount 键不再写入；权威张数来自 UndevelopedFilmStore
         prefs.putBoolean("debug_instant_develop", debugInstantDevelop)
         prefs.putString("flashMode", flash.mode.name)
@@ -451,6 +455,7 @@ class MainActivity : AppCompatActivity() {
     private fun showSettings() {
         val items = arrayOf(
             "日期水印: ${if (dateStampEnabled) "开" else "关"}",
+            "震动强度: ${HAPTIC_LEVEL_NAMES[hapticLevel.coerceIn(0, 2)]}",
             "冲洗参数: 颗粒/辉光/眩光",
             "关于 FILMCAM"
         )
@@ -468,14 +473,26 @@ class MainActivity : AppCompatActivity() {
             // 正是触摸事件最容易漏到取景器、被误判成点屏对焦的窗口。现在没有这个
             // 窗口了：整个开关过程弹窗一直在场，取景器根本收不到事件。
             dialog.listView?.setOnItemClickListener { _, _, which, _ ->
-                if (which == 0) {
-                    dateStampEnabled = !dateStampEnabled
-                    saveSettings()
-                    items[0] = "日期水印: ${if (dateStampEnabled) "开" else "关"}"
-                    (dialog.listView?.adapter as? android.widget.BaseAdapter)?.notifyDataSetChanged()
-                } else {
-                    dialog.dismiss()
-                    onSettingsItem(which)
+                when (which) {
+                    0 -> {
+                        dateStampEnabled = !dateStampEnabled
+                        saveSettings()
+                        items[0] = "日期水印: ${if (dateStampEnabled) "开" else "关"}"
+                        (dialog.listView?.adapter as? android.widget.BaseAdapter)?.notifyDataSetChanged()
+                    }
+                    1 -> {
+                        // 震动强度：同样是「开关型」项，就地循环切换不关弹窗，
+                        // 顺手给一记当前档位的实震，让用户当场比出差别。
+                        hapticLevel = (hapticLevel + 1) % HAPTIC_LEVEL_SCALE.size
+                        saveSettings()
+                        items[1] = "震动强度: ${HAPTIC_LEVEL_NAMES[hapticLevel]}"
+                        (dialog.listView?.adapter as? android.widget.BaseAdapter)?.notifyDataSetChanged()
+                        vibrate(26, 200)
+                    }
+                    else -> {
+                        dialog.dismiss()
+                        onSettingsItem(which)
+                    }
                 }
             }
         }
@@ -485,8 +502,8 @@ class MainActivity : AppCompatActivity() {
     private fun onSettingsItem(which: Int) {
         suppressTouchUntil = SystemClock.uptimeMillis() + DIALOG_TOUCH_GUARD_MS
         when (which) {
-            1 -> showDevParamsDialog()
-            2 -> startActivity(android.content.Intent(this, AboutActivity::class.java))
+            2 -> showDevParamsDialog()
+            3 -> startActivity(android.content.Intent(this, AboutActivity::class.java))
         }
     }
 
@@ -819,6 +836,22 @@ class MainActivity : AppCompatActivity() {
         // 也看不出"往上还能滑"——直接强制全展开，让滚动发生在列表内部。
         dialog.behavior.state =
             com.google.android.material.bottomsheet.BottomSheetBehavior.STATE_EXPANDED
+
+        // 上面 72% 是按竖屏（屏高 2400 左右）定的，横屏屏高只有一半（1080），
+        // 列表 72% + 标题/说明 + 上下的 16dp/48dp padding 会整体顶出屏幕，
+        // 滑到最后一卷时底部那一项被切掉一半。这里按弹层真实可视高度反推：
+        // 列表最多吃满「可视高度 - 头部 - 底部 padding」，滑到底一定是完整的。
+        view.post {
+            val r = android.graphics.Rect()
+            dialog.window?.decorView?.getWindowVisibleDisplayFrame(r)
+            val maxRv = r.height() - rv.top - view.paddingBottom
+            val minRv = (120 * resources.displayMetrics.density).toInt()
+            val target = rv.height.coerceAtMost(maxRv).coerceAtLeast(minRv)
+            if (target != rv.height) {
+                rv.layoutParams.height = target
+                rv.requestLayout()
+            }
+        }
     }
 
     // ===== 机身提示 =====
@@ -1337,7 +1370,11 @@ class MainActivity : AppCompatActivity() {
                 getSystemService(android.content.Context.VIBRATOR_SERVICE) as? android.os.Vibrator
             }
             if (android.os.Build.VERSION.SDK_INT >= 26) {
-                val level = if (amp > 0) amp.coerceAtMost(255) else HAPTIC_AMP_DEFAULT
+                val base = if (amp > 0) amp else HAPTIC_AMP_DEFAULT
+                // 再乘用户在设置里选的强度档（低 0.55 / 中 1.0 / 强 1.45），
+                // 最后夹到 [24, 255]：太低马达不响应，255 是 API 上限。
+                val level = (base * HAPTIC_LEVEL_SCALE[hapticLevel.coerceIn(0, 2)])
+                    .roundToInt().coerceIn(24, 255)
                 vibrator?.vibrate(android.os.VibrationEffect.createOneShot(ms, level))
             } else {
                 @Suppress("DEPRECATION")
@@ -1507,6 +1544,10 @@ class MainActivity : AppCompatActivity() {
          * - 快门/拦截等重反馈：0.9 倍以上
          */
         const val HAPTIC_AMP_DEFAULT = 170
+
+        /** 设置里「震动强度」三档的振幅系数：低 / 中 / 强 */
+        val HAPTIC_LEVEL_SCALE = floatArrayOf(0.55f, 1.0f, 1.45f)
+        val HAPTIC_LEVEL_NAMES = arrayOf("低", "中", "强")
 
         // 「拍摄同款」Intent extras（写入方见 PhotoViewerActivity.shootSame）
         const val EXTRA_SAME_FILM = "same_film_stock"

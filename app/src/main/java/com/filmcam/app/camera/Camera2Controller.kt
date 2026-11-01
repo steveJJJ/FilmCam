@@ -322,8 +322,11 @@ class Camera2Controller(private val context: Context) {
      * 点屏对焦：把预览视图坐标映射到传感器 active array 坐标，
      * 设置 AF/AE 测光区并触发一次 AF 扫焦。
      *
-     * 坐标映射（sensorOrientation=90 的竖屏相机）：
-     *   屏幕 u=x/W、v=y/H → sensor x = v、sensor y = u（含 zoom 裁切区域）。
+     * 坐标映射：屏幕归一化 (u,v) 先按 contentRectFor 去掉 letterbox 黑边，
+     * 再按「传感器图像顺时针旋转 R 度才是当前屏幕画面」的逆变换折算回传感器坐标
+     * （R = (sensorOrientation - displayRotation + 360) % 360，与 JPEG_ORIENTATION 同源）。
+     * 之前只用「是否横屏」决定要不要互换两轴，漏了竖屏/反向横屏该做的取反 ——
+     * 表现就是测光区与手指点的位置左右对不上。
      *
      * @param onFocused 对焦流程触发后约 700ms 回调（近似扫焦完成，用于震动反馈）
      * @return false 表示无法点屏对焦（会话未就绪 / 模拟失焦开启 / 设备不支持）
@@ -356,11 +359,28 @@ class Camera2Controller(private val context: Context) {
                 .contentRectFor(viewW.toFloat(), viewH.toFloat())
             val u = ((viewX - rect.left) / rect.width().coerceAtLeast(1f)).coerceIn(0f, 1f)
             val v = ((viewY - rect.top) / rect.height().coerceAtLeast(1f)).coerceIn(0f, 1f)
-            // 竖屏：画面是传感器 4:3 横画面旋转 90° 得到的 → 视口横轴对应传感器纵轴（互换）
-            // 横屏：画面就是传感器原生方向 → 横轴对横轴、纵轴对纵轴（不互换）
-            val landscape = viewW > viewH
-            val sx = (cropX + (if (landscape) u else v) * cropW).toInt()
-            val sy = (cropY + (if (landscape) v else u) * cropH).toInt()
+            // 屏幕画面 → 传感器坐标系的总旋转量 R（顺时针）。
+            // 传感器图像要顺时针转 R 度，才是当前设备方向下正立的画面；
+            // 反过来查表就是屏幕归一化坐标 (u,v) 到传感器 (nx,ny) 的映射。
+            // R = (sensorOrientation - displayRotation + 360) % 360 —— 与 JPEG_ORIENTATION
+            // 同一套公式（官方 Camera2 sample 的 (ORIENTATIONS[rot] + sensor + 270) % 360 等价）。
+            val sensorOrientation =
+                chars.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 90
+            val displayRotation = when (currentDisplayRotationDeg()) {
+                90 -> 90
+                180 -> 180
+                270 -> 270
+                else -> 0
+            }
+            val r = (sensorOrientation - displayRotation + 360) % 360
+            val (nx, ny) = when (r) {
+                90 -> v to (1f - u)      // 竖屏：轴互换，且横轴取反（画面左=传感器下）
+                180 -> (1f - u) to (1f - v)
+                270 -> (1f - v) to u
+                else -> u to v           // 横屏（rotation=90）：画面即传感器原生方向
+            }
+            val sx = (cropX + nx * cropW).toInt()
+            val sy = (cropY + ny * cropH).toInt()
             val half = (minOf(cropW, cropH) * 0.1f).toInt().coerceAtLeast(16)
             val region = android.hardware.camera2.params.MeteringRectangle(
                 (sx - half).coerceAtLeast(active.left),
@@ -386,6 +406,25 @@ class Camera2Controller(private val context: Context) {
             true
         } catch (_: Exception) {
             false
+        }
+    }
+
+    /** 当前屏幕旋转角度（0/90/180/270），用于把触摸坐标折算到传感器方向 */
+    private fun currentDisplayRotationDeg(): Int {
+        val activity = context as? android.app.Activity
+        val rot: Int = if (android.os.Build.VERSION.SDK_INT >= 30 && activity != null) {
+            activity.display?.rotation ?: Surface.ROTATION_0
+        } else if (activity != null) {
+            @Suppress("DEPRECATION")
+            activity.windowManager?.defaultDisplay?.rotation ?: Surface.ROTATION_0
+        } else {
+            Surface.ROTATION_0
+        }
+        return when (rot) {
+            Surface.ROTATION_90 -> 90
+            Surface.ROTATION_180 -> 180
+            Surface.ROTATION_270 -> 270
+            else -> 0
         }
     }
 
