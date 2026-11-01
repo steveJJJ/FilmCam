@@ -71,5 +71,15 @@
             android:name=".develop.DevelopmentService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
+        <!-- AndroidX 多语言：由框架托管 App 语言（API 33+ 交给系统 LocaleManager，
+             低版本存在 AppCompat 自己的存储里），enable=false 是因为它只作为元数据持有者 -->
+        <service
+            android:name="androidx.appcompat.app.AppLocalesMetadataHolderService"
+            android:enabled="false"
+            android:exported="false">
+            <meta-data
+                android:name="autoStoreLocales"
+                android:value="true" />
+        </service>
     </application>
 </manifest>

@@ -234,9 +234,9 @@ class DevelopmentActivity : AppCompatActivity(), SensorEventListener {
         // 否则 UI 会停在「显影中 0/36」像卡死。
         tvProgress.text = when {
             st.phase == DevelopmentState.PHASE_PREPARING && st.preparingFirstTime ->
-                "首次冲洗，正在准备显影液…"
-            st.phase == DevelopmentState.PHASE_PREPARING -> "正在准备…"
-            else -> "显影中 $done/$total"
+                getString(R.string.dev_preparing_first)
+            st.phase == DevelopmentState.PHASE_PREPARING -> getString(R.string.dev_preparing)
+            else -> getString(R.string.dev_progress, done, total)
         }
 
         // 胶卷条
@@ -252,21 +252,21 @@ class DevelopmentActivity : AppCompatActivity(), SensorEventListener {
         // 完成态
         if (st.phase == DevelopmentState.PHASE_DONE) {
             layoutDone.visibility = View.VISIBLE
-            tvDoneTitle.text = "冲洗完成"
-            tvDoneSub.text = "共 $done 张"
-            btnViewGallery.text = "查看相册"
-            tvProgress.text = "显影完成 $done/$total"
+            tvDoneTitle.text = getString(R.string.dev_done_title)
+            tvDoneSub.text = getString(R.string.dev_done_sub, done)
+            btnViewGallery.text = getString(R.string.dev_view_gallery)
+            tvProgress.text = getString(R.string.dev_progress_done, done, total)
             return
         }
         if (st.phase == DevelopmentState.PHASE_ERROR) {
             layoutDone.visibility = View.VISIBLE
-            tvDoneTitle.text = "冲洗失败"
+            tvDoneTitle.text = getString(R.string.dev_failed_title)
             tvDoneSub.text = buildString {
-                if (st.errorCount > 0) append("${st.errorCount} 帧未完成：")
-                append((DevelopmentState.lastError ?: "未知错误").take(160))
+                if (st.errorCount > 0) append(getString(R.string.dev_error_frames_prefix, st.errorCount))
+                append((DevelopmentState.lastError ?: getString(R.string.dev_error_unknown)).take(160))
             }
-            btnViewGallery.text = "重试冲洗"
-            tvProgress.text = "显影中断"
+            btnViewGallery.text = getString(R.string.dev_retry)
+            tvProgress.text = getString(R.string.dev_aborted)
             return
         }
 

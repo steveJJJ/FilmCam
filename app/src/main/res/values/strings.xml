@@ -68,4 +68,129 @@ App 版本：%1$s (%2$d)
     <string name="info_group_engine">引擎</string>
     <string name="info_tap_hint">点击照片查看胶卷信息</string>
     <string name="info_no_exif">此照片无胶卷信息</string>
+
+    <!-- 设置弹窗 -->
+    <string name="set_title">设置</string>
+    <string name="set_close">关闭</string>
+    <string name="set_body">机身</string>
+    <string name="set_datestamp">日期水印</string>
+    <string name="set_haptic">震动强度</string>
+    <string name="set_language">语言</string>
+    <string name="set_dev">冲洗参数</string>
+    <string name="set_about">关于 FILMCAM</string>
+    <string name="lang_system">跟随系统</string>
+    <string name="lang_zh">简体中文</string>
+    <string name="lang_en">English</string>
+    <string name="common_on">开</string>
+    <string name="common_off">关</string>
+    <string name="body_black">黑钛</string>
+    <string name="body_titan">钛银</string>
+    <string name="haptic_low">低</string>
+    <string name="haptic_mid">中</string>
+    <string name="haptic_strong">强</string>
+
+    <!-- ===== 主页 MainActivity / 布局通用文案 ===== -->
+
+    <!-- 通用按钮 -->
+    <string name="main_ok">确定</string>
+    <string name="main_cancel">取消</string>
+
+    <!-- 首次进入引导 -->
+    <string name="main_guide_body">像使用真实胶卷一样拍照：\n\n· 点按屏幕对焦，上下滑动调整曝光\n· 一卷 36 张，拍完去暗房冲洗\n· 冲洗前看不到成片——胶片的惊喜就在这里</string>
+    <string name="main_guide_start">开拍</string>
+
+    <!-- 胶卷拍完：引导去暗房 -->
+    <string name="main_roll_finished_title">胶卷已拍完</string>
+    <string name="main_roll_finished_body">这一卷 36 张已拍完，去暗房冲洗出片</string>
+    <string name="main_roll_finished_develop">去冲洗</string>
+    <string name="main_roll_finished_later">稍后</string>
+
+    <!-- 冲洗参数弹窗 -->
+    <string name="main_dev_reset">恢复该款默认</string>
+    <string name="main_dev_paper_auto">自动（按胶卷默认）</string>
+    <string name="main_dev_slide_no_paper">—（反转片直接显影，无相纸）</string>
+
+    <!-- 胶卷 / 相纸选择弹窗 -->
+    <string name="main_pick_film_title">选择胶卷</string>
+    <string name="main_pick_paper_title">相纸选择</string>
+
+    <!-- 白平衡预设（闪光开启时，预览上左右拖动切换） -->
+    <string name="main_wb_incandescent">白炽灯</string>
+    <string name="main_wb_fluorescent">荧光灯</string>
+    <string name="main_wb_daylight">日光</string>
+    <string name="main_wb_cloudy">阴天</string>
+    <string name="main_wb_shade">阴影</string>
+    <string name="main_wb_twilight">暮光</string>
+
+    <!-- Toast 提示 -->
+    <string name="main_toast_develop_first">请先冲洗当前胶卷</string>
+    <string name="main_toast_no_roll_to_rewind">没有可卷回的胶卷</string>
+    <string name="main_toast_settings_failed">设置失败: %1$s</string>
+    <string name="main_toast_permission_required">需要相机/蓝牙权限</string>
+    <string name="main_toast_save_failed">保存失败: %1$s</string>
+    <string name="main_toast_capture_error">拍照错误: %1$s</string>
+    <string name="main_toast_capture_timeout">拍照超时</string>
+    <string name="main_toast_preview_map_test">预览映射测试: %1$d</string>
+
+    <!-- 闪光 / ISO / 快门状态文字 -->
+    <string name="main_flash_off">闪: 关</string>
+    <string name="main_flash_internal">闪: 内置</string>
+    <string name="main_flash_external">闪: 外置</string>
+    <string name="main_external_status">外置闪光: %1$s</string>
+    <string name="main_external_on">外置: 开</string>
+    <string name="main_external_off">外置: 关</string>
+    <string name="main_pro_label">专业</string>
+    <string name="main_iso_auto">ISO 自动</string>
+    <string name="main_iso_value">ISO %1$d</string>
+    <string name="main_shutter_auto">快门 自动</string>
+    <!-- 左下胶卷信息（隐藏控件）：胶卷名 / 类型 / 剩余张数 -->
+    <string name="main_film_info">%1$s\nCOLOR NEGATIVE\nISO500 · 剩 %2$d 张</string>
+
+    <!-- ===== 布局：无障碍描述 ===== -->
+    <string name="main_cd_flash">闪光灯</string>
+    <string name="main_cd_settings">设置</string>
+    <string name="main_cd_film_current">当前胶卷</string>
+    <string name="main_cd_film_advancing">过卷</string>
+    <string name="main_cd_film_icon">胶卷图标</string>
+    <string name="main_darkroom">暗房</string>
+
+    <!-- ===== 布局：胶卷选择底部弹层 ===== -->
+    <string name="main_sort_hint">长按可拖拽排序</string>
+
+    <!-- ===== 布局：冲洗参数面板 ===== -->
+    <string name="main_dev_roll_row">胶卷</string>
+    <string name="main_dev_group_develop">显影 · DEVELOP</string>
+    <string name="main_dev_grain">颗粒强度</string>
+    <string name="main_dev_halation">辉光强度</string>
+    <string name="main_dev_glare">眩光强度</string>
+    <string name="main_dev_group_print">放大 · PRINT</string>
+    <string name="main_dev_enlarger_exposure">放大机曝光</string>
+    <string name="main_dev_paper_row">相纸选择</string>
+    <string name="main_dev_paper_hint">自动 = 按胶卷品牌的官方推荐相纸搭配（如柯达负片印 Portra Endura、电影卷印 Kodak 2383），点上方可手动覆盖</string>
+
+    <!-- ===== 布局：工程师模式 ===== -->
+    <string name="main_debug_skip_develop">调试：跳过冲洗立即出片</string>
+    <string name="main_debug_softfocus_prob">模拟失焦概率（0% = 关闭）</string>
+    <string name="main_debug_note">这些选项用于开发调试，普通使用无需调整。</string>
+
+    <!-- ===== 布局：关于页 ===== -->
+    <string name="main_about_title">关于</string>
+    <string name="main_about_subtitle">CONTAX T3 · 数字胶片机</string>
+    <string name="main_about_tip_title">请作者喝杯咖啡</string>
+    <string name="main_about_tip_body">感谢支持独立开发 —— 扫码赞赏，或走下方 PayPal</string>
+    <string name="main_cd_tip_code">赞赏码</string>
+    <string name="main_cd_paypal">PayPal 赞赏</string>
+    <string name="main_about_oss">开源致谢</string>
+
+    <!-- ===== 布局：暗房显影页 ===== -->
+    <string name="main_dev_screen_title">暗房显影</string>
+    <string name="main_dev_shake_hint">摇动手机加快显影</string>
+    <string name="main_dev_background">后台冲洗</string>
+
+    <!-- ===== 布局：相册页 ===== -->
+    <string name="main_undeveloped_rolls">未冲洗胶卷</string>
+    <string name="main_no_photos">暂无照片</string>
+
+    <!-- ===== 布局：成片查看 ===== -->
+    <string name="main_shoot_same">拍摄同款</string>
 </resources>

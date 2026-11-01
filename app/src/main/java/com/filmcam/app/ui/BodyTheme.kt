@@ -44,10 +44,11 @@ object BodyTheme {
     fun cycle(context: Context): String {
         current = if (current == TITAN) BLACK else TITAN
         save(context)
-        return name()
+        return name(context)
     }
 
-    fun name(): String = if (isTitan) "钛银" else "黑钛"
+    fun name(context: Context): String =
+        context.getString(if (isTitan) com.filmcam.app.R.string.body_titan else com.filmcam.app.R.string.body_black)
 
     // ===== 配色 =====
 

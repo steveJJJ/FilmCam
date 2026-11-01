@@ -25,7 +25,7 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="关于"
+                android:text="@string/main_about_title"
                 android:textColor="#E8E4DA"
                 android:textSize="17sp"
                 android:textStyle="bold" />
@@ -42,7 +42,7 @@
                 android:layout_height="wrap_content"
                 android:background="@drawable/bg_feedback_chip"
                 android:clickable="true"
-                android:contentDescription="问题反馈"
+                android:contentDescription="@string/about_feedback"
                 android:drawableStart="@drawable/ic_feedback_mail"
                 android:drawableTint="#C9C5BC"
                 android:drawablePadding="5dp"
@@ -79,7 +79,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
-            android:text="CONTAX T3 · 数字胶片机"
+            android:text="@string/main_about_subtitle"
             android:textColor="#8A8A8E"
             android:textSize="11sp"
             android:letterSpacing="0.16" />
@@ -98,7 +98,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="32dp"
-            android:text="请作者喝杯咖啡"
+            android:text="@string/main_about_tip_title"
             android:textColor="#E8E4DA"
             android:textSize="14sp"
             android:textStyle="bold" />
@@ -107,7 +107,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
-            android:text="感谢支持独立开发 —— 扫码赞赏，或走下方 PayPal"
+            android:text="@string/main_about_tip_body"
             android:textColor="#8A8A8E"
             android:textSize="11sp" />
 
@@ -116,7 +116,7 @@
             android:layout_height="200dp"
             android:layout_marginTop="16dp"
             android:src="@drawable/appreciate_code"
-            android:contentDescription="赞赏码" />
+            android:contentDescription="@string/main_cd_tip_code" />
 
         <!-- 海外赞赏：点击打开 PayPal 页面 -->
         <TextView
@@ -126,7 +126,7 @@
             android:layout_marginTop="18dp"
             android:background="@drawable/bg_feedback_chip"
             android:clickable="true"
-            android:contentDescription="PayPal 赞赏"
+            android:contentDescription="@string/main_cd_paypal"
             android:gravity="center"
             android:includeFontPadding="false"
             android:letterSpacing="0.06"
@@ -143,7 +143,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="36dp"
-            android:text="开源致谢"
+            android:text="@string/main_about_oss"
             android:textColor="#E8E4DA"
             android:textSize="14sp"
             android:textStyle="bold" />

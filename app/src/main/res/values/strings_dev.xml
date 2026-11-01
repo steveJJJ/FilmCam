@@ -1,0 +1,67 @@
+<resources>
+
+    <!-- ===== 暗房 / 冲洗（develop） ===== -->
+
+    <!-- 暗房活动：进度与状态 -->
+    <string name="dev_preparing_first">首次冲洗，正在准备显影液…</string>
+    <string name="dev_preparing">正在准备…</string>
+    <string name="dev_progress">显影中 %1$d/%2$d</string>
+    <string name="dev_progress_done">显影完成 %1$d/%2$d</string>
+
+    <!-- 暗房活动：完成态 -->
+    <string name="dev_done_title">冲洗完成</string>
+    <string name="dev_done_sub">共 %1$d 张</string>
+    <string name="dev_view_gallery">查看相册</string>
+
+    <!-- 暗房活动：失败态 -->
+    <string name="dev_failed_title">冲洗失败</string>
+    <string name="dev_error_frames_prefix">%1$d 帧未完成：</string>
+    <string name="dev_retry">重试冲洗</string>
+    <string name="dev_aborted">显影中断</string>
+
+    <!-- 冲洗通知 -->
+    <string name="dev_darkroom">暗房冲洗</string>
+    <string name="dev_channel_desc">胶片冲洗进度常驻通知</string>
+    <string name="dev_notif_preparing">准备中…</string>
+    <string name="dev_notif_busy">另一卷冲洗中，请等待完成</string>
+    <string name="dev_notif_done_title">冲洗完成，可查看</string>
+    <string name="dev_notif_done_text">%1$s · %2$d 张</string>
+
+    <!-- 冲洗错误文案 -->
+    <string name="dev_error_unknown">未知错误</string>
+    <string name="dev_error_roll_missing">未找到胶卷</string>
+    <string name="dev_error_engine_init">引擎初始化失败: %1$s</string>
+    <string name="dev_error_frames_detail">%1$d/%2$d 帧未完成：%3$s</string>
+    <string name="dev_toast_slide_no_paper">反转片直接在显影液里出正像，不经过相纸，已忽略所选相纸</string>
+
+    <!-- ===== 胶卷（film） ===== -->
+
+    <!-- 卷状态异常：会随「保存失败」提示到用户 -->
+    <string name="film_roll_full">胶卷已拍满 %1$d 张，请先冲洗</string>
+    <string name="film_roll_already_active">已有活动卷（shooting），不能同时开第二卷</string>
+
+    <!-- ===== 相册 / 成片查看（pf） ===== -->
+
+    <string name="pf_develop">冲洗</string>
+    <string name="pf_gallery_read_failed">读取相册失败</string>
+    <string name="pf_same_no_params">这张照片没有可复现的拍摄参数</string>
+
+    <!-- 成片信息面板 -->
+    <string name="pf_roll_id">胶卷编号 %1$s</string>
+    <string name="pf_shot_at">拍摄于 %1$s</string>
+    <string name="pf_paper">相纸 %1$s</string>
+    <string name="pf_paper_default">默认</string>
+    <string name="pf_exposure">曝光 %.2f</string>
+    <string name="pf_grain">颗粒 %.2f</string>
+    <string name="pf_halation">辉光 %.2f</string>
+    <string name="pf_glare">眩光 %.2f</string>
+    <string name="pf_dev_default">默认冲洗参数</string>
+
+    <!-- ===== 机顶液晶屏（lcd） ===== -->
+
+    <string name="lcd_notice_roll_after_develop">本卷拍完冲洗后换%1$s</string>
+    <string name="lcd_notice_same_params">已套用同款参数</string>
+    <string name="lcd_notice_slide_no_print">反转片不支持印相</string>
+    <string name="lcd_notice_develop_before_reload">胶卷冲洗后才能换卷</string>
+
+</resources>

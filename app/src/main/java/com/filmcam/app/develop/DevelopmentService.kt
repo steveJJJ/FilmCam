@@ -74,7 +74,7 @@ class DevelopmentService : Service() {
 
         // 立即挂前台通知（API 34 必须带 type）
         startForegroundWithType(
-            buildProgressNotification(0, 0, "准备中…")
+            buildProgressNotification(0, 0, getString(R.string.dev_notif_preparing))
         )
 
         // 防重入：
@@ -90,7 +90,7 @@ class DevelopmentService : Service() {
             updateProgressNotification(
                 DevelopmentState.done,
                 DevelopmentState.total,
-                "另一卷冲洗中，请等待完成"
+                getString(R.string.dev_notif_busy)
             )
             return START_NOT_STICKY
         }
@@ -116,10 +116,10 @@ class DevelopmentService : Service() {
             val nm = getSystemService(NotificationManager::class.java)
             val ch = NotificationChannel(
                 CHANNEL_ID,
-                "暗房冲洗",
+                getString(R.string.dev_darkroom),
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "胶片冲洗进度常驻通知"
+                description = getString(R.string.dev_channel_desc)
                 setShowBadge(false)
             }
             nm.createNotificationChannel(ch)
@@ -135,7 +135,7 @@ class DevelopmentService : Service() {
                 .firstOrNull { it.rollId == rollId }
                 ?: run {
                     Log.w(TAG, "未找到卷 $rollId（可能已冲洗），退出")
-                    finishWithError("未找到胶卷")
+                    finishWithError(getString(R.string.dev_error_roll_missing))
                     return
                 }
 
@@ -161,7 +161,7 @@ class DevelopmentService : Service() {
                 SpektraProcessor.ensureEngine(applicationContext)
             } catch (e: Throwable) {
                 Log.e(TAG, "引擎初始化失败", e)
-                finishWithError("引擎初始化失败: ${e.message}")
+                finishWithError(getString(R.string.dev_error_engine_init, e.message))
                 return
             }
 
@@ -178,7 +178,7 @@ class DevelopmentService : Service() {
             if (resolved.fellBack) {
                 android.widget.Toast.makeText(
                     this,
-                    "反转片直接在显影液里出正像，不经过相纸，已忽略所选相纸",
+                    getString(R.string.dev_toast_slide_no_paper),
                     android.widget.Toast.LENGTH_SHORT
                 ).show()
             }
@@ -197,7 +197,10 @@ class DevelopmentService : Service() {
                 }
 
                 DevelopmentState.currentIndex = index
-                updateProgressNotification(index - 1, roll.shotCount, "显影中 $index/${roll.shotCount}")
+                updateProgressNotification(
+                    index - 1, roll.shotCount,
+                    getString(R.string.dev_progress, index, roll.shotCount)
+                )
                 notifyStateToMain()
 
                 try {
@@ -224,8 +227,11 @@ class DevelopmentService : Service() {
                 nm.notify(
                     NOTIF_ID,
                     buildErrorNotification(
-                        "${DevelopmentState.errorCount}/${roll.shotCount} 帧未完成：" +
-                            (firstError?.take(120) ?: "未知错误")
+                        getString(
+                            R.string.dev_error_frames_detail,
+                            DevelopmentState.errorCount, roll.shotCount,
+                            firstError?.take(120) ?: getString(R.string.dev_error_unknown)
+                        )
                     )
                 )
             } else {
@@ -237,7 +243,7 @@ class DevelopmentService : Service() {
             stopSelf(currentStartId)
         } catch (e: Throwable) {
             Log.e(TAG, "冲洗整体异常", e)
-            finishWithError(e.message ?: "未知错误")
+            finishWithError(e.message ?: getString(R.string.dev_error_unknown))
         }
     }
 
@@ -371,7 +377,7 @@ class DevelopmentService : Service() {
             Notification.Builder(this)
         }
         return b
-            .setContentTitle("暗房冲洗")
+            .setContentTitle(getString(R.string.dev_darkroom))
             .setContentText(text)
             .setSmallIcon(R.drawable.ic_develop)
             .setOngoing(true)
@@ -400,8 +406,8 @@ class DevelopmentService : Service() {
             Notification.Builder(this)
         }
         return b
-            .setContentTitle("冲洗完成，可查看")
-            .setContentText("$name · ${roll.shotCount} 张")
+            .setContentTitle(getString(R.string.dev_notif_done_title))
+            .setContentText(getString(R.string.dev_notif_done_text, name, roll.shotCount))
             .setSmallIcon(R.drawable.ic_develop_done)
             .setOngoing(false)
             .setAutoCancel(true)
@@ -417,7 +423,7 @@ class DevelopmentService : Service() {
             Notification.Builder(this)
         }
         return b
-            .setContentTitle("冲洗失败")
+            .setContentTitle(getString(R.string.dev_failed_title))
             .setContentText(msg)
             .setSmallIcon(R.drawable.ic_develop_error)
             .setOngoing(false)

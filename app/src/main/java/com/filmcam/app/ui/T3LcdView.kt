@@ -82,6 +82,11 @@ class T3LcdView @JvmOverloads constructor(
         scheduleTick()
     }
 
+    /** 从字符串资源取文案显示（机身提示一律走资源，跟随 App 语言）。 */
+    fun showMessage(resId: Int, vararg args: Any?, durationMs: Long = 3200L) {
+        showMessage(resources.getString(resId, *args), durationMs)
+    }
+
     fun setState(s: State) {
         state = s
         invalidate()

@@ -12,14 +12,14 @@
         android:id="@+id/swSkipDevelop"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="调试：跳过冲洗立即出片"
+        android:text="@string/main_debug_skip_develop"
         android:textSize="15sp" />
 
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="20dp"
-        android:text="模拟失焦概率（0% = 关闭）"
+        android:text="@string/main_debug_softfocus_prob"
         android:textSize="15sp" />
 
     <LinearLayout
@@ -50,7 +50,7 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="12dp"
         android:layout_marginBottom="8dp"
-        android:text="这些选项用于开发调试，普通使用无需调整。"
+        android:text="@string/main_debug_note"
         android:textColor="#888"
         android:textSize="12sp" />
 </LinearLayout>

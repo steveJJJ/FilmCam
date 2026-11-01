@@ -66,7 +66,7 @@ class PhotoViewerActivity : AppCompatActivity() {
         val info = ExifReader.read(this, Uri.parse(uris[viewPager.currentItem]))
         if (info == null || info.filmStockId.isBlank()) {
             android.widget.Toast.makeText(
-                this, "这张照片没有可复现的拍摄参数", android.widget.Toast.LENGTH_SHORT
+                this, getString(R.string.pf_same_no_params), android.widget.Toast.LENGTH_SHORT
             ).show()
             return
         }
@@ -149,7 +149,7 @@ class PhotoViewerActivity : AppCompatActivity() {
         // 胶卷名：优先 EXIF 里的显示名，回落 stock id
         val filmName = info.displayName.ifBlank { info.filmStockId }
         tvFilmName.text = filmName
-        tvRollId.text = if (info.rollId.isBlank()) "" else "胶卷编号 ${info.rollId}"
+        tvRollId.text = if (info.rollId.isBlank()) "" else getString(R.string.pf_roll_id, info.rollId)
 
         // 拍摄参数：CONTAX T3 · 35mm f/2.8 · ISO 400
         val shootParts = mutableListOf<String>()
@@ -169,7 +169,7 @@ class PhotoViewerActivity : AppCompatActivity() {
 
         // 拍摄时间
         tvShotTime.text = if (info.dateTimeOriginal.isNotBlank()) {
-            "拍摄于 ${info.dateTimeOriginal}"
+            getString(R.string.pf_shot_at, info.dateTimeOriginal)
         } else {
             ""
         }
@@ -178,18 +178,18 @@ class PhotoViewerActivity : AppCompatActivity() {
         val printName = if (info.printStockId.isNotBlank()) {
             info.printStockId
         } else {
-            "默认"
+            getString(R.string.pf_paper_default)
         }
-        tvPrintStock.text = "相纸 $printName"
+        tvPrintStock.text = getString(R.string.pf_paper, printName)
 
         val p = info.params
         val devParts = mutableListOf<String>()
-        p.printExposure?.let { devParts += "曝光 %.2f".format(it) }
-        p.grainAmount?.let { devParts += "颗粒 %.2f".format(it) }
-        p.halationAmount?.let { devParts += "辉光 %.2f".format(it) }
-        p.glareAmount?.let { devParts += "眩光 %.2f".format(it) }
+        p.printExposure?.let { devParts += getString(R.string.pf_exposure, it) }
+        p.grainAmount?.let { devParts += getString(R.string.pf_grain, it) }
+        p.halationAmount?.let { devParts += getString(R.string.pf_halation, it) }
+        p.glareAmount?.let { devParts += getString(R.string.pf_glare, it) }
         tvDevParams.text = if (devParts.isEmpty()) {
-            "默认冲洗参数"
+            getString(R.string.pf_dev_default)
         } else {
             devParts.joinToString(" · ")
         }

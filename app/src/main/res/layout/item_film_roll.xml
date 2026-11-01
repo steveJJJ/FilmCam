@@ -15,7 +15,7 @@
         android:layout_height="56dp"
         android:layout_marginEnd="16dp"
         android:scaleType="centerCrop"
-        android:contentDescription="胶卷图标" />
+        android:contentDescription="@string/main_cd_film_icon" />
 
     <LinearLayout
         android:layout_width="0dp"

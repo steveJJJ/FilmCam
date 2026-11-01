@@ -8,6 +8,7 @@ import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import android.util.Log
+import com.filmcam.app.R
 import java.io.File
 import java.io.InputStream
 
@@ -109,7 +110,8 @@ object UndevelopedFilmStore {
     fun startRoll(filmStockId: String, printStockId: String): RollInfo = synchronized(this) {
         val rolls = loadAll()
         if (rolls.any { RollRegistry.isShooting(it) }) {
-            throw IllegalStateException("已有活动卷（shooting），不能同时开第二卷")
+            // 会随「保存失败」提示到用户，故走字符串资源
+            throw IllegalStateException(requireContext().getString(R.string.film_roll_already_active))
         }
         val roll = RollRec(
             rollId = "roll_${System.currentTimeMillis()}",
@@ -141,7 +143,9 @@ object UndevelopedFilmStore {
         val roll = findRec(rolls, rollId)
         check(RollRegistry.isShooting(roll)) { "卷状态非 shooting: ${roll.status}" }
         if (RollRegistry.isFull(roll)) {
-            throw IllegalStateException("胶卷已拍满 $MAX_SHOTS 张，请先冲洗")
+            throw IllegalStateException(
+                requireContext().getString(R.string.film_roll_full, MAX_SHOTS)
+            )
         }
         val index = roll.frames.size + 1
         val nn = index.toString().padStart(2, '0')

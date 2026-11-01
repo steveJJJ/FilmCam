@@ -59,7 +59,7 @@
                 android:paddingTop="5dp"
                 android:paddingBottom="5dp"
                 android:background="@drawable/bg_chip_same"
-                android:text="拍摄同款"
+                android:text="@string/main_shoot_same"
                 android:textColor="#FFD7C4"
                 android:textSize="14sp"
                 android:letterSpacing="0.02"
@@ -98,7 +98,7 @@
                 <!-- 拍摄参数组 -->
                 <TextView
                     style="@style/InfoGroupTitle"
-                    android:text="拍摄参数" />
+                    android:text="@string/info_group_shooting" />
 
                 <TextView
                     android:id="@+id/tvShooting"
@@ -113,7 +113,7 @@
                 <!-- 冲洗参数组 -->
                 <TextView
                     style="@style/InfoGroupTitle"
-                    android:text="冲洗参数" />
+                    android:text="@string/info_group_develop" />
 
                 <TextView
                     android:id="@+id/tvPrintStock"
@@ -128,7 +128,7 @@
                 <!-- 引擎信息组 -->
                 <TextView
                     style="@style/InfoGroupTitle"
-                    android:text="引擎" />
+                    android:text="@string/info_group_engine" />
 
                 <TextView
                     android:id="@+id/tvEngine"

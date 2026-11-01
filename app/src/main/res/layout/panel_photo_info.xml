@@ -62,7 +62,7 @@
             <!-- 拍摄参数组 -->
             <TextView
                 style="@style/InfoGroupTitle"
-                android:text="拍摄参数" />
+                android:text="@string/info_group_shooting" />
 
             <TextView
                 android:id="@+id/tvShooting"
@@ -77,7 +77,7 @@
             <!-- 冲洗参数组 -->
             <TextView
                 style="@style/InfoGroupTitle"
-                android:text="冲洗参数" />
+                android:text="@string/info_group_develop" />
 
             <TextView
                 android:id="@+id/tvPrintStock"
@@ -92,7 +92,7 @@
             <!-- 引擎信息组 -->
             <TextView
                 style="@style/InfoGroupTitle"
-                android:text="引擎" />
+                android:text="@string/info_group_engine" />
 
             <TextView
                 android:id="@+id/tvEngine"

@@ -74,7 +74,7 @@
                 android:background="@drawable/bg_key"
                 android:clickable="true"
                 android:focusable="true"
-                android:contentDescription="闪光灯" />
+                android:contentDescription="@string/main_cd_flash" />
 
             <!-- 曝光补偿键：T3 机顶 ± 按钮样式 -->
             <TextView
@@ -103,7 +103,7 @@
                 android:background="@drawable/bg_key"
                 android:clickable="true"
                 android:focusable="true"
-                android:contentDescription="设置" />
+                android:contentDescription="@string/main_cd_settings" />
             </LinearLayout>
         </LinearLayout>
     </LinearLayout>
@@ -139,7 +139,7 @@
             android:background="@drawable/bg_darkroom"
             android:clickable="true"
             android:focusable="true"
-            android:contentDescription="当前胶卷" />
+            android:contentDescription="@string/main_cd_film_current" />
 
         <!-- 中：快门（与两翼留 56dp，避免误触胶卷/暗房） -->
         <View
@@ -167,7 +167,7 @@
             android:textSize="9sp"
             android:letterSpacing="0.12"
             android:includeFontPadding="false"
-            android:contentDescription="暗房" />
+            android:contentDescription="@string/main_darkroom" />
     </LinearLayout>
 
     <!-- 隐藏胶卷文字（保留 id，避免破坏逻辑） -->
@@ -193,14 +193,14 @@
         android:id="@+id/tvFlashStatus"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="闪: 关"
+        android:text="@string/main_flash_off"
         android:visibility="gone" />
 
     <TextView
         android:id="@+id/tvProToggle"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="专业"
+        android:text="@string/main_pro_label"
         android:visibility="gone" />
 
     <LinearLayout
@@ -232,7 +232,7 @@
                 android:id="@+id/ivDeveloping"
                 android:layout_width="72dp"
                 android:layout_height="96dp"
-                android:contentDescription="过卷" />
+                android:contentDescription="@string/main_cd_film_advancing" />
             <TextView
                 android:id="@+id/tvDevelopingText"
                 android:layout_width="wrap_content"

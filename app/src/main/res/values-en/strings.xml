@@ -1,0 +1,188 @@
+<resources>
+    <string name="app_name">FilmCam</string>
+
+    <!-- About page -->
+    <string name="about_intro">Turn your phone into a Contax T3.\n\nThe viewfinder shows the real optical world; each press of the shutter advances a 36-frame roll; when the roll is done you send it to the darkroom, and the film engine develops every frame with that roll\'s recipe.\n\nUntil it is developed, nobody knows what you got — that is the fun of film.</string>
+    <string name="percent_fmt">%1$d%%</string>
+    <string name="about_self_title">FILMCAM is distributed under GNU GPL-3.0-or-later</string>
+    <string name="about_self_body">This project uses the GPL-3.0 SpektraLab film simulation engine and is therefore distributed under GPL-3.0-or-later as well: you may freely use, modify and redistribute it, provided you release your source under the same license and keep the notices.\nThe repository is not public yet; per the license, the source is provided on request.</string>
+    <string name="about_paypal">Tip via PayPal</string>
+    <string name="about_feedback">Report a problem</string>
+    <string name="feedback_subject">FILMCAM issue report %1$s / device %2$s %3$s / Android %4$s (API %5$d)</string>
+    <string name="feedback_body">What happened:
+(short description, e.g. "developing stuck at frame 12", "shutter does not respond", "viewfinder frame misaligned")
+
+Steps to reproduce:
+1.
+2.
+3.
+
+Expected result:
+
+Error message (if it crashed, paste the full stack — the exception name matters most):
+(e.g. IllegalStateException / Resources$NotFoundException / IOException /
+ OutOfMemoryError: Failed to allocate … free bytes … until OOM /
+ JNI weak global ref table overflow (0x1fff=8191 entries))
+
+adb logcat excerpt (optional; run adb logcat | findstr FILMCAM and paste the relevant lines):
+
+—— Generated automatically, please keep ———
+App version: %1$s (%2$d)
+Device: %3$s %4$s
+System: Android %5$s (API %6$d)
+Screen: %7$dx%8$d @%9$ddpi
+Memory available: %10$d MB / %11$d MB total
+</string>
+    <string name="feedback_email_missing">No support email configured</string>
+    <string name="feedback_no_mail_app">No mail app available</string>
+    <string name="about_oss_summary">FILMCAM stands on the work of these open source projects and asset authors — thanks for sharing so generously.\nThe developing engine code is used under GPL-3.0-or-later; the film/paper recipes and engine assets under CC BY-SA 4.0. Tap to see each license and source.</string>
+
+    <!-- Credits: name | author/org | license | link | modification note (optional) -->
+    <string-array name="oss_credits">
+        <item>SpektraLab for Android (Vulkan backend port, JNI, exposure-develop pipeline)|steveJJJ|GPL-3.0-or-later|https://github.com/steveJJJ/SpektraLab-Android|Uses the native engine library and project structure of this port directly, trimmed and adjusted for this app</item>
+        <item>SpektraLab physical film / paper simulation engine (upstream)|JamesQiu2005 and SpektraLab contributors|GPL-3.0-or-later|https://github.com/JamesQiu2005/SpektraLab</item>
+        <item>spektrafilm film models, 28 measured profiles and enlargement LUTs|Andrea Volpato|CC BY-SA 4.0|https://github.com/andreavolpato/spektrafilm|Original assets adjusted for this project (ISO adaptation and localized naming), distributed under CC BY-SA 4.0 as well</item>
+        <item>SpektraFilm engine resources (profiles / LUT / constant tables)|SpektraLab · JamesQiu2005|CC BY-SA 4.0|https://creativecommons.org/licenses/by-sa/4.0/|Resource pack trimmed to the stocks in use, distributed under CC BY-SA 4.0 as well</item>
+        <item>Android Jetpack (AndroidX)|Google LLC|Apache-2.0|https://github.com/androidx/androidx</item>
+        <item>Material Components for Android|Google LLC|Apache-2.0|https://github.com/material-components/material-components-android</item>
+        <item>Kotlin / Kotlinx Coroutines|JetBrains|Apache-2.0|https://github.com/JetBrains/kotlin</item>
+        <item>Coil image loader|Coil Contributors|Apache-2.0|https://github.com/coil-kt/coil</item>
+        <item>DSEG7 seven-segment font|keshikan|SIL OFL 1.1|https://github.com/keshikan/DSEG</item>
+        <item>Imprint print and monospace fonts|Google Fonts · Croscore(Red Hat) · Bitstream/DejaVu|SIL OFL 1.1|https://fonts.google.com/</item>
+        <item>stb single-file libraries|Sean Barrett|MIT / Public Domain|https://github.com/nothings/stb</item>
+        <item>org.json|JSON.org|JSON License|https://github.com/stleary/JSON-java</item>
+        <item>JUnit 4|Eclipse Foundation|EPL-1.0|https://github.com/junit-team/junit4</item>
+    </string-array>
+
+    <!-- Print info panel -->
+    <string name="info_group_shooting">Capture</string>
+    <string name="info_group_develop">Development</string>
+    <string name="info_group_engine">Engine</string>
+    <string name="info_tap_hint">Tap the photo for film details</string>
+    <string name="info_no_exif">No film data for this photo</string>
+
+    <!-- Settings dialog -->
+    <string name="set_title">Settings</string>
+    <string name="set_close">Close</string>
+    <string name="set_body">Body</string>
+    <string name="set_datestamp">Date stamp</string>
+    <string name="set_haptic">Haptics</string>
+    <string name="set_language">Language</string>
+    <string name="set_dev">Development params</string>
+    <string name="set_about">About FILMCAM</string>
+    <string name="lang_system">Follow system</string>
+    <string name="lang_zh">简体中文</string>
+    <string name="lang_en">English</string>
+    <string name="common_on">On</string>
+    <string name="common_off">Off</string>
+    <string name="body_black">Black titan</string>
+    <string name="body_titan">Titanium silver</string>
+    <string name="haptic_low">Low</string>
+    <string name="haptic_mid">Medium</string>
+    <string name="haptic_strong">Strong</string>
+
+    <!-- ===== Main screen MainActivity / shared layout copy ===== -->
+
+    <!-- Common buttons -->
+    <string name="main_ok">OK</string>
+    <string name="main_cancel">Cancel</string>
+
+    <!-- First-run guide -->
+    <string name="main_guide_body">Shoot it like a real film camera:\n\n· Tap to focus, swipe up or down for exposure\n· 36 frames to a roll, then off to the darkroom\n· Nothing to see until it is developed — that\'s the fun of film</string>
+    <string name="main_guide_start">Start shooting</string>
+
+    <!-- Roll shot to the end: send it to the darkroom -->
+    <string name="main_roll_finished_title">Roll finished</string>
+    <string name="main_roll_finished_body">All 36 frames are shot. Develop the roll for prints.</string>
+    <string name="main_roll_finished_develop">Develop</string>
+    <string name="main_roll_finished_later">Later</string>
+
+    <!-- Development params dialog -->
+    <string name="main_dev_reset">Reset stock defaults</string>
+    <string name="main_dev_paper_auto">Auto (stock default)</string>
+    <string name="main_dev_slide_no_paper">— (slide film, no paper)</string>
+
+    <!-- Film / paper pickers -->
+    <string name="main_pick_film_title">Select film</string>
+    <string name="main_pick_paper_title">Select paper</string>
+
+    <!-- White balance presets (swipe left/right on the preview with flash on) -->
+    <string name="main_wb_incandescent">Incandescent</string>
+    <string name="main_wb_fluorescent">Fluorescent</string>
+    <string name="main_wb_daylight">Daylight</string>
+    <string name="main_wb_cloudy">Cloudy</string>
+    <string name="main_wb_shade">Shade</string>
+    <string name="main_wb_twilight">Twilight</string>
+
+    <!-- Toasts -->
+    <string name="main_toast_develop_first">Develop the loaded roll first</string>
+    <string name="main_toast_no_roll_to_rewind">No roll to rewind</string>
+    <string name="main_toast_settings_failed">Settings failed: %1$s</string>
+    <string name="main_toast_permission_required">Camera / Bluetooth permission needed</string>
+    <string name="main_toast_save_failed">Save failed: %1$s</string>
+    <string name="main_toast_capture_error">Capture error: %1$s</string>
+    <string name="main_toast_capture_timeout">Capture timed out</string>
+    <string name="main_toast_preview_map_test">Preview mapping test: %1$d</string>
+
+    <!-- Flash / ISO / shutter status labels -->
+    <string name="main_flash_off">Flash: Off</string>
+    <string name="main_flash_internal">Flash: Built-in</string>
+    <string name="main_flash_external">Flash: External</string>
+    <string name="main_external_status">External flash: %1$s</string>
+    <string name="main_external_on">External: On</string>
+    <string name="main_external_off">External: Off</string>
+    <string name="main_pro_label">Pro</string>
+    <string name="main_iso_auto">ISO Auto</string>
+    <string name="main_iso_value">ISO %1$d</string>
+    <string name="main_shutter_auto">Shutter Auto</string>
+    <!-- Bottom-left film info (hidden view): roll name / type / frames left -->
+    <string name="main_film_info">%1$s\nCOLOR NEGATIVE\nISO500 · %2$d left</string>
+
+    <!-- ===== Layouts: accessibility labels ===== -->
+    <string name="main_cd_flash">Flash</string>
+    <string name="main_cd_settings">Settings</string>
+    <string name="main_cd_film_current">Loaded film</string>
+    <string name="main_cd_film_advancing">Advancing film</string>
+    <string name="main_cd_film_icon">Film icon</string>
+    <string name="main_darkroom">Darkroom</string>
+
+    <!-- ===== Layout: film picker bottom sheet ===== -->
+    <string name="main_sort_hint">Hold and drag to reorder</string>
+
+    <!-- ===== Layout: development params panel ===== -->
+    <string name="main_dev_roll_row">Film</string>
+    <string name="main_dev_group_develop">DEVELOP</string>
+    <string name="main_dev_grain">Grain</string>
+    <string name="main_dev_halation">Halation</string>
+    <string name="main_dev_glare">Glare</string>
+    <string name="main_dev_group_print">PRINT</string>
+    <string name="main_dev_enlarger_exposure">Enlarger exposure</string>
+    <string name="main_dev_paper_row">Paper</string>
+    <string name="main_dev_paper_hint">Auto pairs each stock with its maker\'s recommended paper (Kodak negatives on Portra Endura, cine film on Kodak 2383). Tap above to pick one yourself.</string>
+
+    <!-- ===== Layout: engineering mode ===== -->
+    <string name="main_debug_skip_develop">Debug: skip development, print at once</string>
+    <string name="main_debug_softfocus_prob">Defocus chance (0 = off)</string>
+    <string name="main_debug_note">Development and debugging only — no need to touch these.</string>
+
+    <!-- ===== Layout: about screen ===== -->
+    <string name="main_about_title">About</string>
+    <string name="main_about_subtitle">CONTAX T3 · Digital film camera</string>
+    <string name="main_about_tip_title">Buy me a coffee</string>
+    <string name="main_about_tip_body">Thanks for backing an indie dev — scan the QR code, or use PayPal below</string>
+    <string name="main_cd_tip_code">Tip QR code</string>
+    <string name="main_cd_paypal">Tip via PayPal</string>
+    <string name="main_about_oss">Open source credits</string>
+
+    <!-- ===== Layout: darkroom development screen ===== -->
+    <string name="main_dev_screen_title">Darkroom</string>
+    <string name="main_dev_shake_hint">Shake to speed up development</string>
+    <string name="main_dev_background">Develop in background</string>
+
+    <!-- ===== Layout: gallery ===== -->
+    <string name="main_undeveloped_rolls">Undeveloped rolls</string>
+    <string name="main_no_photos">No prints yet</string>
+
+    <!-- ===== Layout: print viewer ===== -->
+    <string name="main_shoot_same">Shoot the same</string>
+</resources>

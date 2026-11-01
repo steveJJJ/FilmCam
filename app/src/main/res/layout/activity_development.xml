@@ -22,7 +22,7 @@
                 android:id="@+id/tvTitle"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="暗房显影"
+                android:text="@string/main_dev_screen_title"
                 android:textColor="#FFD7C4"
                 android:textSize="20sp"
                 android:textStyle="bold"
@@ -67,7 +67,7 @@
                 android:layout_marginBottom="12dp"
                 android:background="#80000000"
                 android:padding="6dp"
-                android:text="显影中 0/0"
+                android:text="@string/dev_preparing"
                 android:textColor="#FFC1A0"
                 android:textSize="13sp" />
 
@@ -85,7 +85,7 @@
                     android:id="@+id/tvDoneTitle"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="冲洗完成"
+                    android:text="@string/dev_done_title"
                     android:textColor="#FFD7C4"
                     android:textSize="26sp"
                     android:textStyle="bold" />
@@ -103,7 +103,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="24dp"
-                    android:text="查看相册"
+                    android:text="@string/dev_view_gallery"
                     android:textColor="#FFFFFF"
                     android:backgroundTint="#8B1A1A" />
             </LinearLayout>
@@ -139,14 +139,14 @@
                 android:textColor="#FF7A66"
                 android:textSize="11sp"
                 android:visibility="gone"
-                android:text="摇动手机加快显影" />
+                android:text="@string/main_dev_shake_hint" />
 
             <Button
                 android:id="@+id/btnBackground"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
-                android:text="后台冲洗"
+                android:text="@string/main_dev_background"
                 android:textColor="#FFFFFF"
                 android:backgroundTint="#6B1414" />
         </LinearLayout>

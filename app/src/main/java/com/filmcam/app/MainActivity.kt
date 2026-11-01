@@ -132,7 +132,7 @@ class MainActivity : AppCompatActivity() {
             runOnUiThread {
                 // 只在外置闪光模式时显示 BLE 状态
                 if (flash.mode == FlashMode.EXTERNAL) {
-                    binding.tvFlashStatus.text = "外置闪光: $status"
+                    binding.tvFlashStatus.text = getString(R.string.main_external_status, status)
                 }
             }
         }
@@ -145,6 +145,14 @@ class MainActivity : AppCompatActivity() {
         // 机身配色（黑钛 / 钛银）要在所有控件建好之后再刷一次，
         // 这样从别的页面回来、或横竖屏重建时都能拿到当前档位。
         applyBodyTheme()
+        // 语言档位以 AppCompat 的 LocaleManager 为准（框架会自动应用并重建）；
+        // 这里再补一次是为了让「自己存的档位」与框架存储保持一致（例如旧版升级上来）。
+        com.filmcam.app.ui.AppLocale.applySaved(this)
+        // 刚切过语言：Activity 是重建出来的，取景器有一小段无归属窗口，继续压住触摸，
+        // 免得重建瞬间的抬手事件被当成点屏对焦。
+        if (SystemClock.uptimeMillis() - com.filmcam.app.ui.AppLocale.lastChangeMs < 2000) {
+            suppressTouchUntil = SystemClock.uptimeMillis() + 800
+        }
 
         // 首次进入引导（只弹一次）
         binding.glSurfaceView.postDelayed({ maybeShowFirstRunGuide() }, 500)
@@ -379,12 +387,14 @@ class MainActivity : AppCompatActivity() {
         val rollName = runCatching { FilmStockMapper.stockDisplayName(stockId) }.getOrDefault(stockId)
         if (roll != null && roll != currentRoll) {
             if (currentShotCount() > 0) {
-                if (announce) showLcdNotice("本卷拍完冲洗后换$rollName")
+                if (announce) showLcdNotice(
+                    getString(R.string.lcd_notice_roll_after_develop, rollName)
+                )
             } else {
                 selectFilmRoll(roll, fromUser = false)
             }
         }
-        if (announce) showLcdNotice("已套用同款参数")
+        if (announce) showLcdNotice(getString(R.string.lcd_notice_same_params))
 
         // 用完就把 extras 摘掉：同一个 Intent 对象在配置变更（横竖屏）后会被复用，
         // 留着会在重建时再套一次、再提示一次。
@@ -402,6 +412,7 @@ class MainActivity : AppCompatActivity() {
         filmRollMode = prefs.getBoolean("filmRollMode", false)
         hapticLevel = prefs.getInt("hapticLevel", 1).coerceIn(0, 2)
         com.filmcam.app.ui.BodyTheme.load(this)
+        com.filmcam.app.ui.AppLocale.load(this)
         // 旧 filmCount 键仅作迁移保留读取，不再作为权威（张数一律读 UndevelopedFilmStore.shotCount）
         @Suppress("UNUSED_VARIABLE") val legacyFilmCount = prefs.getInt("filmCount", 0)
         debugInstantDevelop = prefs.getBoolean("debug_instant_develop", false)
@@ -480,18 +491,21 @@ class MainActivity : AppCompatActivity() {
     /** 设置弹窗：只留普通用户项；调试与模拟失焦收进「关于页 → 版本号连点 10 次」的工程师模式 */
     private fun showSettings() {
         val items = arrayOf(
-            "机身: ${com.filmcam.app.ui.BodyTheme.name()}",
-            "日期水印: ${if (dateStampEnabled) "开" else "关"}",
-            "震动强度: ${HAPTIC_LEVEL_NAMES[hapticLevel.coerceIn(0, 2)]}",
-            "冲洗参数: 颗粒/辉光/眩光",
-            "关于 FILMCAM"
+            "${getString(R.string.set_body)}: ${com.filmcam.app.ui.BodyTheme.name(this)}",
+            "${getString(R.string.set_datestamp)}: ${
+                if (dateStampEnabled) getString(R.string.common_on) else getString(R.string.common_off)
+            }",
+            "${getString(R.string.set_haptic)}: ${hapticLevelName()}",
+            "${getString(R.string.set_language)}: ${languageName()}",
+            getString(R.string.set_dev),
+            getString(R.string.set_about)
         )
         // 弹窗刚关闭的一瞬间，抬手事件会穿透到取景器被当成点屏对焦 → 短暂屏蔽触摸
         suppressTouchUntil = SystemClock.uptimeMillis() + DIALOG_TOUCH_GUARD_MS
         val dialog = androidx.appcompat.app.AlertDialog.Builder(this, com.filmcam.app.ui.BodyTheme.dialogTheme)
-            .setTitle("设置")
+            .setTitle(getString(R.string.set_title))
             .setItems(items) { _, which -> onSettingsItem(which) }
-            .setNegativeButton("关闭", null)
+            .setNegativeButton(getString(R.string.set_close), null)
             .create()
         dialog.guardDialog()
         dialog.setOnShowListener {
@@ -505,7 +519,9 @@ class MainActivity : AppCompatActivity() {
                         // 机身配色：就地切换并立刻刷一遍机身，弹窗本身不重建
                         // （重建会留出「弹窗消失的那几帧」，那正是触摸漏到取景器的窗口）。
                         // 弹窗自己的配色等下次打开时才跟着换。
-                        items[0] = "机身: ${com.filmcam.app.ui.BodyTheme.cycle(this@MainActivity)}"
+                        items[0] = "${getString(R.string.set_body)}: ${
+                            com.filmcam.app.ui.BodyTheme.cycle(this@MainActivity)
+                        }"
                         (dialog.listView?.adapter as? android.widget.BaseAdapter)?.notifyDataSetChanged()
                         applyBodyTheme()
                         vibrate(26, 175)
@@ -513,7 +529,9 @@ class MainActivity : AppCompatActivity() {
                     1 -> {
                         dateStampEnabled = !dateStampEnabled
                         saveSettings()
-                        items[1] = "日期水印: ${if (dateStampEnabled) "开" else "关"}"
+                        items[1] = "${getString(R.string.set_datestamp)}: ${
+                            if (dateStampEnabled) getString(R.string.common_on) else getString(R.string.common_off)
+                        }"
                         (dialog.listView?.adapter as? android.widget.BaseAdapter)?.notifyDataSetChanged()
                     }
                     2 -> {
@@ -521,9 +539,15 @@ class MainActivity : AppCompatActivity() {
                         // 顺手给一记当前档位的实震，让用户当场比出差别。
                         hapticLevel = (hapticLevel + 1) % HAPTIC_LEVEL_SCALE.size
                         saveSettings()
-                        items[2] = "震动强度: ${HAPTIC_LEVEL_NAMES[hapticLevel]}"
+                        items[2] = "${getString(R.string.set_haptic)}: ${hapticLevelName()}"
                         (dialog.listView?.adapter as? android.widget.BaseAdapter)?.notifyDataSetChanged()
                         vibrate(26, 200)
+                    }
+                    3 -> {
+                        // 语言：切档会重建 Activity，弹窗必须走正常 dismiss（守卫计数归位），
+                        // 不能像开关项那样就地留下。重建后的无归属窗口由 lastChangeMs 兜住。
+                        dialog.dismiss()
+                        com.filmcam.app.ui.AppLocale.cycle(this@MainActivity)
                     }
                     else -> {
                         dialog.dismiss()
@@ -538,20 +562,34 @@ class MainActivity : AppCompatActivity() {
     private fun onSettingsItem(which: Int) {
         suppressTouchUntil = SystemClock.uptimeMillis() + DIALOG_TOUCH_GUARD_MS
         when (which) {
-            3 -> showDevParamsDialog()
-            4 -> startActivity(android.content.Intent(this, AboutActivity::class.java))
+            4 -> showDevParamsDialog()
+            5 -> startActivity(android.content.Intent(this, AboutActivity::class.java))
         }
+    }
+
+    /** 震动强度当前档位名（低/中/强） */
+    private fun hapticLevelName(): String = when (hapticLevel.coerceIn(0, 2)) {
+        0 -> getString(R.string.haptic_low)
+        1 -> getString(R.string.haptic_mid)
+        else -> getString(R.string.haptic_strong)
+    }
+
+    /** 语言当前档位名：跟随系统 / 简体中文 / English */
+    private fun languageName(): String = when (com.filmcam.app.ui.AppLocale.mode) {
+        com.filmcam.app.ui.AppLocale.ZH -> getString(R.string.lang_zh)
+        com.filmcam.app.ui.AppLocale.EN -> getString(R.string.lang_en)
+        else -> getString(R.string.lang_system)
     }
 
     /** 胶卷拍满：引导去暗房冲洗 */
     private fun promptDevelopFullRoll() {
         androidx.appcompat.app.AlertDialog.Builder(this, com.filmcam.app.ui.BodyTheme.dialogTheme)
-            .setTitle("胶卷已拍完")
-            .setMessage("这一卷 36 张已拍完，去暗房冲洗出片")
-            .setPositiveButton("去冲洗") { _, _ ->
+            .setTitle(getString(R.string.main_roll_finished_title))
+            .setMessage(getString(R.string.main_roll_finished_body))
+            .setPositiveButton(getString(R.string.main_roll_finished_develop)) { _, _ ->
                 activeRollId()?.let { DevelopController.startDevelopment(this, it) }
             }
-            .setNegativeButton("稍后", null)
+            .setNegativeButton(getString(R.string.main_roll_finished_later), null)
             .create()
             .guardDialog()
             .show()
@@ -600,13 +638,8 @@ class MainActivity : AppCompatActivity() {
         prefs.edit().putBoolean("guide_shown", true).apply()
         androidx.appcompat.app.AlertDialog.Builder(this, com.filmcam.app.ui.BodyTheme.dialogTheme)
             .setTitle("FILMCAM")
-            .setMessage(
-                "像使用真实胶卷一样拍照：\n\n" +
-                    "· 点按屏幕对焦，上下滑动调整曝光\n" +
-                    "· 一卷 36 张，拍完去暗房冲洗\n" +
-                    "· 冲洗前看不到成片——胶片的惊喜就在这里"
-            )
-            .setPositiveButton("开拍", null)
+            .setMessage(getString(R.string.main_guide_body))
+            .setPositiveButton(getString(R.string.main_guide_start), null)
             .create()
             .guardDialog()
             .show()
@@ -633,7 +666,7 @@ class MainActivity : AppCompatActivity() {
         val rowRoll = view.findViewById<android.view.View>(R.id.rowDevRoll)
         val tvRoll = view.findViewById<android.widget.TextView>(R.id.tvDevRollValue)
         val btnReset = view.findViewById<android.widget.Button>(R.id.btnDevReset)
-        btnReset.text = "恢复该款默认"
+        btnReset.text = getString(R.string.main_dev_reset)
 
         // 相纸选项：第一项自动（""），其后 9 款 catalog prints
         val paperOptions = try {
@@ -642,7 +675,7 @@ class MainActivity : AppCompatActivity() {
             emptyList()
         }
         fun paperDisplayName(id: String): String =
-            if (id.isEmpty()) "自动（按胶卷默认）"
+            if (id.isEmpty()) getString(R.string.main_dev_paper_auto)
             else paperOptions.firstOrNull { it.id == id }?.name ?: id
 
         // 当前选中的胶卷 stock id（默认 = 当前胶卷；不在 9 款映射时回退第一款）
@@ -671,7 +704,7 @@ class MainActivity : AppCompatActivity() {
             val positiveStock = FilmStockMapper.isPositive(selRollId)
             rowPaper.isEnabled = !positiveStock
             rowPaper.alpha = if (positiveStock) 0.45f else 1f
-            if (positiveStock) tvPaper.text = "—（反转片直接显影，无相纸）"
+            if (positiveStock) tvPaper.text = getString(R.string.main_dev_slide_no_paper)
         }
         syncUi()
 
@@ -688,13 +721,13 @@ class MainActivity : AppCompatActivity() {
             }
             val checked = ids.indexOf(selRollId).coerceAtLeast(0)
             androidx.appcompat.app.AlertDialog.Builder(this, com.filmcam.app.ui.BodyTheme.dialogTheme)
-                .setTitle("选择胶卷")
+                .setTitle(getString(R.string.main_pick_film_title))
                 .setSingleChoiceItems(items, checked) { d, which ->
                     selRollId = ids[which] ?: ""
                     d.dismiss()
                     syncUi()
                 }
-                .setNegativeButton("取消", null)
+                .setNegativeButton(getString(R.string.main_cancel), null)
                 .create()
                 .also { it.guardDialog() }
                 .show()
@@ -741,18 +774,18 @@ class MainActivity : AppCompatActivity() {
         rowPaper.hapticClick {
             val current = prefs.getString(devKey("paper"), "") ?: ""
             val items = arrayOfNulls<String>(paperOptions.size + 1)
-            items[0] = "自动（按胶卷默认）"
+            items[0] = getString(R.string.main_dev_paper_auto)
             paperOptions.forEachIndexed { i, opt -> items[i + 1] = opt.name }
             val checked = if (current.isEmpty()) 0 else (paperOptions.indexOfFirst { it.id == current } + 1).coerceAtLeast(0)
             androidx.appcompat.app.AlertDialog.Builder(this, com.filmcam.app.ui.BodyTheme.dialogTheme)
-                .setTitle("相纸选择")
+                .setTitle(getString(R.string.main_pick_paper_title))
                 .setSingleChoiceItems(items, checked) { d, which ->
                     val id = if (which == 0) "" else paperOptions[which - 1].id
                     prefs.edit().putString(devKey("paper"), id).apply()
                     tvPaper.text = paperDisplayName(id)
                     d.dismiss()
                 }
-                .setNegativeButton("取消", null)
+                .setNegativeButton(getString(R.string.main_cancel), null)
                 .create()
                 .also { it.guardDialog() }
                 .show()
@@ -771,9 +804,9 @@ class MainActivity : AppCompatActivity() {
         }
 
         androidx.appcompat.app.AlertDialog.Builder(this, com.filmcam.app.ui.BodyTheme.dialogTheme)
-            .setTitle("冲洗参数")
+            .setTitle(getString(R.string.set_dev))
             .setView(view)
-            .setPositiveButton("确定") { d, _ ->
+            .setPositiveButton(getString(R.string.main_ok)) { d, _ ->
                 d.dismiss()
                 showSettings()
             }
@@ -913,15 +946,18 @@ class MainActivity : AppCompatActivity() {
 
     private data class WbPreset(val label: String, val awbMode: Int, val icon: WbIcon)
 
-    private val wbPresets = listOf(
-        WbPreset("AUTO", android.hardware.camera2.CameraMetadata.CONTROL_AWB_MODE_AUTO, WbIcon.AUTO),
-        WbPreset("白炽灯", android.hardware.camera2.CameraMetadata.CONTROL_AWB_MODE_INCANDESCENT, WbIcon.BULB),
-        WbPreset("荧光灯", android.hardware.camera2.CameraMetadata.CONTROL_AWB_MODE_FLUORESCENT, WbIcon.TUBE),
-        WbPreset("日光", android.hardware.camera2.CameraMetadata.CONTROL_AWB_MODE_DAYLIGHT, WbIcon.SUN),
-        WbPreset("阴天", android.hardware.camera2.CameraMetadata.CONTROL_AWB_MODE_CLOUDY_DAYLIGHT, WbIcon.CLOUD_SUN),
-        WbPreset("阴影", android.hardware.camera2.CameraMetadata.CONTROL_AWB_MODE_SHADE, WbIcon.SHADE),
-        WbPreset("暮光", android.hardware.camera2.CameraMetadata.CONTROL_AWB_MODE_TWILIGHT, WbIcon.TWILIGHT)
-    )
+    // lazy：label 要读本地化资源，必须在 Activity attach 之后才能取 getString
+    private val wbPresets by lazy {
+        listOf(
+            WbPreset("AUTO", android.hardware.camera2.CameraMetadata.CONTROL_AWB_MODE_AUTO, WbIcon.AUTO),
+            WbPreset(getString(R.string.main_wb_incandescent), android.hardware.camera2.CameraMetadata.CONTROL_AWB_MODE_INCANDESCENT, WbIcon.BULB),
+            WbPreset(getString(R.string.main_wb_fluorescent), android.hardware.camera2.CameraMetadata.CONTROL_AWB_MODE_FLUORESCENT, WbIcon.TUBE),
+            WbPreset(getString(R.string.main_wb_daylight), android.hardware.camera2.CameraMetadata.CONTROL_AWB_MODE_DAYLIGHT, WbIcon.SUN),
+            WbPreset(getString(R.string.main_wb_cloudy), android.hardware.camera2.CameraMetadata.CONTROL_AWB_MODE_CLOUDY_DAYLIGHT, WbIcon.CLOUD_SUN),
+            WbPreset(getString(R.string.main_wb_shade), android.hardware.camera2.CameraMetadata.CONTROL_AWB_MODE_SHADE, WbIcon.SHADE),
+            WbPreset(getString(R.string.main_wb_twilight), android.hardware.camera2.CameraMetadata.CONTROL_AWB_MODE_TWILIGHT, WbIcon.TWILIGHT)
+        )
+    }
     private var wbIndex = 0
 
     /** 白平衡面板是否在取景器里显示（横滑期间显示，抬手后收起） */
@@ -948,7 +984,7 @@ class MainActivity : AppCompatActivity() {
         if (fromUser) {
             // 反转片拦截：与原项目一致，本版只支持负片印相纸
             if (!roll.available) {
-                showLcdNotice("反转片不支持印相")
+                showLcdNotice(getString(R.string.lcd_notice_slide_no_print))
                 vibrate(70, 200)
                 return
             }
@@ -956,7 +992,7 @@ class MainActivity : AppCompatActivity() {
             val active = UndevelopedFilmStore.currentRoll()
             val pending = active?.let { UndevelopedFilmStore.shotCount(it.rollId) } ?: 0
             if (active != null && pending > 0) {
-                showLcdNotice("胶卷冲洗后才能换卷")
+                showLcdNotice(getString(R.string.lcd_notice_develop_before_reload))
                 // 被拦下来要有「机身顶住了」的手感：两连震，比单纯给提示更直接。
                 // 强度给到接近满档——早先用系统默认强度在真机上偏软，顶不住的感觉出不来。
                 vibrate(95, 235)
@@ -1040,10 +1076,10 @@ class MainActivity : AppCompatActivity() {
     private fun rewindFilm() {
         val active = UndevelopedFilmStore.currentRoll()
         if (active != null && UndevelopedFilmStore.shotCount(active.rollId) > 0) {
-            Toast.makeText(this, "请先冲洗当前胶卷", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, getString(R.string.main_toast_develop_first), Toast.LENGTH_SHORT).show()
             return
         }
-        Toast.makeText(this, "没有可回卷的胶卷", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, getString(R.string.main_toast_no_roll_to_rewind), Toast.LENGTH_SHORT).show()
         updateLcd()
         updateFilmInfo()
     }
@@ -1145,7 +1181,11 @@ class MainActivity : AppCompatActivity() {
     /** 更新左下胶卷信息 */
     private fun updateFilmInfo() {
         try {
-            binding.filmInfoText.text = "${currentRoll.name}\nCOLOR NEGATIVE\nISO500 · 剩 ${FILM_MAX - currentShotCount()} 张"
+            binding.filmInfoText.text = getString(
+                R.string.main_film_info,
+                currentRoll.name,
+                FILM_MAX - currentShotCount()
+            )
         } catch (_: Exception) {}
     }
 
@@ -1157,9 +1197,9 @@ class MainActivity : AppCompatActivity() {
             FlashMode.EXTERNAL -> FlashMode.OFF
         }
         binding.tvFlashStatus.text = when (flash.mode) {
-            FlashMode.OFF -> "闪: 关"
-            FlashMode.BUILT_IN -> "闪: 内置"
-            FlashMode.EXTERNAL -> "闪: 外置"
+            FlashMode.OFF -> getString(R.string.main_flash_off)
+            FlashMode.BUILT_IN -> getString(R.string.main_flash_internal)
+            FlashMode.EXTERNAL -> getString(R.string.main_flash_external)
         }
         if (flash.mode == FlashMode.EXTERNAL) {
             flash.startScan()
@@ -1185,7 +1225,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun toggleProMode() {
         proMode = !proMode
-        binding.tvProToggle.text = if (proMode) "外置: 开" else "外置: 关"
+        binding.tvProToggle.text =
+            if (proMode) getString(R.string.main_external_on) else getString(R.string.main_external_off)
         binding.tvProToggle.setTextColor(if (proMode) 0xFF00E5FF.toInt() else 0xFFFFFFFF.toInt())
         binding.proControls.visibility = if (proMode) android.view.View.VISIBLE else android.view.View.GONE
         if (!proMode) {
@@ -1206,9 +1247,10 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateFlashModeLabels() {
         val (label, iso, exposureNs) = flashModes[flashModeIndex]
-        binding.tvIso.text = if (iso != null) "ISO $iso" else "ISO 自动"
+        binding.tvIso.text =
+            if (iso != null) getString(R.string.main_iso_value, iso) else getString(R.string.main_iso_auto)
         binding.tvShutter.text = when (exposureNs) {
-            null -> "快门 自动"
+            null -> getString(R.string.main_shutter_auto)
             8_000_000L -> "1/125"
             4_000_000L -> "1/250"
             2_000_000L -> "1/500"
@@ -1224,7 +1266,7 @@ class MainActivity : AppCompatActivity() {
             cameraController?.setManualExposure(exposureNs)
             Toast.makeText(this, flashModes[flashModeIndex].first, Toast.LENGTH_SHORT).show()
         } catch (e: Exception) {
-            Toast.makeText(this, "设置失败: ${e.message}", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, getString(R.string.main_toast_settings_failed, e.message), Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -1269,7 +1311,7 @@ class MainActivity : AppCompatActivity() {
         if (requestCode == REQ_CODE && grantResults.all { it == PackageManager.PERMISSION_GRANTED }) {
             // 权限通过后，等 onSurfaceTextureReady 回调自动启动相机
         } else {
-            Toast.makeText(this, "需要相机/蓝牙权限", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, getString(R.string.main_toast_permission_required), Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -1317,7 +1359,7 @@ class MainActivity : AppCompatActivity() {
                     }
                 } catch (e: Exception) {
                     runOnUiThread {
-                        Toast.makeText(this, "保存失败: ${e.message}", Toast.LENGTH_LONG).show()
+                        Toast.makeText(this, getString(R.string.main_toast_save_failed, e.message), Toast.LENGTH_LONG).show()
                     }
                 } finally {
                     runOnUiThread {
@@ -1328,7 +1370,7 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
-        binding.tvFlashStatus.text = "闪: 关"
+            binding.tvFlashStatus.text = getString(R.string.main_flash_off)
     }
 
     /**
@@ -1340,7 +1382,11 @@ class MainActivity : AppCompatActivity() {
         if (keyCode == KeyEvent.KEYCODE_VOLUME_UP && DEBUG_ROTATE_TEST) {
             val next = (binding.glSurfaceView.debugRotateOverride + 1) % 4
             binding.glSurfaceView.debugRotateOverride = next
-            android.widget.Toast.makeText(this, "预览映射测试: $next", android.widget.Toast.LENGTH_SHORT).show()
+            android.widget.Toast.makeText(
+                this,
+                getString(R.string.main_toast_preview_map_test, next),
+                android.widget.Toast.LENGTH_SHORT
+            ).show()
             android.util.Log.i("RotateTest", "override=$next")
             return true
         }
@@ -1482,7 +1528,7 @@ class MainActivity : AppCompatActivity() {
                     java.util.Random().nextInt(100) < softFocusProb
                 cameraController?.takePicture(defocus)
             } catch (e: Exception) {
-                Toast.makeText(this, "拍照错误: ${e.message}", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, getString(R.string.main_toast_capture_error, e.message), Toast.LENGTH_LONG).show()
                 isCapturing = false
             }
         }
@@ -1526,7 +1572,7 @@ class MainActivity : AppCompatActivity() {
                 stopDevelopingAnimation()
                 binding.developingOverlay.visibility = android.view.View.GONE
                 isCapturing = false
-                Toast.makeText(this, "拍照超时", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, getString(R.string.main_toast_capture_timeout), Toast.LENGTH_SHORT).show()
             }
         }, 20_000)
     }
@@ -1586,7 +1632,8 @@ class MainActivity : AppCompatActivity() {
 
         /** 设置里「震动强度」三档的振幅系数：低 / 中 / 强 */
         val HAPTIC_LEVEL_SCALE = floatArrayOf(0.55f, 1.0f, 1.45f)
-        val HAPTIC_LEVEL_NAMES = arrayOf("低", "中", "强")
+        /** 震动强度档位名（已改用 hapticLevelName() 取本地化文案，这里仅作旧引用保留） */
+        @Suppress("unused") val HAPTIC_LEVEL_NAMES = arrayOf("低", "中", "强")
 
         // 「拍摄同款」Intent extras（写入方见 PhotoViewerActivity.shootSame）
         const val EXTRA_SAME_FILM = "same_film_stock"

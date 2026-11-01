@@ -33,7 +33,7 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="胶卷"
+                android:text="@string/main_dev_roll_row"
                 android:textColor="#9A9A9E"
                 android:textSize="13sp"
                 android:letterSpacing="0.06" />
@@ -58,7 +58,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
-            android:text="显影 · DEVELOP"
+            android:text="@string/main_dev_group_develop"
             android:textColor="#C0392B"
             android:textSize="10sp"
             android:textStyle="bold"
@@ -76,7 +76,7 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="颗粒强度"
+                android:text="@string/main_dev_grain"
                 android:textColor="#E8E4DA"
                 android:textSize="14sp" />
 
@@ -112,7 +112,7 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="辉光强度"
+                android:text="@string/main_dev_halation"
                 android:textColor="#E8E4DA"
                 android:textSize="14sp" />
 
@@ -148,7 +148,7 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="眩光强度"
+                android:text="@string/main_dev_glare"
                 android:textColor="#E8E4DA"
                 android:textSize="14sp" />
 
@@ -183,7 +183,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
-            android:text="放大 · PRINT"
+            android:text="@string/main_dev_group_print"
             android:textColor="#C0392B"
             android:textSize="10sp"
             android:textStyle="bold"
@@ -201,7 +201,7 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="放大机曝光"
+                android:text="@string/main_dev_enlarger_exposure"
                 android:textColor="#E8E4DA"
                 android:textSize="14sp" />
 
@@ -242,7 +242,7 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="相纸选择"
+                android:text="@string/main_dev_paper_row"
                 android:textColor="#E8E4DA"
                 android:textSize="14sp" />
 
@@ -250,7 +250,7 @@
                 android:id="@+id/tvDevPaperValue"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="自动（按胶卷默认）"
+                android:text="@string/main_dev_paper_auto"
                 android:textColor="#FFC100"
                 android:textSize="14sp"
                 android:fontFamily="monospace" />
@@ -261,7 +261,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginBottom="10dp"
-            android:text="自动 = 按胶卷品牌的官方推荐相纸搭配（如柯达负片印 Portra Endura、电影卷印 Kodak 2383），点上方可手动覆盖"
+            android:text="@string/main_dev_paper_hint"
             android:textColor="#77777C"
             android:textSize="10sp"
             android:lineSpacingMultiplier="1.3" />

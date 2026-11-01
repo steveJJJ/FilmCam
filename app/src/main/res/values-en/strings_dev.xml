@@ -1,0 +1,67 @@
+<resources>
+
+    <!-- ===== Darkroom / development (dev) ===== -->
+
+    <!-- Development screen: progress and status -->
+    <string name="dev_preparing_first">First run: mixing the developer…</string>
+    <string name="dev_preparing">Preparing…</string>
+    <string name="dev_progress">Developing %1$d/%2$d</string>
+    <string name="dev_progress_done">Developed %1$d/%2$d</string>
+
+    <!-- Development screen: finished -->
+    <string name="dev_done_title">Development complete</string>
+    <string name="dev_done_sub">%1$d prints</string>
+    <string name="dev_view_gallery">View gallery</string>
+
+    <!-- Development screen: failed -->
+    <string name="dev_failed_title">Development failed</string>
+    <string name="dev_error_frames_prefix">%1$d frames unfinished:</string>
+    <string name="dev_retry">Retry development</string>
+    <string name="dev_aborted">Development interrupted</string>
+
+    <!-- Development notifications -->
+    <string name="dev_darkroom">Darkroom</string>
+    <string name="dev_channel_desc">Film development progress</string>
+    <string name="dev_notif_preparing">Preparing…</string>
+    <string name="dev_notif_busy">Another roll is developing, wait for it to finish</string>
+    <string name="dev_notif_done_title">Developed, ready to view</string>
+    <string name="dev_notif_done_text">%1$s · %2$d prints</string>
+
+    <!-- Development errors -->
+    <string name="dev_error_unknown">Unknown error</string>
+    <string name="dev_error_roll_missing">Roll not found</string>
+    <string name="dev_error_engine_init">Engine init failed: %1$s</string>
+    <string name="dev_error_frames_detail">%1$d/%2$d frames unfinished: %3$s</string>
+    <string name="dev_toast_slide_no_paper">Slide film develops straight to a positive, no paper involved — paper selection ignored</string>
+
+    <!-- ===== Film rolls (film) ===== -->
+
+    <!-- Roll state errors: surfaced to the user through the save failure notice -->
+    <string name="film_roll_full">Roll full at %1$d frames, develop it first</string>
+    <string name="film_roll_already_active">A roll is already loaded (shooting), cannot start a second one</string>
+
+    <!-- ===== Gallery / print viewer (pf) ===== -->
+
+    <string name="pf_develop">Develop</string>
+    <string name="pf_gallery_read_failed">Failed to read gallery</string>
+    <string name="pf_same_no_params">No reproducible settings in this photo</string>
+
+    <!-- Print info panel -->
+    <string name="pf_roll_id">Roll %1$s</string>
+    <string name="pf_shot_at">Shot on %1$s</string>
+    <string name="pf_paper">Paper %1$s</string>
+    <string name="pf_paper_default">Default</string>
+    <string name="pf_exposure">Exposure %.2f</string>
+    <string name="pf_grain">Grain %.2f</string>
+    <string name="pf_halation">Halation %.2f</string>
+    <string name="pf_glare">Glare %.2f</string>
+    <string name="pf_dev_default">Default development</string>
+
+    <!-- ===== Top-plate LCD (lcd) ===== -->
+
+    <string name="lcd_notice_roll_after_develop">Develop this roll, then load %1$s</string>
+    <string name="lcd_notice_same_params">Same settings applied</string>
+    <string name="lcd_notice_slide_no_print">Slide film, no printing</string>
+    <string name="lcd_notice_develop_before_reload">Develop the roll before reloading</string>
+
+</resources>

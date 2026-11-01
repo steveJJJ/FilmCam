@@ -49,14 +49,9 @@ class GalleryActivity : AppCompatActivity() {
         val spanCount = (dm.widthPixels / minItemPx).coerceIn(3, 6)
         rvGallery.layoutManager = GridLayoutManager(this, spanCount)
         rvUndeveloped.layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
-
-        // 机身配色（黑钛 / 钛银）：相册不是机身，但跟着整机配色走，
-        // 免得从银色机身一点进相册又变回全黑，割裂。
-        com.filmcam.app.ui.BodyTheme.load(this)
-        val root = findViewById<View>(android.R.id.content)
-        com.filmcam.app.ui.BodyTheme.applyToViewTree(root)
-        root.background = com.filmcam.app.ui.BodyTheme.bodyBackground()
-        com.filmcam.app.ui.BodyTheme.applySystemBars(window)
+        // 暗房不跟随机身主题：机身配色是相机外壳的事，暗房是红灯下的工作环境，
+        // 全黑底才能看片（银底会把成片的暗部压掉，也会破坏暗房氛围）。
+        // 这里刻意不做 BodyTheme 重映射，保持原来的暗房配色。
     }
 
     override fun onResume() {
@@ -105,7 +100,7 @@ class GalleryActivity : AppCompatActivity() {
                 tag = "count"
             }
             val btn = Button(ctx).apply {
-                text = "冲洗"
+                text = ctx.getString(R.string.pf_develop)
                 setTextColor(0xFFFFFFFF.toInt())
                 backgroundTintList = android.content.res.ColorStateList.valueOf(0xFF8B1A1A.toInt())
                 tag = "btn"
@@ -166,7 +161,7 @@ class GalleryActivity : AppCompatActivity() {
         } catch (e: Exception) {
             // 查询失败不能连累整个页面：降级为空态，并提示用户
             Log.e(TAG, "查询相册失败", e)
-            Toast.makeText(this, "读取相册失败", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, getString(R.string.pf_gallery_read_failed), Toast.LENGTH_SHORT).show()
         }
 
         if (photos.isEmpty()) {
