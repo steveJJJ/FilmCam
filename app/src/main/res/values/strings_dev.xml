@@ -71,5 +71,6 @@
     <string name="lcd_notice_same_params">已套用同款参数</string>
     <string name="lcd_notice_slide_no_print">反转片不支持印相</string>
     <string name="lcd_notice_develop_before_reload">胶卷冲洗后才能换卷</string>
+    <string name="lcd_notice_dev_done">冲洗完成 出片%1$d张</string>
 
 </resources>

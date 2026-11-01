@@ -1342,6 +1342,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onPause() {
+        com.filmcam.app.develop.DevelopmentState.removeListener(devStateListener)
         super.onPause()
         saveSettings()  // 兜底：退出/后台时保存设置
         // 进后台：释放相机 + 暂停 GL 渲染，避免回前台时相机会话冲突导致预览卡死
@@ -1354,6 +1355,34 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         // 回前台：恢复 GL，SurfaceTexture 重建后会自动触发 onSurfaceTextureReady → 重新启动相机
         binding.glSurfaceView.onResume()
+        // 冲洗是后台干的：用户这会儿可能正在暗房看进度，也可能已经回到机身。
+        // 「冲洗完成」这条状态汇报该从机顶 LCD 出来，而不是弹一个 Android 式吐司。
+        com.filmcam.app.develop.DevelopmentState.addListener(devStateListener)
+        announceDevelopedOnLcd()
+    }
+
+    // ===== 机顶 LCD：后台冲洗完成通报 =====
+
+    /** 已经通报过的那一卷（同一卷只通报一次，别每次回主页都重播） */
+    private var lcdNotifiedRollId: String? = null
+
+    private val devStateListener: () -> Unit = { announceDevelopedOnLcd() }
+
+    /**
+     * 把「冲洗完成」送到机顶 LCD。
+     * 之前是 Toast（屏幕中下方一块浮层），跟机身没关系；暗房那边现在也不弹了 ——
+     * 这条消息属于机身状态，从 LCD 出来才对：在暗房时 LCD 看不见（机身不在前台），
+     * 回到机身第一眼就能看到「冲洗完成 出片 12 张」，几秒后自动恢复常规读数。
+     */
+    private fun announceDevelopedOnLcd() {
+        val st = com.filmcam.app.develop.DevelopmentState
+        if (st.phase != com.filmcam.app.develop.DevelopmentState.PHASE_DONE) return
+        val rollId = st.rollId ?: return
+        if (rollId == lcdNotifiedRollId) return
+        lcdNotifiedRollId = rollId
+        runOnUiThread {
+            showLcdNotice(getString(R.string.lcd_notice_dev_done, st.done))
+        }
     }
 
     private fun hasPermissions(): Boolean =

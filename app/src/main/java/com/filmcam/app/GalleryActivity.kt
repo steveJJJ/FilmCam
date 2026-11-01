@@ -154,13 +154,9 @@ class GalleryActivity : AppCompatActivity() {
                     //  完成回调是从状态监听来的，不走 onResume，漏了这里列表就一直挂着老画面）
                     loadUndevelopedRolls()
                     loadPhotos()
-                    Toast.makeText(
-                        this,
-                        "${getString(R.string.dev_done_title)} · ${
-                            getString(R.string.dev_done_sub, st.done)
-                        }",
-                        Toast.LENGTH_SHORT
-                    ).show()
+                    // 注意：这里刻意不弹 Toast。这条状态汇报归机顶 LCD ——
+                    // 屏幕中下方浮一块 Android 吐司跟机身没任何关系；用户回到机身时
+                    // LCD 会通报「冲洗完成 出片 N 张」（见 MainActivity.announceDevelopedOnLcd）。
                     // 完成条不必等用户来点：几秒后自己收起来，并再刷一次列表与相册。
                     // 出现过「卡片没了、下面还挂着刚冲完那卷」，多刷一拍兜住写盘/索引的最后一帧。
                     scheduleDevBarAutoHide()
