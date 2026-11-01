@@ -509,6 +509,11 @@ class MainActivity : AppCompatActivity() {
             .create()
         dialog.guardDialog()
         dialog.setOnShowListener {
+            // 列表项文字色由 dialog style 钉住；再补一道重映射，防某些 ROM 的
+            // Material 主题不走 textColorAlertDialogListItem，银底上仍是浅字。
+            dialog.listView?.post {
+                dialog.listView?.let { com.filmcam.app.ui.BodyTheme.applyToViewTree(it) }
+            }
             // 日期水印是「开关」不是「动作」：就地翻转文案、弹窗不关。
             // 原先是点了就 dismiss 再 show 一个新弹窗——弹窗消失与重建之间的那几帧
             // 正是触摸事件最容易漏到取景器、被误判成点屏对焦的窗口。现在没有这个

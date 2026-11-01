@@ -193,4 +193,21 @@ App 版本：%1$s (%2$d)
 
     <!-- ===== 布局：成片查看 ===== -->
     <string name="main_shoot_same">拍摄同款</string>
+
+    <!-- ===== 关于页（AboutActivity 代码内文案） ===== -->
+    <string name="about_tap_more">%1$s · 再点 %2$d 次</string>
+    <string name="about_no_browser">没有可用的浏览器</string>
+    <string name="about_feedback_email_channel">发邮件反馈</string>
+    <string name="about_feedback_wechat_channel">加微信进群反馈</string>
+    <string name="about_wechat_id_label">微信号</string>
+    <string name="about_wechat_copied">微信号 %1$s 已复制，去微信搜索加群</string>
+    <string name="about_source_request">索取源码：%1$s</string>
+    <string name="about_source_subject">FILMCAM 源码索取</string>
+    <string name="about_gpl_full">GNU GPL-3.0 全文</string>
+    <string name="hidden_title">工程师模式</string>
+    <string name="hidden_save">保存</string>
+    <string name="hidden_saved">已保存</string>
+
+    <!-- 胶卷列表：反转片不支持印相 -->
+    <string name="film_slide_no_print">反转片（幻灯）不能印到相纸上——本版暂只支持负片</string>
 </resources>

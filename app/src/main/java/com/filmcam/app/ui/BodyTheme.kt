@@ -94,6 +94,22 @@ object BodyTheme {
     /** 机身底上的次要文字 */
     val onBodyTextSecondary: Int get() = if (isTitan) 0xFF5F5A52.toInt() else 0xFF8A8A8E.toInt()
 
+    /**
+     * 面板上的强调色（琥珀）：LCD 读数、配方数值、按钮。
+     * 钛银下面板是浅钛色，原来的亮琥珀 #FFC100 压上去几乎看不见 ——
+     * 换成压得住浅底的深琥珀（真机机身上的琥珀刻度也是深色的）。
+     */
+    val accent: Int get() = if (isTitan) 0xFF8A5A00.toInt() else 0xFFFFC100.toInt()
+
+    /** SeekBar 轨道底色 */
+    val trackBg: Int get() = if (isTitan) 0xFFA79E90.toInt() else 0xFF3A3A40.toInt()
+
+    /** 卡片底（关于页开源致谢/许可证这类"深底浅字"的整块内容） */
+    val cardBg: Int get() = if (isTitan) 0xFFC4BCAD.toInt() else 0xFF161616.toInt()
+
+    /** 卡片描边与内部分隔线 */
+    val cardStroke: Int get() = if (isTitan) 0xFFA9A093.toInt() else 0xFF2E2E2E.toInt()
+
     /** 面板/弹层底色（弹窗、底部弹层不是机身，比机身略亮一档，保持"面板"层次） */
     val panelBg: Int get() = if (isTitan) 0xFFD3CBBD.toInt() else 0xFF1A1A1A.toInt()
 
@@ -129,12 +145,25 @@ object BodyTheme {
         0xFFB8B8BC.toInt() to 0xFF5F5A52.toInt(),
         0xFF9A9A9E.toInt() to 0xFF5F5A52.toInt(),
         0xFF8A8A8E.toInt() to 0xFF5F5A52.toInt(),
+        0xFF9A8C6A.toInt() to 0xFF6B5A2E.toInt(),   // 关于页 CC BY-SA 说明的暖灰金
         0xFF7C7C80.toInt() to 0xFF5F5A52.toInt(),
         0xFF77777C.toInt() to 0xFF5F5A52.toInt(),
         0xFF6E6E6E.toInt() to 0xFF5F5A52.toInt(),
         0xFF6A6A6E.toInt() to 0xFF5F5A52.toInt(),
         0xFF999999.toInt() to 0xFF5F5A52.toInt(),
         0xFF666666.toInt() to 0xFF5F5A52.toInt()
+    )
+
+    /**
+     * 强调色配对表：琥珀/浅金这类品牌色不进中性映射表（换了主题品牌色就没了），
+     * 但钛银的浅面板上亮琥珀看不见，所以单独一张"同色系加深"的表。
+     * 只处理 TextView 的字色与 SeekBar 的滑块/进度色。
+     */
+    private val ACCENT_PAIRS = mapOf(
+        0xFFFFC100.toInt() to 0xFF8A5A00.toInt(),
+        0xFFFFD54F.toInt() to 0xFF7A5C00.toInt(),
+        0xFFF0F0F4.toInt() to 0xFF4A453E.toInt(),
+        0xFFE8D5C8.toInt() to 0xFF3A3630.toInt()
     )
 
     /** 面板底色配对表：深底 ↔ 钛面（比机身略亮一档，保持"面板"层次） */
@@ -149,11 +178,16 @@ object BodyTheme {
 
     private val TEXT_TO_TITAN = TEXT_PAIRS
     private val TEXT_TO_BLACK = TEXT_PAIRS.entries.associate { (k, v) -> v to k }
+    private val ACCENT_TO_TITAN = ACCENT_PAIRS
+    private val ACCENT_TO_BLACK = ACCENT_PAIRS.entries.associate { (k, v) -> v to k }
     private val BG_TO_TITAN = BG_PAIRS
     private val BG_TO_BLACK = BG_PAIRS.entries.associate { (k, v) -> v to k }
 
     fun remapText(color: Int): Int =
-        (if (isTitan) TEXT_TO_TITAN[color] else TEXT_TO_BLACK[color]) ?: color
+        (if (isTitan) TEXT_TO_TITAN[color] else TEXT_TO_BLACK[color]) ?: remapAccent(color)
+
+    fun remapAccent(color: Int): Int =
+        (if (isTitan) ACCENT_TO_TITAN[color] else ACCENT_TO_BLACK[color]) ?: color
 
     fun remapBg(color: Int): Int =
         (if (isTitan) BG_TO_TITAN[color] else BG_TO_BLACK[color]) ?: color
@@ -173,12 +207,19 @@ object BodyTheme {
             val mapped = remapBg(c)
             if (mapped != c) root.setBackgroundColor(mapped)
         }
-        if (root is android.widget.TextView && root.background == null &&
-            root.tag != KEEP_TEXT_COLOR
-        ) {
+        if (root is android.widget.TextView && root.tag != KEEP_TEXT_COLOR) {
             val c = root.currentTextColor
-            val mapped = remapText(c)
+            // 没有自己底色的文字：跟着页面底一起反转（浅字↔蚀刻深字）。
+            // 有底色的（chip、按钮牌面）：只做强调色加深，字色否则跟着它自己的底，不能动。
+            val mapped = if (root.background == null) remapText(c) else remapAccent(c)
             if (mapped != c) root.setTextColor(mapped)
+        }
+        // SeekBar 的三段色写死在 XML 里（琥珀进度 + 近白滑块），
+        // 钛银下近白滑块在浅钛面板上等于隐形，一并换成压得住的深色。
+        if (root is android.widget.SeekBar && root.tag != KEEP_TEXT_COLOR) {
+            root.progressTintList = android.content.res.ColorStateList.valueOf(accent)
+            root.thumbTintList = android.content.res.ColorStateList.valueOf(accent)
+            root.progressBackgroundTintList = android.content.res.ColorStateList.valueOf(trackBg)
         }
         if (root is android.view.ViewGroup) {
             for (i in 0 until root.childCount) applyToViewTree(root.getChildAt(i))

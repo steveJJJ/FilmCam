@@ -11,6 +11,11 @@
         <item name="colorPrimary">#FFC100</item>
         <item name="colorOnSurface">#E8E4DA</item>
         <item name="colorOnSurfaceVariant">#9A9A9E</item>
+        <!-- 列表项文字（setItems 那条列表）走的是独立属性，不设就继承 Material 默认，
+             换主题时不会跟着 colorOnSurface 走，必须显式钉住 -->
+        <item name="textColorAlertDialogListItem">#E8E4DA</item>
+        <item name="android:textColorPrimary">#E8E4DA</item>
+        <item name="android:textColorSecondary">#9A9A9E</item>
     </style>
 
     <!-- 钛银机身下的弹窗：面板跟着机身走，钛面 + 蚀刻深字（真机机身上的字是凹刻的深色） -->
@@ -20,6 +25,9 @@
         <item name="colorPrimary">#8B1A1A</item>
         <item name="colorOnSurface">#2E2B27</item>
         <item name="colorOnSurfaceVariant">#5F5A52</item>
+        <item name="textColorAlertDialogListItem">#2E2B27</item>
+        <item name="android:textColorPrimary">#2E2B27</item>
+        <item name="android:textColorSecondary">#5F5A52</item>
     </style>
 
     <!-- 成片信息面板：分组标题 -->

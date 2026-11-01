@@ -34,6 +34,9 @@ class FilmRollAdapter(
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
         val view = LayoutInflater.from(parent.context)
             .inflate(R.layout.item_film_roll, parent, false)
+        // 列表项是 RecyclerView 运行时 inflate 出来的，页面级 applyToViewTree 刷不到它们
+        // （那时列表还是空的），所以每个 item 建好时自己刷一遍机身配色。
+        com.filmcam.app.ui.BodyTheme.applyToViewTree(view)
         return VH(view)
     }
 
@@ -53,7 +56,7 @@ class FilmRollAdapter(
             holder.itemView.setOnClickListener {
                 android.widget.Toast.makeText(
                     it.context,
-                    "反转片（幻灯）不能印到相纸上——本版暂只支持负片",
+                    it.context.getString(R.string.film_slide_no_print),
                     android.widget.Toast.LENGTH_SHORT
                 ).show()
             }

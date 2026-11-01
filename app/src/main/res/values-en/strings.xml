@@ -185,4 +185,21 @@ Memory available: %10$d MB / %11$d MB total
 
     <!-- ===== Layout: print viewer ===== -->
     <string name="main_shoot_same">Shoot the same</string>
+
+    <!-- ===== About screen (strings set in AboutActivity code) ===== -->
+    <string name="about_tap_more">%1$s · %2$d more taps</string>
+    <string name="about_no_browser">No browser available</string>
+    <string name="about_feedback_email_channel">Send an email</string>
+    <string name="about_feedback_wechat_channel">Join the WeChat group</string>
+    <string name="about_wechat_id_label">WeChat ID</string>
+    <string name="about_wechat_copied">WeChat ID %1$s copied — search it in WeChat to join</string>
+    <string name="about_source_request">Request source: %1$s</string>
+    <string name="about_source_subject">FILMCAM source request</string>
+    <string name="about_gpl_full">GNU GPL-3.0 full text</string>
+    <string name="hidden_title">Engineer mode</string>
+    <string name="hidden_save">Save</string>
+    <string name="hidden_saved">Saved</string>
+
+    <!-- Film roll list: slide film cannot be printed -->
+    <string name="film_slide_no_print">Slide film cannot be printed — this version only supports negatives</string>
 </resources>

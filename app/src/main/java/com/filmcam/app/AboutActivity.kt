@@ -50,7 +50,8 @@ class AboutActivity : AppCompatActivity() {
         tvVersion.setOnClickListener {
             tapCount++
             when {
-                tapCount in 4..9 -> tvVersion.text = "$versionText · 再点 ${10 - tapCount} 次"
+                tapCount in 4..9 -> tvVersion.text =
+                    getString(R.string.about_tap_more, versionText, 10 - tapCount)
                 tapCount >= 10 -> {
                     tapCount = 0
                     tvVersion.text = versionText
@@ -71,9 +72,12 @@ class AboutActivity : AppCompatActivity() {
         val entries = resources.getStringArray(R.array.oss_credits)
 
         container.background = GradientDrawable().apply {
-            setColor(0xFF161616.toInt())
+            setColor(com.filmcam.app.ui.BodyTheme.cardBg)
             cornerRadius = 12f * resources.displayMetrics.density
-            setStroke((0.8f * resources.displayMetrics.density).toInt().coerceAtLeast(1), 0xFF2E2E2E.toInt())
+            setStroke(
+                (0.8f * resources.displayMetrics.density).toInt().coerceAtLeast(1),
+                com.filmcam.app.ui.BodyTheme.cardStroke
+            )
         }
 
         entries.forEachIndexed { index, raw ->
@@ -90,7 +94,7 @@ class AboutActivity : AppCompatActivity() {
 
             if (index > 0) {
                 container.addView(View(this).apply {
-                    setBackgroundColor(0xFF2A2A2A.toInt())
+                    setBackgroundColor(com.filmcam.app.ui.BodyTheme.cardStroke)
                     layoutParams = LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.MATCH_PARENT,
                         (0.7f * density).toInt().coerceAtLeast(1)
@@ -169,7 +173,7 @@ class AboutActivity : AppCompatActivity() {
             startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
         }.isSuccess
         if (!started) {
-            Toast.makeText(this, "没有可用的浏览器", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, R.string.about_no_browser, Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -183,13 +187,16 @@ class AboutActivity : AppCompatActivity() {
     }
 
     private fun showFeedbackOptions() {
-        val channels = arrayOf("发邮件反馈", "加微信进群反馈")
-        androidx.appcompat.app.AlertDialog.Builder(this, R.style.DarkDialog)
-            .setTitle("问题反馈")
+        val channels = arrayOf(
+            getString(R.string.about_feedback_email_channel),
+            getString(R.string.about_feedback_wechat_channel)
+        )
+        androidx.appcompat.app.AlertDialog.Builder(this, com.filmcam.app.ui.BodyTheme.dialogTheme)
+            .setTitle(R.string.about_feedback)
             .setItems(channels) { _, which ->
                 if (which == 0) sendFeedback() else copyWechatId()
             }
-            .setNegativeButton("取消", null)
+            .setNegativeButton(R.string.main_cancel, null)
             .show()
     }
 
@@ -197,8 +204,12 @@ class AboutActivity : AppCompatActivity() {
     private fun copyWechatId() {
         val wechatId = "LazyRofin"
         val clipboard = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
-        clipboard.setPrimaryClip(android.content.ClipData.newPlainText("微信号", wechatId))
-        Toast.makeText(this, "微信号 $wechatId 已复制，去微信搜索加群", Toast.LENGTH_LONG).show()
+        clipboard.setPrimaryClip(
+            android.content.ClipData.newPlainText(getString(R.string.about_wechat_id_label), wechatId)
+        )
+        Toast.makeText(
+            this, getString(R.string.about_wechat_copied, wechatId), Toast.LENGTH_LONG
+        ).show()
     }
 
     private fun sendFeedback() {
@@ -256,9 +267,12 @@ class AboutActivity : AppCompatActivity() {
         val pad = (14 * density).toInt()
 
         container.background = GradientDrawable().apply {
-            setColor(0xFF161616.toInt())
+            setColor(com.filmcam.app.ui.BodyTheme.cardBg)
             cornerRadius = 12f * density
-            setStroke((0.8f * density).toInt().coerceAtLeast(1), 0xFF2E2E2E.toInt())
+            setStroke(
+                (0.8f * density).toInt().coerceAtLeast(1),
+                com.filmcam.app.ui.BodyTheme.cardStroke
+            )
         }
         container.setPadding(pad, pad, pad, pad)
 
@@ -282,7 +296,7 @@ class AboutActivity : AppCompatActivity() {
         val email = getString(R.string.app_source_email).trim()
         if (email.isNotEmpty()) {
             container.addView(TextView(this).apply {
-                text = "索取源码：$email"
+                text = getString(R.string.about_source_request, email)
                 setTextColor(0xFF9A8C6A.toInt())
                 textSize = 10.5f
                 letterSpacing = 0.03f
@@ -299,7 +313,7 @@ class AboutActivity : AppCompatActivity() {
                     runCatching {
                         startActivity(
                             Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:$email")).putExtra(
-                                Intent.EXTRA_SUBJECT, "FILMCAM 源码索取"
+                                Intent.EXTRA_SUBJECT, getString(R.string.about_source_subject)
                             )
                         )
                     }
@@ -309,7 +323,7 @@ class AboutActivity : AppCompatActivity() {
 
         // GPL 全文链接
         container.addView(TextView(this).apply {
-            text = "GNU GPL-3.0 全文"
+            text = getString(R.string.about_gpl_full)
             setTextColor(0xFF7C7C80.toInt())
             textSize = 10.5f
             letterSpacing = 0.03f
@@ -335,6 +349,7 @@ class AboutActivity : AppCompatActivity() {
     private fun showHiddenSettings() {
         val prefs = getSharedPreferences("filmcam", MODE_PRIVATE)
         val view = layoutInflater.inflate(R.layout.dialog_hidden_settings, null)
+        com.filmcam.app.ui.BodyTheme.applyToViewTree(view)
 
         val swSkip = view.findViewById<android.widget.Switch>(R.id.swSkipDevelop)
         val sbProb = view.findViewById<SeekBar>(R.id.sbSoftFocusProb)
@@ -356,18 +371,18 @@ class AboutActivity : AppCompatActivity() {
             override fun onStopTrackingTouch(sb: SeekBar?) {}
         })
 
-        androidx.appcompat.app.AlertDialog.Builder(this)
-            .setTitle("工程师模式")
+        androidx.appcompat.app.AlertDialog.Builder(this, com.filmcam.app.ui.BodyTheme.dialogTheme)
+            .setTitle(R.string.hidden_title)
             .setView(view)
-            .setPositiveButton("保存") { _, _ ->
+            .setPositiveButton(R.string.hidden_save) { _, _ ->
                 prefs.edit()
                     .putBoolean("debug_instant_develop", swSkip.isChecked)
                     .putInt("softFocus_prob", sbProb.progress)
                     .putBoolean("softFocus", sbProb.progress > 0)
                     .apply()
-                Toast.makeText(this, "已保存", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, R.string.hidden_saved, Toast.LENGTH_SHORT).show()
             }
-            .setNegativeButton("取消", null)
+            .setNegativeButton(R.string.main_cancel, null)
             .show()
     }
 }
