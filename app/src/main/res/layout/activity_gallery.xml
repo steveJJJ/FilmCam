@@ -40,6 +40,61 @@
             android:letterSpacing="0.25" />
     </LinearLayout>
 
+    <!-- 冲洗进度条：后台冲洗时回到暗房，这里是唯一能看见进度的位置。
+         默认隐藏；有卷在冲洗/刚冲洗完时由 GalleryActivity 按 DevelopmentState 驱动。
+         点整块进冲洗页（进行中）或刷新相册（已完成）。 -->
+    <LinearLayout
+        android:id="@+id/devProgressCard"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:visibility="gone"
+        android:clickable="true"
+        android:focusable="true"
+        android:foreground="?android:attr/selectableItemBackground"
+        android:background="#2A0808"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp"
+        android:paddingTop="11dp"
+        android:paddingBottom="11dp">
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/tvDevProgress"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/dev_notif_preparing"
+                android:textColor="#FFD7C4"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:letterSpacing="0.04" />
+
+            <ProgressBar
+                android:id="@+id/pbDevProgress"
+                style="?android:attr/progressBarStyleHorizontal"
+                android:layout_width="match_parent"
+                android:layout_height="3dp"
+                android:layout_marginTop="7dp"
+                android:max="100"
+                android:progressDrawable="@drawable/bg_dev_progress" />
+        </LinearLayout>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            android:text="@string/pf_dev_view"
+            android:textColor="#FF9A86"
+            android:textSize="11sp"
+            android:letterSpacing="0.12" />
+    </LinearLayout>
+
     <!-- 未冲洗胶卷区（无卷时整段隐藏） -->
     <LinearLayout
         android:id="@+id/layoutUndeveloped"

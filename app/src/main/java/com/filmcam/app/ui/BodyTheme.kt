@@ -104,8 +104,8 @@ object BodyTheme {
     /** SeekBar 轨道底色 */
     val trackBg: Int get() = if (isTitan) 0xFFA79E90.toInt() else 0xFF3A3A40.toInt()
 
-    /** 卡片底（关于页开源致谢/许可证这类"深底浅字"的整块内容） */
-    val cardBg: Int get() = if (isTitan) 0xFFC4BCAD.toInt() else 0xFF161616.toInt()
+    /** 卡片底（关于页许可证这类"深底浅字"的整块内容） */
+    val cardBg: Int get() = if (isTitan) 0xFFD3CBBD.toInt() else 0xFF141416.toInt()
 
     /** 卡片描边与内部分隔线 */
     val cardStroke: Int get() = if (isTitan) 0xFFA9A093.toInt() else 0xFF2E2E2E.toInt()

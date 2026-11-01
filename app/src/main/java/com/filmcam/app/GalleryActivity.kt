@@ -32,6 +32,25 @@ class GalleryActivity : AppCompatActivity() {
     private lateinit var tvEmpty: TextView
     private lateinit var layoutUndeveloped: LinearLayout
     private lateinit var rvUndeveloped: RecyclerView
+    private lateinit var devProgressCard: View
+    private lateinit var tvDevProgress: TextView
+    private lateinit var pbDevProgress: android.widget.ProgressBar
+
+    /**
+     * 后台冲洗时回到暗房，进度条是唯一能看见进展的地方 —— 服务每写完一帧
+     * 都会回调这里（DevelopmentState 的 listener，服务走主线程 post）。
+     * 完成那一帧还要顺手把未冲洗列表与相册网格刷一遍，否则用户看到的是旧数据。
+     */
+    private val devStateListener: () -> Unit = { runOnUiThread { renderDevProgress() } }
+
+    /** 上一次渲染到的阶段：用来识别「刚从进行中变成完成」这一刻，只在那时刷列表 */
+    private var lastDevPhase: String? = null
+
+    /**
+     * 观察到「完成」这一刻的时间戳。DevelopmentState 是进程级单例，上一次冲洗的
+     * 完成态会一直留着 —— 没有这个标记，用户隔天进暗房还会看到一条陈旧的完成条。
+     */
+    private var devDoneObservedMs: Long = 0L
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -41,6 +60,9 @@ class GalleryActivity : AppCompatActivity() {
         tvEmpty = findViewById(R.id.tvEmpty)
         layoutUndeveloped = findViewById(R.id.layoutUndeveloped)
         rvUndeveloped = findViewById(R.id.rvUndeveloped)
+        devProgressCard = findViewById(R.id.devProgressCard)
+        tvDevProgress = findViewById(R.id.tvDevProgress)
+        pbDevProgress = findViewById(R.id.pbDevProgress)
 
         // 列数按屏宽自适应：每格最小约 104dp，手机 3 列、大屏/折叠屏展开可到 6 列。
         // 原来固定 3 列 + 400px 行高，在 2K 屏上是细扁条，在折叠屏上又过大。
@@ -54,10 +76,102 @@ class GalleryActivity : AppCompatActivity() {
         // 这里刻意不做 BodyTheme 重映射，保持原来的暗房配色。
     }
 
+    override fun onStart() {
+        super.onStart()
+        com.filmcam.app.develop.DevelopmentState.addListener(devStateListener)
+        renderDevProgress()
+    }
+
+    override fun onStop() {
+        com.filmcam.app.develop.DevelopmentState.removeListener(devStateListener)
+        super.onStop()
+    }
+
     override fun onResume() {
         super.onResume()
         loadUndevelopedRolls()
         loadPhotos()
+        renderDevProgress()
+    }
+
+    // ---------- 后台冲洗进度条 ----------
+
+    /**
+     * 按 DevelopmentState 渲染顶部进度条。
+     *  - 进行中：显影中 n/36 + 进度条，点进去看冲洗页（带水波盘那页）
+     *  - 完成：切成完成文案，并刷新列表与相册（服务已经 finishRoll 落盘）
+     *  - 失败：切成重试文案，点进去走冲洗页的重试
+     *  - 没有卷在冲洗：整条隐藏
+     */
+    private fun renderDevProgress() {
+        val st = com.filmcam.app.develop.DevelopmentState
+        val rollId = st.rollId
+        if (rollId == null) {
+            devProgressCard.visibility = View.GONE
+            lastDevPhase = null
+            return
+        }
+        devProgressCard.visibility = View.VISIBLE
+        when (st.phase) {
+            com.filmcam.app.develop.DevelopmentState.PHASE_DONE -> {
+                if (devDoneObservedMs == 0L) {
+                    // 本次进暗房之前就已经完成了（进程里留着上一次的完成态）→ 不再打扰
+                    devProgressCard.visibility = View.GONE
+                    lastDevPhase = st.phase
+                    return
+                }
+                tvDevProgress.text = getString(R.string.pf_dev_bar_done, st.done)
+                pbDevProgress.progress = 100
+                devProgressCard.setOnClickListener {
+                    // 点完成条 = 看刚出片的结果：刷新后隐藏
+                    devProgressCard.visibility = View.GONE
+                    loadUndevelopedRolls()
+                    loadPhotos()
+                }
+                if (lastDevPhase != st.phase) {
+                    // 刚完成：立即把成片与未冲洗列表刷成最新
+                    devDoneObservedMs = android.os.SystemClock.uptimeMillis()
+                    loadUndevelopedRolls()
+                    loadPhotos()
+                    Toast.makeText(
+                        this,
+                        "${getString(R.string.dev_done_title)} · ${
+                            getString(R.string.dev_done_sub, st.done)
+                        }",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
+            com.filmcam.app.develop.DevelopmentState.PHASE_ERROR -> {
+                tvDevProgress.text = getString(R.string.pf_dev_bar_failed)
+                pbDevProgress.progress =
+                    if (st.total > 0) (st.done * 100 / st.total) else 0
+                devProgressCard.setOnClickListener { openDevelopmentScreen(rollId) }
+                if (lastDevPhase != st.phase) loadUndevelopedRolls()
+            }
+            else -> {
+                // preparing / developing
+                tvDevProgress.text =
+                    if (st.phase == com.filmcam.app.develop.DevelopmentState.PHASE_PREPARING ||
+                        st.total <= 0
+                    ) {
+                        getString(R.string.dev_notif_preparing)
+                    } else {
+                        getString(R.string.dev_progress, st.done.coerceAtMost(st.total), st.total)
+                    }
+                pbDevProgress.progress =
+                    if (st.total > 0) (st.done * 100 / st.total) else 0
+                devProgressCard.setOnClickListener { openDevelopmentScreen(rollId) }
+            }
+        }
+        lastDevPhase = st.phase
+    }
+
+    private fun openDevelopmentScreen(rollId: String) {
+        startActivity(
+            android.content.Intent(this, com.filmcam.app.develop.DevelopmentActivity::class.java)
+                .putExtra(com.filmcam.app.develop.DevelopController.EXTRA_ROLL_ID, rollId)
+        )
     }
 
     // ---------- 未冲洗胶卷区 ----------
@@ -117,8 +231,15 @@ class GalleryActivity : AppCompatActivity() {
             (holder.card.findViewWithTag<TextView>("name")).text =
                 FilmStockMapper.stockDisplayName(roll.filmStockId)
             (holder.card.findViewWithTag<TextView>("count")).text = "${roll.shotCount}/36"
-            (holder.card.findViewWithTag<Button>("btn")).setOnClickListener {
-                DevelopController.startDevelopment(ctx, roll.rollId)
+            val btn = holder.card.findViewWithTag<Button>("btn")
+            if (roll.status == UndevelopedFilmStore.STATUS_DEVELOPING) {
+                // 这一卷已经在冲洗了：再点「冲洗」只会被服务防重入拒绝（什么也不发生），
+                // 按钮直接改成看进度，用户才知道去哪儿看它洗到哪了。
+                btn.text = ctx.getString(R.string.pf_dev_view_progress)
+                btn.setOnClickListener { openDevelopmentScreen(roll.rollId) }
+            } else {
+                btn.text = ctx.getString(R.string.pf_develop)
+                btn.setOnClickListener { DevelopController.startDevelopment(ctx, roll.rollId) }
             }
         }
 

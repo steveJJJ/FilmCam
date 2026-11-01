@@ -27,11 +27,13 @@ class AboutActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_about)
 
-        versionText = "FILMCAM v" + (try {
-            packageManager.getPackageInfo(packageName, 0).versionName
-        } catch (e: Exception) {
-            "?"
-        })
+        val pi = runCatching { packageManager.getPackageInfo(packageName, 0) }.getOrNull()
+        val verName = pi?.versionName ?: "?"
+        val verCode = pi?.let { info ->
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) info.longVersionCode.toInt()
+            else info.versionCode
+        } ?: 0
+        versionText = "v$verName ($verCode)"
 
         buildOssCredits()
         buildSelfLicense()
@@ -44,6 +46,9 @@ class AboutActivity : AppCompatActivity() {
         com.filmcam.app.ui.BodyTheme.applyToViewTree(root)
         root.background = com.filmcam.app.ui.BodyTheme.bodyBackground()
         com.filmcam.app.ui.BodyTheme.applySystemBars(window)
+
+        // 铭牌规格表里的版本号（等宽刻字）
+        findViewById<TextView>(R.id.tvSpecVersion).text = versionText
 
         val tvVersion = findViewById<TextView>(R.id.tvVersion)
         tvVersion.text = versionText
@@ -68,17 +73,10 @@ class AboutActivity : AppCompatActivity() {
     private fun buildOssCredits() {
         val container = findViewById<LinearLayout>(R.id.ossList)
         val density = resources.displayMetrics.density
-        val pad = (14 * density).toInt()
+        val pad = (10 * density).toInt()
         val entries = resources.getStringArray(R.array.oss_credits)
 
-        container.background = GradientDrawable().apply {
-            setColor(com.filmcam.app.ui.BodyTheme.cardBg)
-            cornerRadius = 12f * resources.displayMetrics.density
-            setStroke(
-                (0.8f * resources.displayMetrics.density).toInt().coerceAtLeast(1),
-                com.filmcam.app.ui.BodyTheme.cardStroke
-            )
-        }
+        // 卡片外框与底色由布局给（铭牌式细边框），这里只负责往里填条目
 
         entries.forEachIndexed { index, raw ->
             val parts = raw.split("|")
@@ -108,7 +106,7 @@ class AboutActivity : AppCompatActivity() {
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT
                 )
-                setPadding(pad, pad, pad, pad)
+                setPadding(0, pad, 0, pad)
             }
             // 用主题自带水波纹做点击反馈（Foreground 更贴合列表）
             if (url.isNotBlank()) {
@@ -268,9 +266,9 @@ class AboutActivity : AppCompatActivity() {
 
         container.background = GradientDrawable().apply {
             setColor(com.filmcam.app.ui.BodyTheme.cardBg)
-            cornerRadius = 12f * density
+            cornerRadius = 2f * density
             setStroke(
-                (0.8f * density).toInt().coerceAtLeast(1),
+                (1f * density).toInt().coerceAtLeast(1),
                 com.filmcam.app.ui.BodyTheme.cardStroke
             )
         }

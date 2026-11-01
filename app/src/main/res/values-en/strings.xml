@@ -186,6 +186,15 @@ Memory available: %10$d MB / %11$d MB total
     <!-- ===== Layout: print viewer ===== -->
     <string name="main_shoot_same">Shoot the same</string>
 
+    <!-- ===== About screen nameplate: spec table ===== -->
+    <string name="about_spec_model">MODEL</string>
+    <string name="about_spec_lens">LENS</string>
+    <string name="about_spec_film">FILM</string>
+    <string name="about_spec_engine">ENGINE</string>
+    <string name="about_spec_version">VER</string>
+    <string name="about_support">SUPPORT</string>
+    <string name="about_credits">CREDITS</string>
+
     <!-- ===== About screen (strings set in AboutActivity code) ===== -->
     <string name="about_tap_more">%1$s · %2$d more taps</string>
     <string name="about_no_browser">No browser available</string>

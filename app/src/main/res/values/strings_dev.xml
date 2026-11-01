@@ -43,6 +43,10 @@
     <!-- ===== 相册 / 成片查看（pf） ===== -->
 
     <string name="pf_develop">冲洗</string>
+    <string name="pf_dev_view">查看</string>
+    <string name="pf_dev_view_progress">查看进度</string>
+    <string name="pf_dev_bar_done">冲洗完成 · 出片 %1$d 张</string>
+    <string name="pf_dev_bar_failed">冲洗失败，点此重试</string>
     <string name="pf_gallery_read_failed">读取相册失败</string>
     <string name="pf_same_no_params">这张照片没有可复现的拍摄参数</string>
 

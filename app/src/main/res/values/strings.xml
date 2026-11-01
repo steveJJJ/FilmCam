@@ -194,6 +194,19 @@ App 版本：%1$s (%2$d)
     <!-- ===== 布局：成片查看 ===== -->
     <string name="main_shoot_same">拍摄同款</string>
 
+    <!-- ===== 关于页铭牌：规格表 ===== -->
+    <string name="about_spec_model">型号 MODEL</string>
+    <string name="about_spec_model_value" translatable="false">FILMCAM</string>
+    <string name="about_spec_lens">镜头 LENS</string>
+    <string name="about_spec_lens_value" translatable="false">35mm f/2.8</string>
+    <string name="about_spec_film">装片 FILM</string>
+    <string name="about_spec_film_value" translatable="false">36 EXP</string>
+    <string name="about_spec_engine">引擎 ENGINE</string>
+    <string name="about_spec_engine_value" translatable="false">SpektraLab</string>
+    <string name="about_spec_version">版本 VER</string>
+    <string name="about_support">赞赏 SUPPORT</string>
+    <string name="about_credits">开源致谢 CREDITS</string>
+
     <!-- ===== 关于页（AboutActivity 代码内文案） ===== -->
     <string name="about_tap_more">%1$s · 再点 %2$d 次</string>
     <string name="about_no_browser">没有可用的浏览器</string>

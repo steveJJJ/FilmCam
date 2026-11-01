@@ -43,6 +43,10 @@
     <!-- ===== Gallery / print viewer (pf) ===== -->
 
     <string name="pf_develop">Develop</string>
+    <string name="pf_dev_view">View</string>
+    <string name="pf_dev_view_progress">View progress</string>
+    <string name="pf_dev_bar_done">Developed · %1$d prints</string>
+    <string name="pf_dev_bar_failed">Development failed — tap to retry</string>
     <string name="pf_gallery_read_failed">Failed to read gallery</string>
     <string name="pf_same_no_params">No reproducible settings in this photo</string>
 
