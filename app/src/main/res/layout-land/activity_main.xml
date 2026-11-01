@@ -214,7 +214,7 @@
             <com.filmcam.app.ui.FilmReelView
                 android:id="@+id/ivDeveloping"
                 android:layout_width="104dp"
-                android:layout_height="104dp"
+                android:layout_height="64dp"
                 android:contentDescription="过卷" />
             <TextView
                 android:id="@+id/tvDevelopingText"

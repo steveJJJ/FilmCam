@@ -6,6 +6,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Paint
+import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.Shader
 import android.os.Build
@@ -27,8 +28,12 @@ class FilmReelView @JvmOverloads constructor(
 
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     private val dstRect = RectF()
+    private val srcRect = Rect()
 
     private var icon: Bitmap? = null
+
+    /** 与取景器底部胶卷图标一致的显示尺寸（56dp 见方，居中裁切） */
+    private val iconSizeDp = 56f
 
     /** 累计进度，单位＝周期（1.0 = 胶卷走完一趟并回到起点） */
     private var flow = 0f
@@ -43,12 +48,16 @@ class FilmReelView @JvmOverloads constructor(
         val h = height.toFloat()
         if (b == null || w <= 4f || h <= 4f) return
 
-        // 一个胶卷标准大小，放进这个小窗口
-        val size = min(w, h) * 0.78f
-        val s = min(size / b.width.toFloat(), size / b.height.toFloat())
-        val fw = b.width * s
-        val fh = b.height * s
+        // 与取景器底部胶卷图标完全同宽（56dp 见方，居中裁切，和 centerCrop 一致）
+        val size = iconSizeDp * resources.displayMetrics.density
+        val fw = size
+        val fh = size
         val top = (h - fh) / 2f
+        val side = min(b.width, b.height)
+        srcRect.set(
+            (b.width - side) / 2, (b.height - side) / 2,
+            (b.width + side) / 2, (b.height + side) / 2
+        )
 
         // 胶卷一个紧挨一个排成队列（略微重叠，彻底没有缝隙），
         // 整体匀速平移：窗口里永远填着胶卷，看不到接头和空档。
@@ -57,7 +66,7 @@ class FilmReelView @JvmOverloads constructor(
         while (x < w) {
             paint.alpha = 255
             dstRect.set(x, top, x + fw, top + fh)
-            canvas.drawBitmap(b, null, dstRect, paint)
+            canvas.drawBitmap(b, srcRect, dstRect, paint)
             x += step
         }
     }
