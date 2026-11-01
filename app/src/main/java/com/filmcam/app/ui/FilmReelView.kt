@@ -5,7 +5,6 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
-import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.RectF
 import android.graphics.Shader
@@ -14,19 +13,15 @@ import android.util.AttributeSet
 import android.view.View
 import android.view.animation.LinearInterpolator
 import kotlin.math.abs
-import kotlin.math.cos
 import kotlin.math.min
-import kotlin.math.sin
 
 /**
- * 过卷动画：**胶卷（平面）绕自身竖直中轴转动**——像一张卡片/一盒胶卷在原地转身。
+ * 过卷动画：**胶卷（平面，原样不旋转不缩放）从左到右走**——
+ * 像过片时胶片被拖着往右走：从左边缘外进场 → 匀速向右 → 走出右边缘 → 再从左边进来，
+ * 循环不断。全程画面里只有一个胶卷，身后（左侧）带横向拖影（运动模糊）。
  *
- * 做法就是平面绕 Y 轴的 2D 投影：宽度按 |cos θ| 伸缩，转到 90°/270°（侧面对着
- * 我们）时收成一条窄线，越过 90° 后水平镜像（转到背面，同时压暗一点）。
- * 横向速度 ∝ |sin θ|·ω，所以在"侧面掠过"的瞬间拖影和模糊最强、正面最清晰，
- * 这正是平面转动该有的运动模糊分布。
- *
- * 之前做过的圆柱贴图版被否（"太丑"）——这一版不加任何立体透视，就是平面在转。
+ * 走过的版本：图标原地空转 → 单卷横掠+自转 → 双卷轴+胶带 → 端面绕 Z 轴转 →
+ * 竖直圆柱绕 Y 轴转 → 平面绕竖直轴翻转。用户要的其实是"胶卷从左到右走"。
  */
 class FilmReelView @JvmOverloads constructor(
     context: Context,
@@ -34,13 +29,14 @@ class FilmReelView @JvmOverloads constructor(
 ) : View(context, attrs) {
 
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
-    private val shadePaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val dstRect = RectF()
     private val ghostRect = RectF()
 
     private var icon: Bitmap? = null
-    private var angle = 0f    // 累计转角（度）
-    private var omega = 0f    // 角速度（度/秒）
+
+    /** 累计位移（px），只增不减 */
+    private var scroll = 0f
+    private var speed = 0f   // px/s
 
     private var animator: ValueAnimator? = null
     private var lastFrameMs = 0L
@@ -51,45 +47,32 @@ class FilmReelView @JvmOverloads constructor(
         val h = height.toFloat()
         if (b == null || w <= 4f || h <= 4f) return
 
-        val cx = w / 2f
-        val cy = h / 2f
-        // 胶卷在视图内的最大内接尺寸（保持自身比例）
-        val s = min(w / b.width.toFloat(), h / b.height.toFloat()) * 0.94f
+        // 胶卷按自身比例放进视图高度
+        val s = min(w * 0.55f / b.width.toFloat(), h * 0.94f / b.height.toFloat())
         val fw = b.width * s
         val fh = b.height * s
+        val top = (h - fh) / 2f
 
-        val rad = Math.toRadians(angle.toDouble())
-        val k = Math.cos(rad).toFloat()        // 正面 +1 / 背面 -1
-        val cw = (fw * abs(k)).coerceAtLeast(fw * 0.035f)   // 侧面时留一条窄线
-        val left = cx - cw / 2f
-        val top = cy - fh / 2f
+        // 一个周期 = 视图宽 + 胶卷宽：走出右边缘的瞬间正好从左边重新进场，
+        // 既不会同时出现两个，也不会出现空档。
+        val period = w + fw
+        val x = -fw + (scroll % period)
 
-        // 横向速度 ∝ |sin θ|·ω：侧面掠过时最快 → 拖影最长
-        val lateral = abs(Math.sin(rad).toFloat()) * (abs(omega) / 400f).coerceAtMost(1.6f)
-        val trail = lateral * fw * 0.10f
+        val trail = (abs(speed) / 55f).coerceIn(0f, fw * 0.55f)
 
-        canvas.save()
-        if (k < 0) canvas.scale(-1f, 1f, cx, cy)   // 背面：水平镜像
-        dstRect.set(left, top, left + cw, top + fh)
-
-        // 两侧残影（横向运动模糊）
+        // 身后（左侧）的残影：横向运动模糊
         if (trail > 1.5f) {
-            paint.alpha = 46
-            ghostRect.set(left - trail, top, left - trail + cw, top + fh)
+            paint.alpha = 40
+            ghostRect.set(x - trail * 0.55f, top, x - trail * 0.55f + fw, top + fh)
             canvas.drawBitmap(b, null, ghostRect, paint)
-            ghostRect.set(left + trail, top, left + trail + cw, top + fh)
+            paint.alpha = 70
+            ghostRect.set(x - trail * 0.28f, top, x - trail * 0.28f + fw, top + fh)
             canvas.drawBitmap(b, null, ghostRect, paint)
         }
 
         paint.alpha = 255
+        dstRect.set(x, top, x + fw, top + fh)
         canvas.drawBitmap(b, null, dstRect, paint)
-
-        // 背面压暗，让"转到另一面"看得出来
-        if (k < 0) {
-            shadePaint.color = Color.parseColor("#7A000000")
-            canvas.drawRect(dstRect, shadePaint)
-        }
-        canvas.restore()
     }
 
     fun setIcon(resId: Int) {
@@ -102,13 +85,13 @@ class FilmReelView @JvmOverloads constructor(
     }
 
     /**
-     * 开始转动。@param degPerSecond 角速度（度/秒）——绕竖直中轴的平面转动，
-     * 转得越快，侧面掠过时的拖影越长。
+     * 开始过片。@param pxPerSecond 胶卷横向移动速度（像素/秒，从左到右），
+     * 速度越快拖影越长、整体模糊越强。
      */
-    fun startSpinning(degPerSecond: Float) {
+    fun startSpinning(pxPerSecond: Float) {
         stopSpinning()
-        omega = degPerSecond
-        applyBlur((abs(degPerSecond) / 500f).coerceIn(0f, 2f))
+        speed = pxPerSecond
+        applyBlur((abs(pxPerSecond) / 700f).coerceIn(0f, 3f))
         lastFrameMs = 0L
         animator = ValueAnimator.ofFloat(0f, 1f).apply {
             duration = 4000L
@@ -119,7 +102,7 @@ class FilmReelView @JvmOverloads constructor(
                 if (lastFrameMs == 0L) lastFrameMs = now
                 val dt = ((now - lastFrameMs) / 1000f).coerceIn(0f, 0.1f)
                 lastFrameMs = now
-                angle = (angle + degPerSecond * dt) % 360f
+                scroll += pxPerSecond * dt
                 invalidate()
             }
             start()
@@ -129,7 +112,7 @@ class FilmReelView @JvmOverloads constructor(
     fun stopSpinning() {
         animator?.cancel()
         animator = null
-        omega = 0f
+        speed = 0f
         applyBlur(0f)
         invalidate()
     }

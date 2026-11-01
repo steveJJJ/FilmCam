@@ -225,10 +225,10 @@
             android:layout_gravity="center"
             android:orientation="vertical"
             android:gravity="center">
-            <!-- 过片动画：胶卷（平面）绕自身竖直中轴转动 -->
+            <!-- 过片动画：胶卷（平面）从左到右被拉着走 -->
             <com.filmcam.app.ui.FilmReelView
                 android:id="@+id/ivDeveloping"
-                android:layout_width="104dp"
+                android:layout_width="220dp"
                 android:layout_height="160dp"
                 android:contentDescription="过卷" />
             <TextView
