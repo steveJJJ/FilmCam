@@ -61,16 +61,12 @@ class DevelopmentActivity : AppCompatActivity(), SensorEventListener {
         private const val TICK_MS = 66L              // 推进节奏 ≈15fps，足够顺滑
         private const val REVEAL_CAP = 0.86f         // 引擎未冲出本帧时进度上限
         private const val STRIP_CELLS = 36
-        /**
-         * 显影液水声：静置时的底噪音量。连续底噪要"存在但退到背景里"，
-         * 所以压得比之前低一半多（0.38 → 0.17），避免吵。
-         */
-        private const val WATER_VOL_IDLE = 0.17f
-        /**
-         * 摇动时的增量：拉大到 0.73（顶到 0.9），静置与搅动差 5 倍多 ——
-         * 手一晃水声立刻涌起来，静置时几乎只剩背景，层次更清楚。
-         */
-        private const val WATER_VOL_GAIN = 0.73f
+        /** 显影液水声：起振阈值，搅动强度低于此值完全静音（静置不吵） */
+        private const val WATER_VOL_ONSET = 0.10f
+        /** 用力搅动时的音量上限 */
+        private const val WATER_VOL_MAX = 0.90f
+        /** 静音持续这么久就把循环停掉（省电、避免残留底噪） */
+        private const val WATER_SILENT_STOP_MS = 1000L
     }
 
     private lateinit var tvTitle: TextView
@@ -115,6 +111,8 @@ class DevelopmentActivity : AppCompatActivity(), SensorEventListener {
     private var waterPool: android.media.SoundPool? = null
     private var waterSoundId = 0
     private var waterStreamId = 0
+    /** 水声进入静音的起始时刻；0 = 当前有声。用于停手后延时停播 */
+    private var waterSilentSinceMs = 0L
 
     private lateinit var stripAdapter: FilmStripAdapter
 
@@ -376,10 +374,22 @@ class DevelopmentActivity : AppCompatActivity(), SensorEventListener {
         applyReveal()
         waterTray.setAgitation(agitation)
 
-        // 水声：搅得越猛越响、音调越高
+        // 水声：只有搅动才出声 —— 静置完全静音，摇起来音量/音调随强度上去；
+        // 停手约 1 秒后把循环停掉，省电也避免残留底噪。
+        val vol = waterVolume(agitation)
+        if (vol > 0.004f) {
+            startWaterSound()
+            waterSilentSinceMs = 0L
+        } else if (waterStreamId != 0) {
+            if (waterSilentSinceMs == 0L) {
+                waterSilentSinceMs = now
+            } else if (now - waterSilentSinceMs > WATER_SILENT_STOP_MS) {
+                stopWaterSound()
+                waterSilentSinceMs = 0L
+            }
+        }
         if (waterStreamId != 0) {
-            val v = (WATER_VOL_IDLE + agitation * WATER_VOL_GAIN).coerceIn(0f, 1f)
-            waterPool?.setVolume(waterStreamId, v, v)
+            waterPool?.setVolume(waterStreamId, vol, vol)
             waterPool?.setRate(waterStreamId, (0.9f + agitation * 0.42f).coerceIn(0.5f, 2f))
         }
 
@@ -538,11 +548,11 @@ class DevelopmentActivity : AppCompatActivity(), SensorEventListener {
         }
     }
 
-    /** 起播（循环）。静置时就是能听见的底噪，搅动时推到最响（见 tickDevelop）。 */
+    /** 起播（循环）。从 0 音量起，实际响度由 tickDevelop 按搅动强度推上去。 */
     private fun startWaterSound() {
         if (waterSoundId == 0 || waterStreamId != 0) return
-        waterStreamId = waterPool?.play(waterSoundId, WATER_VOL_IDLE, WATER_VOL_IDLE, 1, -1, 1f) ?: 0
-        Log.d(TAG, "水声起播 streamId=$waterStreamId vol=$WATER_VOL_IDLE")
+        waterStreamId = waterPool?.play(waterSoundId, 0f, 0f, 1, -1, 1f) ?: 0
+        Log.d(TAG, "水声起播 streamId=$waterStreamId")
     }
 
     private fun stopWaterSound() {
@@ -550,6 +560,17 @@ class DevelopmentActivity : AppCompatActivity(), SensorEventListener {
             runCatching { waterPool?.stop(waterStreamId) }
             waterStreamId = 0
         }
+        waterSilentSinceMs = 0L
+    }
+
+    /**
+     * 水声音量：静置 = 0（不吵），只有真的在摇才出声。
+     * 起振阈值以下直接静音，之上按 t^0.65 的曲线涨（小幅度摇也有明显反馈）。
+     */
+    private fun waterVolume(ag: Float): Float {
+        if (ag <= WATER_VOL_ONSET) return 0f
+        val t = ((ag - WATER_VOL_ONSET) / (1f - WATER_VOL_ONSET)).coerceIn(0f, 1f)
+        return (Math.pow(t.toDouble(), 0.65) * WATER_VOL_MAX).toFloat().coerceIn(0f, 1f)
     }
 
     // ---------- 胶卷条 Adapter ----------
