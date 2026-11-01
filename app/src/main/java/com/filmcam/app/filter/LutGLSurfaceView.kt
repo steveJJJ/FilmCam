@@ -127,7 +127,18 @@ class LutGLSurfaceView @JvmOverloads constructor(
                 Log.i("LutRenderer", "frame#$loggedFrames texMatrix=${texMatrix.joinToString(",") { "%.3f".format(it) }}")
                 diagAppend("frame#$loggedFrames texMatrix=${texMatrix.joinToString(",") { "%.3f".format(it) }}")
             }
-            renderTo(surfaceWidth, surfaceHeight, offsetY = ViewfinderFrameView.PREVIEW_OFFSET_Y)
+            // 该机型（三星 HAL）交付的预览缓冲内容固定为"竖向朝向"（与竖屏显示一致），
+            // 且 SurfaceTexture 变换矩阵在部分会话里是单位阵（不补偿旋转）。
+            // 因此横屏时按设备旋转方向在 shader 里做 90° 预旋转：
+            //   ROTATION_90（机身左倒）→ 采样旋转一档；ROTATION_270（右倒）→ 反向一档。
+            // 竖屏保持原有 texMatrix 路径不变（竖屏一直正常）。
+            val quarter = when (this@LutGLSurfaceView.display?.rotation) {
+                android.view.Surface.ROTATION_90 -> 1f
+                android.view.Surface.ROTATION_270 -> 3f
+                else -> 0f
+            }
+            renderTo(surfaceWidth, surfaceHeight, offsetY = ViewfinderFrameView.PREVIEW_OFFSET_Y,
+                quarter = quarter)
         }
 
         /** 在指定分辨率下渲染一帧。
@@ -135,7 +146,7 @@ class LutGLSurfaceView @JvmOverloads constructor(
          *  （Adreno/麒麟）会因 sampler3D 无有效绑定直接让整次 draw 失败（黑屏），
          *  模拟器软件渲染则不受影响。胶片调色已完全移交 Vulkan 冲洗引擎，
          *  取景器侧保持直通，不再保留任何后处理分支。 */
-        fun renderTo(viewW: Int, viewH: Int, offsetY: Float = 0f) {
+        fun renderTo(viewW: Int, viewH: Int, offsetY: Float = 0f, quarter: Float = 0f) {
             val st = surfaceTexture ?: return
             GLES30.glViewport(0, 0, viewW, viewH)
             GLES30.glUseProgram(program)
@@ -160,6 +171,7 @@ class LutGLSurfaceView @JvmOverloads constructor(
             GLES30.glUniform1f(GLES30.glGetUniformLocation(program, "uFitHeight"),
                 if (screenAspect > contentAspect) 1f else 0f)
             GLES30.glUniform1f(GLES30.glGetUniformLocation(program, "uOffsetY"), offsetY)
+            GLES30.glUniform1f(GLES30.glGetUniformLocation(program, "uQuarter"), quarter)
 
             vertexBuffer.position(0)
             val posLoc = GLES30.glGetAttribLocation(program, "aPosition")
@@ -231,6 +243,7 @@ class LutGLSurfaceView @JvmOverloads constructor(
         uniform float uContentAspect;
         uniform float uFitHeight;
         uniform float uOffsetY;
+        uniform float uQuarter;
         in vec2 vTexCoord;
         out vec4 fragColor;
 
@@ -253,7 +266,16 @@ class LutGLSurfaceView @JvmOverloads constructor(
                 return;
             }
 
-            vec2 uv = (uTexMatrix * vec4(texX, texY, 0.0, 1.0)).xy;
+            // 竖屏走 SurfaceTexture 变换矩阵（竖屏一直正常）；
+            // 横屏时 HAL 交付的是竖向内容缓冲，按设备旋转方向预旋转 90° 采样
+            vec2 uv;
+            if (uQuarter > 2.5) {
+                uv = vec2(1.0 - texY, texX);
+            } else if (uQuarter > 0.5) {
+                uv = vec2(texY, 1.0 - texX);
+            } else {
+                uv = (uTexMatrix * vec4(texX, texY, 0.0, 1.0)).xy;
+            }
             fragColor = texture(uTexture, uv);
         }
         """.trimIndent()
