@@ -12,9 +12,17 @@ import com.filmcam.app.R
  * 胶卷列表适配器
  */
 class FilmRollAdapter(
-    private val rolls: List<FilmRoll>,
+    private val rolls: MutableList<FilmRoll>,
     private val onSelect: (FilmRoll) -> Unit
 ) : RecyclerView.Adapter<FilmRollAdapter.VH>() {
+
+    /** 长按拖拽用：把 from 位的胶卷移到 to 位，并通知 RecyclerView 播移动动画。 */
+    fun moveItem(from: Int, to: Int) {
+        if (from == to || from !in rolls.indices || to !in rolls.indices) return
+        val item = rolls.removeAt(from)
+        rolls.add(to, item)
+        notifyItemMoved(from, to)
+    }
 
     class VH(view: View) : RecyclerView.ViewHolder(view) {
         val chip: ImageView = view.findViewById(R.id.viewColorChip)

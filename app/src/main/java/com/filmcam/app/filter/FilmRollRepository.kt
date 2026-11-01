@@ -1,13 +1,24 @@
 package com.filmcam.app.filter
 
+import android.content.Context
 import com.filmcam.app.R
 
 /**
- * 胶卷库
+ * 胶卷库。
+ *
+ * 支持用户自定义排序：胶卷列表里长按拖拽调整顺序后，把顺序持久化到
+ * SharedPreferences（只存 name 序列），下次打开就按用户的顺序展示——
+ * 于是常用的胶卷可以拖到最上面方便切换。
  */
 object FilmRollRepository {
 
-    val rolls = listOf(
+    private const val PREFS = "filmcam"
+    private const val KEY_ORDER = "film_order"
+    /** 分隔符：胶卷名不含控制字符，用它拼接最安全 */
+    private const val SEP = "\u0001"
+
+    /** 引擎 catalog 全量胶卷（与 FilmStockMapper.ROLL_TABLE 一一对应），出厂默认顺序 */
+    private val defaultRolls = listOf(
         FilmRoll(
             name = "PORTRA 400",
             iconResId = R.drawable.ic_film_portra400,
@@ -160,4 +171,42 @@ object FilmRollRepository {
             tag = "电影"
         )
     )
+
+    /** 当前展示顺序（用户可拖拽调整）。 所有读取方请直接用这个属性。 */
+    var rolls: MutableList<FilmRoll> = defaultRolls.toMutableList()
+        private set
+
+    /**
+     * 从 SharedPreferences 恢复用户的排序（应在 Activity 初始化、restoreSettings 之前调用）。
+     * 容错：存档里没有的新胶卷（比如升级后新增的）追加到末尾，避免它们在列表里消失。
+     */
+    fun restore(context: Context) {
+        val saved = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getString(KEY_ORDER, null)
+        if (saved.isNullOrBlank()) {
+            rolls = defaultRolls.toMutableList()
+            return
+        }
+        val names = saved.split(SEP)
+        val nameSet = names.toHashSet()
+        val byName = defaultRolls.associateBy { it.name }
+        val ordered = ArrayList<FilmRoll>(defaultRolls.size)
+        names.mapNotNullTo(ordered) { byName[it] }
+        defaultRolls.filterNot { it.name in nameSet }.forEach   { ordered.add(it) }
+        rolls = ordered
+    }
+
+    /** 落盘当前顺序（拖拽松手时调用一次）。 */
+    fun persist(context: Context) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putString(KEY_ORDER, rolls.joinToString(SEP) { it.name })
+            .apply()
+    }
+
+    /** 恢复出厂默认顺序。 */
+    fun reset(context: Context) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().remove(KEY_ORDER).apply()
+        rolls = defaultRolls.toMutableList()
+    }
 }

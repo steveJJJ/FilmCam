@@ -135,6 +135,9 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        // 先恢复胶卷排序再读选中的胶卷索引：index 是位置语义，
+        // 顺序不一样时同一个 index 指向的是另一支胶卷。
+        FilmRollRepository.restore(this)
         // 恢复上次退出时保存的设置
         restoreSettings()
 
@@ -183,9 +186,9 @@ class MainActivity : AppCompatActivity() {
                     val delta = (touchStartY - event.rawY) / 100f
                     val newEv = (touchStartEv + delta.toInt()).coerceIn(-3, 3)
                     if (newEv != exposureComp) {
-                        exposureComp = newEv
-                        cameraController?.setExposureComp(exposureComp)
-                        binding.viewfinderFrame.notifyActivity()
+                        // 统一入口：原先这里只调 setExposureComp + notifyActivity，
+                        // 漏了 applyExposure（外置闪光开关会失效）与 updateLcd（LCD 读数不更新）
+                        setEv(newEv, persist = false)   // 抬手时统一 saveSettings
                     }
                 }
                 android.view.MotionEvent.ACTION_UP,
@@ -199,6 +202,11 @@ class MainActivity : AppCompatActivity() {
                         val fx = event.x
                         val fy = event.y
                         binding.viewfinderFrame.notifyActivity()
+                        // 只有落在预览内容矩形内才对焦：letterbox 黑边、预览窗之外的
+                        // 点按一律忽略（真机 T3 的可视面积就是这块，点外面不该有反应）
+                        if (!binding.viewfinderFrame.contentRect().contains(fx, fy)) {
+                            return@setOnTouchListener true
+                        }
                         // 点屏对焦：不做任何视觉标记，合焦后仅给一次短震动
                         cameraController?.focusAt(
                             fx, fy,
@@ -212,20 +220,10 @@ class MainActivity : AppCompatActivity() {
 
         // 曝光补偿按钮
         binding.btnEvPlus.setOnClickListener {
-            exposureComp += 1
-            if (exposureComp > 3) exposureComp = -3
-            binding.tvEvValue.text = exposureComp.toString()
-            cameraController?.setExposureComp(exposureComp)
-            binding.viewfinderFrame.notifyActivity()
-            saveSettings()
+            setEv(if (exposureComp >= 3) -3 else exposureComp + 1)
         }
         binding.btnEvMinus.setOnClickListener {
-            exposureComp -= 1
-            if (exposureComp < -3) exposureComp = 3
-            binding.tvEvValue.text = exposureComp.toString()
-            cameraController?.setExposureComp(exposureComp)
-            binding.viewfinderFrame.notifyActivity()
-            saveSettings()
+            setEv(if (exposureComp <= -3) 3 else exposureComp - 1)
         }
 
         // 专业模式
@@ -532,10 +530,46 @@ class MainActivity : AppCompatActivity() {
         rv.layoutParams?.height = (resources.displayMetrics.heightPixels * 0.72f).toInt()
         dialog.behavior.skipCollapsed = true   // 直接全展开，避免半开状态看不到底部
         rv.layoutManager = LinearLayoutManager(this)
-        rv.adapter = FilmRollAdapter(FilmRollRepository.rolls) { roll ->
+        val adapter = FilmRollAdapter(FilmRollRepository.rolls) { roll ->
             selectFilmRoll(roll)
             dialog.dismiss()
         }
+        rv.adapter = adapter
+
+        // 长按拖拽排序：把常用的胶卷拖到列表顶部，方便下次切换。
+        // 只开上下方向（拖拽标记 dragFlags=UP|DOWN，swipeFlags=0 即不支持滑动删除），
+        // 松手时统一落盘一次，避免拖动过程中反复写 SharedPreferences。
+        val touchHelper = androidx.recyclerview.widget.ItemTouchHelper(
+            object : androidx.recyclerview.widget.ItemTouchHelper.SimpleCallback(
+                androidx.recyclerview.widget.ItemTouchHelper.UP or
+                    androidx.recyclerview.widget.ItemTouchHelper.DOWN, 0
+            ) {
+                override fun onMove(
+                    recyclerView: RecyclerView,
+                    viewHolder: RecyclerView.ViewHolder,
+                    target: RecyclerView.ViewHolder
+                ): Boolean {
+                    adapter.moveItem(
+                        viewHolder.bindingAdapterPosition,
+                        target.bindingAdapterPosition
+                    )
+                    return true
+                }
+
+                override fun onSwiped(   viewHolder: RecyclerView.ViewHolder, direction: Int) {
+                    // 不支持滑动
+                }
+
+                override fun clearView(
+                    recyclerView: RecyclerView,
+                    viewHolder: RecyclerView.ViewHolder
+                ) {
+                    super.clearView(recyclerView, viewHolder)
+                    FilmRollRepository.persist(this@MainActivity)
+                }
+            }
+        )
+        touchHelper.attachToRecyclerView(rv)
 
         dialog.show()
     }
@@ -565,14 +599,8 @@ class MainActivity : AppCompatActivity() {
 
     /** 曝光补偿键：-3 → +3 循环 */
     private fun cycleEvValue() {
-        exposureComp += 1
-        if (exposureComp > 3) exposureComp = -3
-        applyExposure()
-        updateLcd()
-        binding.viewfinderFrame.notifyActivity()
-        // 点亮取景器内的同步 ± 补偿指示（否则停手 8 秒熄灭后按 EV 键看不到）
-        binding.viewfinderFrame.notifyActivity()
-        saveSettings()
+        // 统一入口：原先这里漏了 tvEvValue 的同步（按 EV 键按钮旁数字不变）
+        setEv(if (exposureComp >= 3) -3 else exposureComp + 1)
     }
 
     // ===== 曝光补偿反馈 =====
@@ -608,6 +636,26 @@ class MainActivity : AppCompatActivity() {
                 cameraController?.setExposureComp(exposureComp)
             }
         } catch (_: Exception) {}
+    }
+
+    /**
+     * 曝光补偿的唯一入口。
+     *
+     * 历史 bug：原来有四条改 EV 的路径（上下滑 / EV+ 按钮 / EV- 按钮 / 顶部 EV 键），
+     * 每条只更新一部分显示，且只有顶部 EV 键走 applyExposure()——而 applyExposure
+     * 里包含「外置闪光灯改手动 ISO + 慢快门」的分支。结果是：开了外置闪光用滑动或
+     * 按钮改 EV 时，LCD 数字变了、实际曝光参数却没变，表现为「EV 对不上」。
+     * 现在四条路径统一走这里，保证：值 → 按钮数字 → LCD → 取景器 → 相机参数全同步。
+     *
+     * @param persist 滑动过程中传 false，避免每变一档就写 SharedPreferences。
+     */
+    private fun setEv(value: Int, persist: Boolean = true) {
+        exposureComp = value.coerceIn(-3, 3)
+        binding.tvEvValue.text = exposureComp.toString()
+        applyExposure()                        // 内含外置闪光的 ISO/快门映射
+        updateLcd()                            // 机顶 LCD 的 EV 读数
+        binding.viewfinderFrame.notifyActivity()
+        if (persist) saveSettings()
     }
 
     /** 回卷键：活动卷有未冲洗帧时拦截 */

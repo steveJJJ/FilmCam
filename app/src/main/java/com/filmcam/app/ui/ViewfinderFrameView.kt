@@ -56,6 +56,8 @@ class ViewfinderFrameView @JvmOverloads constructor(
     private val brightPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeWidth = stroke
+        strokeCap = Paint.Cap.ROUND
+        strokeJoin = Paint.Join.ROUND
         color = 0xCCFFFFFF.toInt()
     }
 
@@ -63,6 +65,8 @@ class ViewfinderFrameView @JvmOverloads constructor(
     private val parallaxPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeWidth = stroke * 0.85f
+        strokeCap = Paint.Cap.ROUND
+        strokeJoin = Paint.Join.ROUND
         color = 0x99FFFFFF.toInt()
     }
 
@@ -302,17 +306,68 @@ class ViewfinderFrameView @JvmOverloads constructor(
         }
     }
 
-    /** 在四角画直角括号（l/t/r/b 为角标外沿矩形，len 为横向边长，竖向略长） */
+    /**
+     * 四角括号。原先用两条 drawLine 交成直角，交角处会出现可见的拼接/锯齿痕迹；
+     * 改为单笔 Path + 圆弧拐角（arcTo），配合 ROUND 的 strokeCap/strokeJoin，
+     * 线条首尾也都收圆，整体更像玻璃上的刻线。
+     */
     private fun drawBrackets(canvas: Canvas, l: Float, t: Float, r: Float, b: Float, len: Float, p: Paint) {
         val vLen = len * 1.4f
-        canvas.drawLine(l, t, l + len, t, p)
-        canvas.drawLine(l, t, l, t + vLen, p)
-        canvas.drawLine(r - len, t, r, t, p)
-        canvas.drawLine(r, t, r, t + vLen, p)
-        canvas.drawLine(l, b, l + len, b, p)
-        canvas.drawLine(l, b - vLen, l, b, p)
-        canvas.drawLine(r - len, b, r, b, p)
-        canvas.drawLine(r, b - vLen, r, b, p)
+        // 圆角半径取三者最小，避免超过横/竖边长度导致圆弧溢出偏转 90°
+        val rr = minOf(stroke * 1.5f, len * 0.25f, vLen * 0.25f)
+
+        // 左上：竖线下端 → 上行到接近拐角 → 圆弧 → 横线右行
+        val tl = android.graphics.Path().apply {
+            moveTo(l, t + vLen)
+            lineTo(l, t + rr)
+            arcTo(RectF(l, t, l + 2 * rr, t + 2 * rr), 180f, 90f, false)
+            lineTo(l + len, t)
+        }
+        // 右上：横线右行 → 圆弧 → 竖线下行
+        val tr = android.graphics.Path().apply {
+            moveTo(r - len, t)
+            lineTo(r - rr, t)
+            arcTo(RectF(r - 2 * rr, t, r, t + 2 * rr), 270f, 90f, false)
+            lineTo(r, t + vLen)
+        }
+        // 左下：横线左行 → 圆弧 → 竖线上行
+        val bl = android.graphics.Path().apply {
+            moveTo(l + len, b)
+            lineTo(l + rr, b)
+            arcTo(RectF(l, b - 2 * rr, l + 2 * rr, b), 90f, 90f, false)
+            lineTo(l, b - vLen)
+        }
+        // 右下：竖线上端下行 → 圆弧 → 横线左行
+        val br = android.graphics.Path().apply {
+            moveTo(r, b - vLen)
+            lineTo(r, b - rr)
+            arcTo(RectF(r - 2 * rr, b - 2 * rr, r, b), 0f, 90f, false)
+            lineTo(r - len, b)
+        }
+
+        canvas.drawPath(tl, p)
+        canvas.drawPath(tr, p)
+        canvas.drawPath(bl, p)
+        canvas.drawPath(br, p)
+    }
+
+    /**
+     * 预览内容矩形——即实际有画面的区域（letterbox 黑边之外），
+     * 公式与 onDraw 内、以及 LutGLSurfaceView 的 shader 几何完全一致。
+     *
+     * 供 MainActivity 的触摸判定复用：落在黑边上的点按不应触发对焦。
+     * ViewfinderFrameView 与 glSurfaceView 同为 match_parent 且完全重叠，
+     * 因此返回的坐标可直接与 MotionEvent.x/y（相对 glSurfaceView）比较。
+     */
+    fun contentRect(): RectF {
+        val w = width.toFloat()
+        val h = height.toFloat()
+        if (w <= 0f || h <= 0f) return RectF()
+        val screenAspect = w / h
+        val s = screenAspect / CONTENT_ASPECT
+        val contentTop = (0.5f - s * (0.5f - PREVIEW_OFFSET_Y)) * h
+        val contentBottom = (0.5f + s * (0.5f + PREVIEW_OFFSET_Y)) * h
+        return RectF(0f, contentTop.coerceIn(0f, h), w, contentBottom.coerceIn(0f, h))
     }
 
     companion object {
