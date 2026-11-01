@@ -1065,6 +1065,14 @@ class MainActivity : AppCompatActivity() {
      * 灯上物理按键通过 HID 模拟 Volume Down，会落到这里。
      */
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+        // 调试用：连按 3 次音量上键循环切换横屏预览采样映射（0=原始 1=180 2=顺时针 3=逆时针）
+        if (keyCode == KeyEvent.KEYCODE_VOLUME_UP && DEBUG_ROTATE_TEST) {
+            val next = (binding.glSurfaceView.debugRotateOverride + 1) % 4
+            binding.glSurfaceView.debugRotateOverride = next
+            android.widget.Toast.makeText(this, "预览映射测试: $next", android.widget.Toast.LENGTH_SHORT).show()
+            android.util.Log.i("RotateTest", "override=$next")
+            return true
+        }
         if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN || keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
             triggerShutter()
             return true
@@ -1266,5 +1274,7 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         private const val REQ_CODE = 1001
+        /** 临时调试：允许音量上键循环切换横屏预览采样映射（默认关闭，避免抢快门） */
+        private const val DEBUG_ROTATE_TEST = false
     }
 }

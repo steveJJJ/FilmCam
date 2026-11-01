@@ -1,17 +1,16 @@
-import javax.imageio.ImageIO; import java.io.*; import java.awt.image.BufferedImage;
+import java.awt.image.BufferedImage; import java.io.File; import javax.imageio.ImageIO;
+/** 扫描截图里非黑（有画面）区域的精确边界 */
 public class Scan {
-  public static void main(String[] a) throws Exception {
-    BufferedImage im = ImageIO.read(new File("main_screen.png"));
-    int w=im.getWidth(), h=im.getHeight();
-    int minY=Integer.MAX_VALUE,maxY=-1,minX=Integer.MAX_VALUE,maxX=-1;
-    // silver: light warm gray; copper: reddish
-    for(int y=0;y<h/2;y++)for(int x=0;x<w;x++){
-      int c=im.getRGB(x,y); int r=(c>>16)&255,g=(c>>8)&255,b=c&255;
-      boolean silver = r>150&&g>140&&b>120&&Math.abs(r-g)<40&&r-b>15&&r-b<90;
-      boolean copper = r>120&&r<200&&g>50&&g<110&&b<90&&r-g>50;
-      if(silver||copper){ if(y<minY)minY=y; if(y>maxY)maxY=y; if(x<minX)minX=x; if(x>maxX)maxX=x; }
+    public static void main(String[] a) throws Exception {
+        BufferedImage im = ImageIO.read(new File(a[0]));
+        int row = Integer.parseInt(a[1]), col = Integer.parseInt(a[2]);
+        int l=-1,r=-1,t=-1,b=-1;
+        for (int x=0;x<im.getWidth();x++){int c=im.getRGB(x,row); if(lum(c)>12){if(l<0)l=x; r=x;}}
+        for (int y=0;y<im.getHeight();y++){int c=im.getRGB(col,y); if(lum(c)>12){if(t<0)t=y; b=y;}}
+        System.out.println("image="+im.getWidth()+"x"+im.getHeight());
+        System.out.println("row y="+row+" : non-black x from "+l+" to "+r+"  width="+(r-l+1));
+        System.out.println("col x="+col+" : non-black y from "+t+" to "+b+"  height="+(b-t+1));
+        if (r>l && b>t) System.out.printf("aspect=%.3f%n", (r-l+1.0)/(b-t+1.0));
     }
-    System.out.printf("screen %dx%d  wordmark bbox x[%d..%d] y[%d..%d] centerX=%.0f (screen center=%d)%n",
-      w,h,minX,maxX,minY,maxY,(minX+maxX)/2.0,w/2);
-  }
+    static double lum(int c){return 0.299*((c>>16)&0xFF)+0.587*((c>>8)&0xFF)+0.114*(c&0xFF);}
 }

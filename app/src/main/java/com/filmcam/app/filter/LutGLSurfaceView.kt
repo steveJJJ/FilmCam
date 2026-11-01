@@ -35,6 +35,10 @@ class LutGLSurfaceView @JvmOverloads constructor(
     /** CameraX 就绪后回调，把 SurfaceTexture 交给 CameraX 输出帧 */
     var onSurfaceTextureReady: ((SurfaceTexture) -> Unit)? = null
 
+    /** 调试开关：-1 = 按设备旋转自动选映射；0..3 = 强制 0原始/1旋转180/2顺时针90/3逆时针90 */
+    var debugRotateOverride: Int = -1
+        set(value) { field = value; android.util.Log.i("RotateTest", "override set $value") }
+
     private var renderer: LutRenderer? = null
 
     init {
@@ -127,18 +131,17 @@ class LutGLSurfaceView @JvmOverloads constructor(
                 Log.i("LutRenderer", "frame#$loggedFrames texMatrix=${texMatrix.joinToString(",") { "%.3f".format(it) }}")
                 diagAppend("frame#$loggedFrames texMatrix=${texMatrix.joinToString(",") { "%.3f".format(it) }}")
             }
-            // 该机型（三星 HAL）交付的预览缓冲内容固定为"竖向朝向"（与竖屏显示一致），
-            // 且 SurfaceTexture 变换矩阵在部分会话里是单位阵（不补偿旋转）。
-            // 因此横屏时按设备旋转方向在 shader 里做 90° 预旋转：
-            //   ROTATION_90（机身左倒）→ 采样旋转一档；ROTATION_270（右倒）→ 反向一档。
-            // 竖屏保持原有 texMatrix 路径不变（竖屏一直正常）。
-            val quarter = when (this@LutGLSurfaceView.display?.rotation) {
+            // 竖屏走 SurfaceTexture 变换矩阵（模式 0，一直正常）；
+            // 横屏这台机器拿到的是单位阵（缺 V 翻转），自己补上：
+            //   ROTATION_90 → 模式 1；ROTATION_270 → 模式 2（同一画面转 180°）。
+            val mode = if (debugRotateOverride >= 0) (1 + (debugRotateOverride % 2)).toFloat()
+            else when (this@LutGLSurfaceView.display?.rotation) {
                 android.view.Surface.ROTATION_90 -> 1f
-                android.view.Surface.ROTATION_270 -> 3f
+                android.view.Surface.ROTATION_270 -> 2f
                 else -> 0f
             }
             renderTo(surfaceWidth, surfaceHeight, offsetY = ViewfinderFrameView.PREVIEW_OFFSET_Y,
-                quarter = quarter)
+                mode = mode)
         }
 
         /** 在指定分辨率下渲染一帧。
@@ -146,7 +149,7 @@ class LutGLSurfaceView @JvmOverloads constructor(
          *  （Adreno/麒麟）会因 sampler3D 无有效绑定直接让整次 draw 失败（黑屏），
          *  模拟器软件渲染则不受影响。胶片调色已完全移交 Vulkan 冲洗引擎，
          *  取景器侧保持直通，不再保留任何后处理分支。 */
-        fun renderTo(viewW: Int, viewH: Int, offsetY: Float = 0f, quarter: Float = 0f) {
+        fun renderTo(viewW: Int, viewH: Int, offsetY: Float = 0f, mode: Float = 0f) {
             val st = surfaceTexture ?: return
             GLES30.glViewport(0, 0, viewW, viewH)
             GLES30.glUseProgram(program)
@@ -171,7 +174,7 @@ class LutGLSurfaceView @JvmOverloads constructor(
             GLES30.glUniform1f(GLES30.glGetUniformLocation(program, "uFitHeight"),
                 if (screenAspect > contentAspect) 1f else 0f)
             GLES30.glUniform1f(GLES30.glGetUniformLocation(program, "uOffsetY"), offsetY)
-            GLES30.glUniform1f(GLES30.glGetUniformLocation(program, "uQuarter"), quarter)
+            GLES30.glUniform1f(GLES30.glGetUniformLocation(program, "uMode"), mode)
 
             vertexBuffer.position(0)
             val posLoc = GLES30.glGetAttribLocation(program, "aPosition")
@@ -243,7 +246,7 @@ class LutGLSurfaceView @JvmOverloads constructor(
         uniform float uContentAspect;
         uniform float uFitHeight;
         uniform float uOffsetY;
-        uniform float uQuarter;
+        uniform float uMode;
         in vec2 vTexCoord;
         out vec4 fragColor;
 
@@ -266,15 +269,19 @@ class LutGLSurfaceView @JvmOverloads constructor(
                 return;
             }
 
-            // 竖屏走 SurfaceTexture 变换矩阵（竖屏一直正常）；
-            // 横屏时 HAL 交付的是竖向内容缓冲，按设备旋转方向预旋转 90° 采样
+            // 采样映射 uMode：
+            //   0 = 竖屏：走 SurfaceTexture 变换矩阵（竖屏一直正常）
+            //   1 = 横屏（ROTATION_90）：只做标准 V 翻转，不旋转
+            //   2 = 横屏（ROTATION_270）：V 翻转 + 180
+            // 该机型（三星 HAL）在横屏会话里给出的变换矩阵是单位阵，缺了标准的
+            // V 翻转 —— 只补旋转会得到「方向对但左右反」的画面，必须自己补翻转。
             vec2 uv;
-            if (uQuarter > 2.5) {
-                uv = vec2(texY, 1.0 - texX);
-            } else if (uQuarter > 0.5) {
-                uv = vec2(1.0 - texY, texX);
-            } else {
+            if (uMode < 0.5) {
                 uv = (uTexMatrix * vec4(texX, texY, 0.0, 1.0)).xy;
+            } else if (uMode < 1.5) {
+                uv = vec2(texX, 1.0 - texY);
+            } else {
+                uv = vec2(1.0 - texX, texY);
             }
             fragColor = texture(uTexture, uv);
         }
