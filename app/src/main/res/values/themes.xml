@@ -13,6 +13,15 @@
         <item name="colorOnSurfaceVariant">#9A9A9E</item>
     </style>
 
+    <!-- 钛银机身下的弹窗：面板跟着机身走，钛面 + 蚀刻深字（真机机身上的字是凹刻的深色） -->
+    <style name="TitanDialog" parent="ThemeOverlay.MaterialComponents.Dialog.Alert">
+        <item name="colorSurface">#C3C7CC</item>
+        <item name="android:colorBackground">#C3C7CC</item>
+        <item name="colorPrimary">#8B1A1A</item>
+        <item name="colorOnSurface">#2E3136</item>
+        <item name="colorOnSurfaceVariant">#5C6066</item>
+    </style>
+
     <!-- 成片信息面板：分组标题 -->
     <style name="InfoGroupTitle">
         <item name="android:layout_width">match_parent</item>

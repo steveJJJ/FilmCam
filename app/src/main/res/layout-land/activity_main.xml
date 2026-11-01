@@ -68,6 +68,7 @@
         <!-- 曝光补偿键：T3 机顶 ± 按钮样式 -->
         <TextView
             android:id="@+id/evKey"
+            android:tag="keepTextColor"
             android:layout_width="48dp"
             android:layout_height="48dp"
             android:layout_marginTop="14dp"
@@ -118,6 +119,7 @@
         <!-- 上：暗房（未冲洗卷 + 已冲洗成片） -->
         <TextView
             android:id="@+id/btnGallery"
+            android:tag="keepTextColor"
             android:layout_width="56dp"
             android:layout_height="56dp"
             android:gravity="center"

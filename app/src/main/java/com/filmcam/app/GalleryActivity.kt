@@ -49,6 +49,14 @@ class GalleryActivity : AppCompatActivity() {
         val spanCount = (dm.widthPixels / minItemPx).coerceIn(3, 6)
         rvGallery.layoutManager = GridLayoutManager(this, spanCount)
         rvUndeveloped.layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
+
+        // 机身配色（黑钛 / 钛银）：相册不是机身，但跟着整机配色走，
+        // 免得从银色机身一点进相册又变回全黑，割裂。
+        com.filmcam.app.ui.BodyTheme.load(this)
+        val root = findViewById<View>(android.R.id.content)
+        com.filmcam.app.ui.BodyTheme.applyToViewTree(root)
+        root.setBackgroundColor(com.filmcam.app.ui.BodyTheme.bodyColor)
+        com.filmcam.app.ui.BodyTheme.applySystemBars(window)
     }
 
     override fun onResume() {

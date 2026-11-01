@@ -142,6 +142,9 @@ class MainActivity : AppCompatActivity() {
         FilmRollRepository.restore(this)
         // 恢复上次退出时保存的设置
         restoreSettings()
+        // 机身配色（黑钛 / 钛银）要在所有控件建好之后再刷一次，
+        // 这样从别的页面回来、或横竖屏重建时都能拿到当前档位。
+        applyBodyTheme()
 
         // 首次进入引导（只弹一次）
         binding.glSurfaceView.postDelayed({ maybeShowFirstRunGuide() }, 500)
@@ -398,6 +401,7 @@ class MainActivity : AppCompatActivity() {
         softFocusProb = prefs.getInt("softFocus_prob", if (softFocusEnabled) 40 else 0)
         filmRollMode = prefs.getBoolean("filmRollMode", false)
         hapticLevel = prefs.getInt("hapticLevel", 1).coerceIn(0, 2)
+        com.filmcam.app.ui.BodyTheme.load(this)
         // 旧 filmCount 键仅作迁移保留读取，不再作为权威（张数一律读 UndevelopedFilmStore.shotCount）
         @Suppress("UNUSED_VARIABLE") val legacyFilmCount = prefs.getInt("filmCount", 0)
         debugInstantDevelop = prefs.getBoolean("debug_instant_develop", false)
@@ -451,9 +455,29 @@ class MainActivity : AppCompatActivity() {
         return this
     }
 
+    /**
+     * 机身配色落地：换的是「机身外壳」，不是按键和取景画面。
+     * 真机银色版同样是黑色蓝宝石快门钮 + 黑色机身键 + 深色液晶窗口，
+     * 所以这里只刷外壳底色、机身上蚀刻的文字/铭牌色、过卷遮罩与系统栏。
+     */
+    private fun applyBodyTheme() {
+        val theme = com.filmcam.app.ui.BodyTheme
+        // 先按底色把整棵树里的文字/面板刷一遍，最后再盖机身外壳
+        // （外壳在钛银档是拉丝纹理，不是纯色，所以要在重映射之后单独设）
+        theme.applyToViewTree(binding.root)
+        binding.root.background = theme.bodyBackground()
+        binding.developingOverlay.setBackgroundColor(theme.overlayColor)
+        binding.tvDevelopingText.setTextColor(theme.onBodyText)
+        binding.brandLogo.setImageResource(
+            if (theme.isTitan) R.drawable.ic_t3_logo_ink else R.drawable.ic_t3_logo
+        )
+        theme.applySystemBars(window)
+    }
+
     /** 设置弹窗：只留普通用户项；调试与模拟失焦收进「关于页 → 版本号连点 10 次」的工程师模式 */
     private fun showSettings() {
         val items = arrayOf(
+            "机身: ${com.filmcam.app.ui.BodyTheme.name()}",
             "日期水印: ${if (dateStampEnabled) "开" else "关"}",
             "震动强度: ${HAPTIC_LEVEL_NAMES[hapticLevel.coerceIn(0, 2)]}",
             "冲洗参数: 颗粒/辉光/眩光",
@@ -461,7 +485,7 @@ class MainActivity : AppCompatActivity() {
         )
         // 弹窗刚关闭的一瞬间，抬手事件会穿透到取景器被当成点屏对焦 → 短暂屏蔽触摸
         suppressTouchUntil = SystemClock.uptimeMillis() + DIALOG_TOUCH_GUARD_MS
-        val dialog = androidx.appcompat.app.AlertDialog.Builder(this, R.style.DarkDialog)
+        val dialog = androidx.appcompat.app.AlertDialog.Builder(this, com.filmcam.app.ui.BodyTheme.dialogTheme)
             .setTitle("设置")
             .setItems(items) { _, which -> onSettingsItem(which) }
             .setNegativeButton("关闭", null)
@@ -475,17 +499,26 @@ class MainActivity : AppCompatActivity() {
             dialog.listView?.setOnItemClickListener { _, _, which, _ ->
                 when (which) {
                     0 -> {
-                        dateStampEnabled = !dateStampEnabled
-                        saveSettings()
-                        items[0] = "日期水印: ${if (dateStampEnabled) "开" else "关"}"
+                        // 机身配色：就地切换并立刻刷一遍机身，弹窗本身不重建
+                        // （重建会留出「弹窗消失的那几帧」，那正是触摸漏到取景器的窗口）。
+                        // 弹窗自己的配色等下次打开时才跟着换。
+                        items[0] = "机身: ${com.filmcam.app.ui.BodyTheme.cycle(this@MainActivity)}"
                         (dialog.listView?.adapter as? android.widget.BaseAdapter)?.notifyDataSetChanged()
+                        applyBodyTheme()
+                        vibrate(26, 175)
                     }
                     1 -> {
+                        dateStampEnabled = !dateStampEnabled
+                        saveSettings()
+                        items[1] = "日期水印: ${if (dateStampEnabled) "开" else "关"}"
+                        (dialog.listView?.adapter as? android.widget.BaseAdapter)?.notifyDataSetChanged()
+                    }
+                    2 -> {
                         // 震动强度：同样是「开关型」项，就地循环切换不关弹窗，
                         // 顺手给一记当前档位的实震，让用户当场比出差别。
                         hapticLevel = (hapticLevel + 1) % HAPTIC_LEVEL_SCALE.size
                         saveSettings()
-                        items[1] = "震动强度: ${HAPTIC_LEVEL_NAMES[hapticLevel]}"
+                        items[2] = "震动强度: ${HAPTIC_LEVEL_NAMES[hapticLevel]}"
                         (dialog.listView?.adapter as? android.widget.BaseAdapter)?.notifyDataSetChanged()
                         vibrate(26, 200)
                     }
@@ -502,14 +535,14 @@ class MainActivity : AppCompatActivity() {
     private fun onSettingsItem(which: Int) {
         suppressTouchUntil = SystemClock.uptimeMillis() + DIALOG_TOUCH_GUARD_MS
         when (which) {
-            2 -> showDevParamsDialog()
-            3 -> startActivity(android.content.Intent(this, AboutActivity::class.java))
+            3 -> showDevParamsDialog()
+            4 -> startActivity(android.content.Intent(this, AboutActivity::class.java))
         }
     }
 
     /** 胶卷拍满：引导去暗房冲洗 */
     private fun promptDevelopFullRoll() {
-        androidx.appcompat.app.AlertDialog.Builder(this, R.style.DarkDialog)
+        androidx.appcompat.app.AlertDialog.Builder(this, com.filmcam.app.ui.BodyTheme.dialogTheme)
             .setTitle("胶卷已拍完")
             .setMessage("这一卷 36 张已拍完，去暗房冲洗出片")
             .setPositiveButton("去冲洗") { _, _ ->
@@ -562,7 +595,7 @@ class MainActivity : AppCompatActivity() {
         val prefs = getSharedPreferences("filmcam", MODE_PRIVATE)
         if (prefs.getBoolean("guide_shown", false)) return
         prefs.edit().putBoolean("guide_shown", true).apply()
-        androidx.appcompat.app.AlertDialog.Builder(this, R.style.DarkDialog)
+        androidx.appcompat.app.AlertDialog.Builder(this, com.filmcam.app.ui.BodyTheme.dialogTheme)
             .setTitle("FILMCAM")
             .setMessage(
                 "像使用真实胶卷一样拍照：\n\n" +
@@ -581,6 +614,8 @@ class MainActivity : AppCompatActivity() {
         suppressTouchUntil = SystemClock.uptimeMillis() + DIALOG_TOUCH_GUARD_MS
         val prefs = getSharedPreferences("filmcam", MODE_PRIVATE)
         val view = LayoutInflater.from(this).inflate(R.layout.dialog_dev_params, null)
+        // 弹层内部的文字/面板也跟随机身配色（XML 里是深底浅字的写法）
+        com.filmcam.app.ui.BodyTheme.applyToViewTree(view)
 
         val sbGrain = view.findViewById<android.widget.SeekBar>(R.id.sbDevGrain)
         val sbHalation = view.findViewById<android.widget.SeekBar>(R.id.sbDevHalation)
@@ -649,7 +684,7 @@ class MainActivity : AppCompatActivity() {
                 items[i] = "$disp ($id)"
             }
             val checked = ids.indexOf(selRollId).coerceAtLeast(0)
-            androidx.appcompat.app.AlertDialog.Builder(this, R.style.DarkDialog)
+            androidx.appcompat.app.AlertDialog.Builder(this, com.filmcam.app.ui.BodyTheme.dialogTheme)
                 .setTitle("选择胶卷")
                 .setSingleChoiceItems(items, checked) { d, which ->
                     selRollId = ids[which] ?: ""
@@ -706,7 +741,7 @@ class MainActivity : AppCompatActivity() {
             items[0] = "自动（按胶卷默认）"
             paperOptions.forEachIndexed { i, opt -> items[i + 1] = opt.name }
             val checked = if (current.isEmpty()) 0 else (paperOptions.indexOfFirst { it.id == current } + 1).coerceAtLeast(0)
-            androidx.appcompat.app.AlertDialog.Builder(this, R.style.DarkDialog)
+            androidx.appcompat.app.AlertDialog.Builder(this, com.filmcam.app.ui.BodyTheme.dialogTheme)
                 .setTitle("相纸选择")
                 .setSingleChoiceItems(items, checked) { d, which ->
                     val id = if (which == 0) "" else paperOptions[which - 1].id
@@ -732,7 +767,7 @@ class MainActivity : AppCompatActivity() {
             syncUi()
         }
 
-        androidx.appcompat.app.AlertDialog.Builder(this, R.style.DarkDialog)
+        androidx.appcompat.app.AlertDialog.Builder(this, com.filmcam.app.ui.BodyTheme.dialogTheme)
             .setTitle("冲洗参数")
             .setView(view)
             .setPositiveButton("确定") { d, _ ->
@@ -748,6 +783,7 @@ class MainActivity : AppCompatActivity() {
     private fun showFilmRollPicker() {
         val dialog = BottomSheetDialog(this)
         val view = LayoutInflater.from(this).inflate(R.layout.bottom_sheet_film_roll, null)
+        com.filmcam.app.ui.BodyTheme.applyToViewTree(view)
         dialog.setContentView(view)
 
         val rv = view.findViewById<RecyclerView>(R.id.rvFilmRolls)

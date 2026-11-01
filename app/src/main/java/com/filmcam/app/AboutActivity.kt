@@ -38,6 +38,13 @@ class AboutActivity : AppCompatActivity() {
         bindFeedback()
         bindAppreciation()
 
+        // 跟随机身配色（黑钛 / 钛银）
+        com.filmcam.app.ui.BodyTheme.load(this)
+        val root = findViewById<View>(android.R.id.content)
+        com.filmcam.app.ui.BodyTheme.applyToViewTree(root)
+        root.setBackgroundColor(com.filmcam.app.ui.BodyTheme.bodyColor)
+        com.filmcam.app.ui.BodyTheme.applySystemBars(window)
+
         val tvVersion = findViewById<TextView>(R.id.tvVersion)
         tvVersion.text = versionText
         tvVersion.setOnClickListener {
