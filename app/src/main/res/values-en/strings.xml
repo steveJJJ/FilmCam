@@ -73,8 +73,11 @@ Memory available: %10$d MB / %11$d MB total
     <string name="set_datestamp">Date stamp</string>
     <string name="set_haptic">Haptics</string>
     <string name="set_language">Language</string>
+    <string name="set_quality">Develop quality</string>
     <string name="set_dev">Development params</string>
     <string name="set_about">About FILMCAM</string>
+    <string name="quality_full">Full</string>
+    <string name="quality_standard">Standard</string>
     <string name="lang_system">Follow system</string>
     <string name="lang_zh">简体中文</string>
     <string name="lang_en">English</string>
@@ -93,6 +96,7 @@ Memory available: %10$d MB / %11$d MB total
         <item>@string/set_datestamp</item>
         <item>@string/set_haptic</item>
         <item>@string/set_language</item>
+        <item>@string/set_quality</item>
         <item>@string/set_dev</item>
         <item>@string/set_about</item>
     </string-array>
@@ -101,6 +105,7 @@ Memory available: %10$d MB / %11$d MB total
         <item>Print the shooting date on each frame</item>
         <item>Motor strength for winding and keys</item>
         <item>Follow system / 简体中文 / English</item>
+        <item>Full = original resolution, slower; Standard ≈ 12 MP, ~3x faster</item>
         <item>Grain, halation and glare strength</item>
         <item>Nameplate and licenses</item>
     </string-array>

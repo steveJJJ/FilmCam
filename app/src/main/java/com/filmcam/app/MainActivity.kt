@@ -502,7 +502,7 @@ class MainActivity : AppCompatActivity() {
         val hints = resources.getStringArray(R.array.set_hints)
         val rows = intArrayOf(
             R.id.rowSetBody, R.id.rowSetDatestamp, R.id.rowSetHaptic,
-            R.id.rowSetLanguage, R.id.rowSetDev, R.id.rowSetAbout
+            R.id.rowSetLanguage, R.id.rowSetQuality, R.id.rowSetDev, R.id.rowSetAbout
         )
         val theme = com.filmcam.app.ui.BodyTheme
         fun row(id: Int): android.view.View = view.findViewById(id)
@@ -562,6 +562,7 @@ class MainActivity : AppCompatActivity() {
                 if (dateStampEnabled) getString(R.string.common_on) else getString(R.string.common_off)
             value(R.id.rowSetHaptic).text = hapticLevelName()
             value(R.id.rowSetLanguage).text = languageName()
+            value(R.id.rowSetQuality).text = qualityName()
             value(R.id.rowSetDev).text = ""          // 动作项没有"当前读数"
             value(R.id.rowSetAbout).text = versionLabel()
             paintPanel()
@@ -606,6 +607,12 @@ class MainActivity : AppCompatActivity() {
             dialog.dismiss()
             com.filmcam.app.ui.AppLocale.cycle(this@MainActivity)
         }
+        row(R.id.rowSetQuality).hapticClick {
+            // 冲洗画质：就地翻转（完整 ↔ 标准），面板不关。
+            // 只影响下次冲洗的成片分辨率，当前正在跑的冲洗不受影响。
+            com.filmcam.app.develop.DevQuality.cycle(this@MainActivity)
+            refreshValues()
+        }
         row(R.id.rowSetDev).hapticClick {
             dialog.dismiss()
             showDevParamsDialog()
@@ -629,6 +636,12 @@ class MainActivity : AppCompatActivity() {
         0 -> getString(R.string.haptic_low)
         1 -> getString(R.string.haptic_mid)
         else -> getString(R.string.haptic_strong)
+    }
+
+    /** 冲洗画质当前档位：完整（原始分辨率）/ 标准（约 1200 万像素，快约 3 倍） */
+    private fun qualityName(): String = when (com.filmcam.app.develop.DevQuality.load(this)) {
+        com.filmcam.app.develop.DevQuality.STANDARD -> getString(R.string.quality_standard)
+        else -> getString(R.string.quality_full)
     }
 
     /** 语言当前档位名：跟随系统 / 简体中文 / English */

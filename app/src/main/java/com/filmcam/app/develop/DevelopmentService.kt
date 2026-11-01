@@ -169,12 +169,16 @@ class DevelopmentService : Service() {
             notifyStateToMain()
 
             // 引擎能力 only once：顺便开一份诊断记录（版本、Vulkan/OpenMP 能力、机型）
-            val framePixelLimit = SpektraProcessor.framePixelLimit(applicationContext)
+            val enginePixelLimit = SpektraProcessor.framePixelLimit(applicationContext)
+            // 用户在设置里选的「冲洗画质」：标准档把进引擎的像素压到约 1200 万，
+            // 慢机（如麒麟 + 3540 万像素主摄）上单帧从 ~88s 降到 ~30s。
+            val framePixelLimit = DevQuality.framePixelCap(this, enginePixelLimit)
             DevDiagnostics.begin(
                 runCatching { app.spektralab.engine.SpektraLabEngine.buildInfo() }.getOrDefault("?"),
                 runCatching {
                     SpektraProcessor.capabilities(applicationContext).replace('\n', ' ') +
-                        " · maxFramePixels=$framePixelLimit"
+                        " · maxFramePixels=$framePixelLimit" +
+                        " · quality=${if (DevQuality.load(this@DevelopmentService) == DevQuality.STANDARD) "standard" else "full"}"
                 }.getOrDefault("?")
             )
 

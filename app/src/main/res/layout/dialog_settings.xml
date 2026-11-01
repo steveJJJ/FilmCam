@@ -137,6 +137,12 @@
                 android:background="#26262A" />
 
             <include
+                android:id="@+id/rowSetQuality"
+                layout="@layout/item_setting_row" />
+
+            <View style="@style/AboutSpecDivider" />
+
+            <include
                 android:id="@+id/rowSetDev"
                 layout="@layout/item_setting_row" />
 
