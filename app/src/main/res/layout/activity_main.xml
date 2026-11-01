@@ -225,7 +225,7 @@
             android:layout_gravity="center"
             android:orientation="vertical"
             android:gravity="center">
-            <!-- 过片动画：竖着的胶卷绕自身中轴自转（柱面透视贴图） -->
+            <!-- 过片动画：胶卷（平面）绕自身竖直中轴转动 -->
             <com.filmcam.app.ui.FilmReelView
                 android:id="@+id/ivDeveloping"
                 android:layout_width="104dp"
