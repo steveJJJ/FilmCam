@@ -1,7 +1,31 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 暗房入口底座：深灰圆角 + 细描边，与整机金属机身质感一致 -->
-<shape xmlns:android="http://schemas.android.com/apk/res/android">
-    <solid android:color="#1C1C1E" />
-    <corners android:radius="14dp" />
-    <stroke android:width="1dp" android:color="#2E2E30" />
-</shape>
+<!-- 暗房 / 胶卷底座：与按键同材质的方牌（圆角矩形）。
+     倒角比圆钮更弱 —— 圆钮是凸起的实体键，方牌是机身字牌，两者要有层次差。 -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <item>
+        <shape android:shape="rectangle">
+            <gradient
+                android:angle="270"
+                android:startColor="#4A4E55"
+                android:centerColor="#20242A"
+                android:centerY="0.18"
+                android:endColor="#2A2E34" />
+            <corners android:radius="14dp" />
+        </shape>
+    </item>
+
+    <item
+        android:left="2.5dp"
+        android:top="2.5dp"
+        android:right="2.5dp"
+        android:bottom="2.5dp">
+        <shape android:shape="rectangle">
+            <solid android:color="#1C1E22" />
+            <corners android:radius="11.5dp" />
+            <stroke
+                android:width="0.5dp"
+                android:color="#0E1013" />
+        </shape>
+    </item>
+</layer-list>

@@ -1,10 +1,32 @@
 <?xml version="1.0" encoding="utf-8"?>
-<shape xmlns:android="http://schemas.android.com/apk/res/android"
-    android:shape="oval">
-    <gradient
-        android:startColor="#F7F7FA"
-        android:centerColor="#C6C6CC"
-        android:endColor="#8A8A94"
-        android:angle="315" />
-    <stroke android:width="1.5dp" android:color="#5A5A64" />
-</shape>
+<!-- 快门钮：哑光黑盘面 + 极克制的抛光外圈（黑色 T3 实机按键的观感）
+     外圈只用一条自上而下的暗钛灰渐变做出「金属倒角」，顶部留一点弱反光，
+     其余几乎不反光；盘面是纯哑光黑，不带任何高光。 -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- 外圈（抛光倒角）：顶部微亮 → 迅速收暗 → 底部一线极弱的反射 -->
+    <item>
+        <shape android:shape="oval">
+            <gradient
+                android:angle="270"
+                android:startColor="#565A61"
+                android:centerColor="#22262B"
+                android:centerY="0.18"
+                android:endColor="#30343A" />
+        </shape>
+    </item>
+
+    <!-- 哑光黑盘面：内缩露出外圈，边缘一道近黑细线把盘面与外圈分开 -->
+    <item
+        android:left="4.5dp"
+        android:top="4.5dp"
+        android:right="4.5dp"
+        android:bottom="4.5dp">
+        <shape android:shape="oval">
+            <solid android:color="#1F2125" />
+            <stroke
+                android:width="0.6dp"
+                android:color="#0E1013" />
+        </shape>
+    </item>
+</layer-list>

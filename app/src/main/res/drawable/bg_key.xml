@@ -1,10 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
-<shape xmlns:android="http://schemas.android.com/apk/res/android"
-    android:shape="oval">
-    <gradient
-        android:startColor="#FFFFFF"
-        android:centerColor="#C7C7CF"
-        android:endColor="#9D9DA6"
-        android:angle="160" />
-    <stroke android:width="1.5dp" android:color="#6E6E78" />
-</shape>
+<!-- 机顶功能键（闪光 / ± / 设置）：与快门钮同一材质，尺寸小一圈 -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <item>
+        <shape android:shape="oval">
+            <gradient
+                android:angle="270"
+                android:startColor="#565A61"
+                android:centerColor="#22262B"
+                android:centerY="0.18"
+                android:endColor="#30343A" />
+        </shape>
+    </item>
+
+    <item
+        android:left="3dp"
+        android:top="3dp"
+        android:right="3dp"
+        android:bottom="3dp">
+        <shape android:shape="oval">
+            <solid android:color="#1F2125" />
+            <stroke
+                android:width="0.5dp"
+                android:color="#0E1013" />
+        </shape>
+    </item>
+</layer-list>

@@ -72,7 +72,7 @@
             android:layout_height="48dp"
             android:layout_marginTop="14dp"
             android:text="+/-"
-            android:textColor="#2A2A30"
+            android:textColor="#DCDCE0"
             android:textSize="13sp"
             android:textStyle="bold"
             android:gravity="center"
