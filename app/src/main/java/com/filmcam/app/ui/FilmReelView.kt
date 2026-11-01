@@ -6,6 +6,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Paint
+import android.graphics.RectF
 import android.graphics.Shader
 import android.os.Build
 import android.util.AttributeSet
@@ -13,13 +14,11 @@ import android.view.View
 import android.view.animation.LinearInterpolator
 import kotlin.math.abs
 import kotlin.math.min
-import kotlin.math.sin
 
 /**
- * 过卷动画：**胶卷固定在正中，封面画面像水波一样从左向右流动**——
- * 图标不位移、不旋转；用 drawBitmapMesh 把封面按列做正弦剪切波，
- * 波形随时间向右传播，看起来整个画面在不停流动（转动感）。
- * 速度为 0 时波幅归零，画面就是静止原图。
+ * 过卷动画：**胶卷一直往前走，走出画面就从后面接上，循环不停**——
+ * 动画区只有一个胶卷大小的小窗口，胶卷以原样（不旋转不缩放）匀速向前（向右）通过，
+ * 走出右缘立刻从左缘重新进场，永远只有一个胶卷在走；身后带残影和轻模糊。
  */
 class FilmReelView @JvmOverloads constructor(
     context: Context,
@@ -27,18 +26,16 @@ class FilmReelView @JvmOverloads constructor(
 ) : View(context, attrs) {
 
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+    private val dstRect = RectF()
 
     private var icon: Bitmap? = null
 
-    /** 累计流动量，单位＝图标宽（波形传播距离） */
+    /** 累计进度，单位＝周期（1.0 = 胶卷走完一趟并回到起点） */
     private var flow = 0f
-    private var laps = 0f   // 每秒流动几个图标宽
+    private var laps = 0f   // 每秒走几趟
 
     private var animator: ValueAnimator? = null
     private var lastFrameMs = 0L
-
-    private val meshCols = 28
-    private val verts = FloatArray((meshCols + 1) * 2 * 2)
 
     override fun onDraw(canvas: Canvas) {
         val b = icon
@@ -46,30 +43,35 @@ class FilmReelView @JvmOverloads constructor(
         val h = height.toFloat()
         if (b == null || w <= 4f || h <= 4f) return
 
-        // 胶卷本体：固定在正中，永不位移、不旋转
-        val size = min(w, h) * 0.72f
+        // 一个胶卷标准大小，放进这个小窗口
+        val size = min(w, h) * 0.78f
         val s = min(size / b.width.toFloat(), size / b.height.toFloat())
         val fw = b.width * s
         val fh = b.height * s
-        val left = (w - fw) / 2f
         val top = (h - fh) / 2f
 
-        // 波幅随速度增大：流得越快波动越明显
-        val amp = (fh * 0.055f * (abs(laps) / 1f)).coerceAtMost(fh * 0.10f)
-        val waves = 1.6f   // 一个图标宽度里放的波数
+        // 一趟 = 窗口宽 + 胶卷宽：走出右缘的瞬间正好从左缘重新进场，
+        // 既不会同时出现两个，也不会出现空档。
+        val period = w + fw
+        val x = -fw + (flow % 1f) * period
 
-        var idx = 0
-        for (row in 0..1) {
-            val yBase = top + row * fh
-            for (col in 0..meshCols) {
-                val x = left + col * fw / meshCols
-                val phase = ((x - left) / fw - flow) * waves * 2.0 * Math.PI
-                val dy = (sin(phase) * amp).toFloat()
-                verts[idx++] = x
-                verts[idx++] = yBase + dy
-            }
-        }
-        canvas.drawBitmapMesh(b, meshCols, 1, verts, 0, null, 0, paint)
+        // 进出场淡入淡出，避免边缘生硬
+        val fadeIn = ((x + fw) / (fw * 0.55f)).coerceIn(0.25f, 1f)
+        val fadeOut = ((w - x) / (fw * 0.55f)).coerceIn(0.25f, 1f)
+        val fade = min(fadeIn, fadeOut)
+
+        // 身后的残影（运动感）
+        val trail = fw * 0.30f
+        paint.alpha = (38 * fade).toInt()
+        dstRect.set(x - trail * 0.65f, top, x - trail * 0.65f + fw, top + fh)
+        canvas.drawBitmap(b, null, dstRect, paint)
+        paint.alpha = (72 * fade).toInt()
+        dstRect.set(x - trail * 0.32f, top, x - trail * 0.32f + fw, top + fh)
+        canvas.drawBitmap(b, null, dstRect, paint)
+
+        paint.alpha = (255 * fade).toInt()
+        dstRect.set(x, top, x + fw, top + fh)
+        canvas.drawBitmap(b, null, dstRect, paint)
     }
 
     fun setIcon(resId: Int) {
@@ -82,12 +84,12 @@ class FilmReelView @JvmOverloads constructor(
     }
 
     /**
-     * 开始过片。@param lapsPerSecond 波形每秒传播几个图标宽（1.0 = 一卷/秒）。
+     * 开始过片。@param lapsPerSecond 每秒走几趟（1.0 = 一秒走完一个来回）。
      */
     fun startSpinning(lapsPerSecond: Float) {
         stopSpinning()
         laps = lapsPerSecond
-        applyBlur((abs(lapsPerSecond) * 0.8f).coerceIn(0f, 1.8f))
+        applyBlur((abs(lapsPerSecond) * 0.7f).coerceIn(0f, 2f))
         lastFrameMs = 0L
         animator = ValueAnimator.ofFloat(0f, 1f).apply {
             duration = 4000L
@@ -98,7 +100,7 @@ class FilmReelView @JvmOverloads constructor(
                 if (lastFrameMs == 0L) lastFrameMs = now
                 val dt = ((now - lastFrameMs) / 1000f).coerceIn(0f, 0.1f)
                 lastFrameMs = now
-                flow = (flow + lapsPerSecond * dt) % 10f
+                flow = (flow + lapsPerSecond * dt) % 1f
                 invalidate()
             }
             start()
