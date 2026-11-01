@@ -401,6 +401,20 @@ class AboutActivity : AppCompatActivity() {
             override fun onStopTrackingTouch(sb: SeekBar?) {}
         })
 
+        // 冲洗耗时诊断：换机器后第一件事是看看时间花在哪一段，点一下复制走
+        val tvDiag = view.findViewById<TextView>(R.id.tvDiag)
+        val diagText = com.filmcam.app.develop.DevDiagnostics.summary(this)
+        if (diagText.isBlank()) {
+            tvDiag.text = getString(R.string.hidden_diag_none)
+        } else {
+            tvDiag.text = diagText
+            tvDiag.setOnClickListener {
+                (getSystemService(android.content.Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager)
+                    ?.setPrimaryClip(android.content.ClipData.newPlainText("dev-diag", diagText))
+                Toast.makeText(this, R.string.hidden_diag_copied, Toast.LENGTH_SHORT).show()
+            }
+        }
+
         androidx.appcompat.app.AlertDialog.Builder(this, com.filmcam.app.ui.BodyTheme.dialogTheme)
             .setTitle(R.string.hidden_title)
             .setView(view)

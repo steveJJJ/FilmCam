@@ -168,6 +168,16 @@ class DevelopmentService : Service() {
             DevelopmentState.phase = DevelopmentState.PHASE_DEVELOPING
             notifyStateToMain()
 
+            // 引擎能力 only once：顺便开一份诊断记录（版本、Vulkan/OpenMP 能力、机型）
+            val framePixelLimit = SpektraProcessor.framePixelLimit(applicationContext)
+            DevDiagnostics.begin(
+                runCatching { app.spektralab.engine.SpektraLabEngine.buildInfo() }.getOrDefault("?"),
+                runCatching {
+                    SpektraProcessor.capabilities(applicationContext).replace('\n', ' ') +
+                        " · maxFramePixels=$framePixelLimit"
+                }.getOrDefault("?")
+            )
+
             // 冲洗开始时读一次设置；帧循环内不做动态重发（grain/halation/glare 是普通参数字段）
             val devSettings = FilmStockMapper.readDevSettings(this, roll.filmStockId)
             // 旧记录可能存了空相纸 id：冲洗时兜底到合法占位（反转片 scan_film 模式下不参与成像）
@@ -204,7 +214,7 @@ class DevelopmentService : Service() {
 
                 val frameStart = android.os.SystemClock.elapsedRealtime()
                 try {
-                    processOneFrame(roll, index, paramsJson, filmDisplayName, tmpJpeg)
+                    processOneFrame(roll, index, paramsJson, filmDisplayName, tmpJpeg, framePixelLimit)
                     DevelopmentState.done = index
                     // 单帧耗时走 EMA（0.7/0.3）：首帧含引擎预热偏慢，直接整体平均会把
                     // 预估拉得很长，EMA 让它几帧之内收敛到稳态速度。
@@ -245,6 +255,16 @@ class DevelopmentService : Service() {
                 DevelopmentState.phase = DevelopmentState.PHASE_DONE
                 nm.notify(NOTIF_ID, buildDoneNotification(roll))
             }
+            // 整卷跑完：把这一次的分段耗时归档，供「关于 → 工程师模式」查看/复制
+            DevDiagnostics.save(applicationContext)
+            Log.i(TAG, "冲洗诊断（本次）: frames=${DevDiagnostics.frames} " +
+                "avg=${DevDiagnostics.avgMs}ms max=${DevDiagnostics.maxMs}ms " +
+                "decode=${DevDiagnostics.decodeMs / DevDiagnostics.frames.coerceAtLeast(1)}ms " +
+                "engine=${DevDiagnostics.engineMs / DevDiagnostics.frames.coerceAtLeast(1)}ms " +
+                "write=${DevDiagnostics.ioMs / DevDiagnostics.frames.coerceAtLeast(1)}ms " +
+                "in=${DevDiagnostics.inW}x${DevDiagnostics.inH} " +
+                "out=${DevDiagnostics.outW}x${DevDiagnostics.outH} " +
+                "caps=${DevDiagnostics.caps}")
             notifyStateToMain()
             stopSelf(currentStartId)
         } catch (e: Throwable) {
@@ -268,14 +288,46 @@ class DevelopmentService : Service() {
         if (seconds < 60) getString(R.string.dev_eta_sec, seconds)
         else getString(R.string.dev_eta_min, seconds / 60, seconds % 60)
 
+    /**
+     * 解码前算一下 inSampleSize。
+     *
+     * 摄像头给的最大 JPEG 可能远大于引擎能吃的上限（50MP 输入 vs 12MP 上限）：
+     * 先全尺寸解码、再交给 processFrame 内部缩放，等于把解码、像素转换、旋转
+     * 三段的时间都按 4 倍白白烧掉一遍 —— 慢机上这一趟就是几十秒。
+     * 这里只在 bounds 阶段看一眼尺寸，按 2 的幂降采样到「略高于上限」，
+     * 后面 processFrame 里的精确缩放照旧，最终输出分辨率完全一样。
+     */
+    private fun computeSampleSize(w: Int, h: Int, maxPx: Int): Int {
+        if (maxPx <= 0 || w <= 0 || h <= 0) return 1
+        var s = 1
+        val target = (maxPx * 1.08).toLong()
+        while (s < 16 && ((w / s).toLong() * (h / s)) > target) s *= 2
+        return s
+    }
+
     private fun processOneFrame(
         roll: RollInfo,
         index: Int,
         paramsJson: String,
         filmDisplayName: String,
         tmpJpeg: File,
+        framePixelLimit: Int = 0,
     ) {
-        // openFrameStream → 全分辨率 decode
+        val tTotal0 = android.os.SystemClock.elapsedRealtime()
+
+        // 只看 bounds，算出解码缩放倍数（maxPx<=0 表示引擎不限，sample 保持 1）
+        var sample = 1
+        if (framePixelLimit > 0) {
+            val boundsOpts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            runCatching {
+                UndevelopedFilmStore.openFrameStream(roll.rollId, index)?.use { s ->
+                    BitmapFactory.decodeStream(s, null, boundsOpts)
+                }
+            }
+            sample = computeSampleSize(boundsOpts.outWidth, boundsOpts.outHeight, framePixelLimit)
+        }
+
+        // openFrameStream → decode
         val stream = UndevelopedFilmStore.openFrameStream(roll.rollId, index)
             ?: throw IllegalStateException("openFrameStream 返回 null: $roll/$index")
         // ARGB_8888：8bit/通道。早前用 RGB_565「省内存」其实更费：bitmapToFloatRgb 转引擎格式时
@@ -284,7 +336,9 @@ class DevelopmentService : Service() {
         val decodeOpts = BitmapFactory.Options().apply {
             inPreferredConfig = android.graphics.Bitmap.Config.ARGB_8888
             inMutable = true
+            inSampleSize = sample
         }
+        val tDecode0 = android.os.SystemClock.elapsedRealtime()
         var bmp = stream.use { BitmapFactory.decodeStream(it, null, decodeOpts) }
             ?: throw IllegalStateException("decodeStream 失败: $roll/$index")
 
@@ -298,6 +352,14 @@ class DevelopmentService : Service() {
         }
 
         var writtenOk = false
+        var inW = 0
+        var inH = 0
+        var outW = 0
+        var outH = 0
+        var wasDownscaled = false
+        var tDecodeMs = 0L
+        var tEngineMs = 0L
+        var tIoMs = 0L
         try {
             val takenAt = try {
                 UndevelopedFilmStore.frameTakenAt(roll.rollId, index)
@@ -318,10 +380,18 @@ class DevelopmentService : Service() {
 
             // 引擎冲洗到临时 JPEG（全分辨率）
             // recycleInput=true：像素转入 float 缓冲后立即回收位图，把 48MB 堆让给 solve 阶段
+            tDecodeMs = android.os.SystemClock.elapsedRealtime() - tDecode0
+            inW = bmp.width
+            inH = bmp.height
+            val tEngine0 = android.os.SystemClock.elapsedRealtime()
             val result = SpektraProcessor.processFrame(
                 applicationContext, bmp, paramsJson, tmpJpeg.absolutePath,
                 recycleInput = true
             )
+            tEngineMs = android.os.SystemClock.elapsedRealtime() - tEngine0
+            outW = result.width
+            outH = result.height
+            wasDownscaled = result.downscaled
             if (!result.ok) {
                 throw IllegalStateException("processFrame 失败: ${result.message}")
             }
@@ -342,7 +412,9 @@ class DevelopmentService : Service() {
             }
 
             // 落地为成片
+            val tIo0 = android.os.SystemClock.elapsedRealtime()
             val uri = UndevelopedFilmStore.writeDevelopedFrame(roll.rollId, index, tmpJpeg)
+            tIoMs = android.os.SystemClock.elapsedRealtime() - tIo0
             Log.d(TAG, "帧 $index 落盘完成 uri=$uri")
             writtenOk = true
         } finally {
@@ -351,6 +423,18 @@ class DevelopmentService : Service() {
             if (writtenOk) {
                 tmpJpeg.delete()
             }
+            val tTotal = android.os.SystemClock.elapsedRealtime() - tTotal0
+            tDecodeMs = tDecodeMs.coerceAtMost(tTotal)
+            // 每帧打一条分段耗时：慢机上到底慢在哪一段（解码 / 引擎 / 落盘），
+            // 抓个 logcat 就能看出来，不用猜。
+            Log.i(
+                TAG,
+                "帧 $index 用时 ${tTotal}ms：解码 ${tDecodeMs}ms（sample=$sample）· " +
+                    "引擎 ${tEngineMs}ms · 落盘 ${tIoMs}ms · ${outW}x${outH}"
+            )
+            DevDiagnostics.frame(
+                tTotal, tDecodeMs, tEngineMs, tIoMs, inW, inH, outW, outH, wasDownscaled
+            )
         }
     }
 

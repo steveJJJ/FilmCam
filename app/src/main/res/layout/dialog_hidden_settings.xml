@@ -53,4 +53,22 @@
         android:text="@string/main_debug_note"
         android:textColor="#888"
         android:textSize="12sp" />
+
+    <!-- 冲洗耗时诊断：慢机上要看一眼才知道时间花在哪（解码 / 引擎 / 落盘），点一下复制 -->
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="4dp"
+        android:text="@string/hidden_diag_title"
+        android:textStyle="bold"
+        android:textSize="13sp" />
+
+    <TextView
+        android:id="@+id/tvDiag"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="10dp"
+        android:fontFamily="monospace"
+        android:text="@string/hidden_diag_none"
+        android:textSize="10.5sp" />
 </LinearLayout>

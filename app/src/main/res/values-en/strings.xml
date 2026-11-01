@@ -232,6 +232,9 @@ Memory available: %10$d MB / %11$d MB total
     <string name="hidden_title">Engineer mode</string>
     <string name="hidden_save">Save</string>
     <string name="hidden_saved">Saved</string>
+    <string name="hidden_diag_title">Develop timing diagnostics</string>
+    <string name="hidden_diag_none">No develop runs recorded yet</string>
+    <string name="hidden_diag_copied">Diagnostics copied</string>
 
     <!-- Film roll list: slide film cannot be printed -->
     <string name="film_slide_no_print">Slide film cannot be printed — this version only supports negatives</string>

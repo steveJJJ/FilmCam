@@ -222,6 +222,26 @@ object SpektraProcessor {
         }
     }
 
+    /**
+     * 引擎单帧像素上限（<=0 表示不限）。会复用已就绪的引擎；引擎未就绪时这里负责拉起。
+     *
+     * 冲洗前先问到这个值很有用：如果摄像头最大 JPEG 是 50MP 而上限只有 12MP，
+     * 就别再全尺寸解码了 —— 解码时就降采样，省掉的是解码 + 转换 + 缩放三段白白烧掉的时间。
+     */
+    fun framePixelLimit(context: Context): Int = try {
+        ensureEngine(context.applicationContext).maxFramePixels()
+    } catch (e: Throwable) {
+        Log.w(TAG, "读取引擎像素上限失败（按不限处理）", e)
+        0
+    }
+
+    /** 引擎能力串（Vulkan/CPU 后端、线程数等），用于诊断慢机到底跑在哪条路上 */
+    fun capabilities(context: Context): String = try {
+        ensureEngine(context.applicationContext).capabilities()
+    } catch (e: Throwable) {
+        "unavailable: ${e.message}"
+    }
+
     /** 延迟释放引擎的 Handler（主线程）。 */
     private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private val releaseRunnable = Runnable { doReleaseEngine() }

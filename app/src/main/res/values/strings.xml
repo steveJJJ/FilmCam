@@ -244,6 +244,9 @@ App 版本：%1$s (%2$d)
     <string name="hidden_title">工程师模式</string>
     <string name="hidden_save">保存</string>
     <string name="hidden_saved">已保存</string>
+    <string name="hidden_diag_title">冲洗耗时诊断 DEVELOP TIMING</string>
+    <string name="hidden_diag_none">还没有冲洗记录</string>
+    <string name="hidden_diag_copied">诊断信息已复制</string>
 
     <!-- 胶卷列表：反转片不支持印相 -->
     <string name="film_slide_no_print">反转片（幻灯）不能印到相纸上——本版暂只支持负片</string>
