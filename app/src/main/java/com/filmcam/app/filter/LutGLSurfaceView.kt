@@ -193,12 +193,9 @@ class LutGLSurfaceView @JvmOverloads constructor(
                 if (titan) 1f else 0f)
             if (titan) {
                 val theme = com.filmcam.app.ui.BodyTheme
-                GLES30.glUniform3fv(GLES30.glGetUniformLocation(program, "uBodyTop"), 1, theme.bodyTopRgb, 0)
-                GLES30.glUniform3fv(GLES30.glGetUniformLocation(program, "uBodyMid"), 1, theme.bodyMidRgb, 0)
-                GLES30.glUniform3fv(GLES30.glGetUniformLocation(program, "uBodyBot"), 1, theme.bodyBotRgb, 0)
-                GLES30.glUniform1f(GLES30.glGetUniformLocation(program, "uBodyH"), viewH.toFloat())
-                GLES30.glUniform1f(GLES30.glGetUniformLocation(program, "uBodyStep"),
-                    (BRUSH_STEP_DP * resources.displayMetrics.density).coerceAtLeast(1f))
+                GLES30.glUniform3fv(GLES30.glGetUniformLocation(program, "uBodyC"), 5, theme.bodyShadeRgb, 0)
+                GLES30.glUniform1f(GLES30.glGetUniformLocation(program, "uBodyGrain"),
+                    com.filmcam.app.ui.BodyTheme.BODY_GRAIN)
             }
 
             vertexBuffer.position(0)
@@ -247,9 +244,6 @@ class LutGLSurfaceView @JvmOverloads constructor(
 
     companion object {
 
-        /** 拉丝纹间距（dp）：与 TitanBodyDrawable 保持一致，钛面板是细密横纹不是镜面 */
-        private const val BRUSH_STEP_DP = 3f
-
         private val VERTEX_SHADER = """#version 300 es
         layout(location = 0) in vec4 aPosition;
         layout(location = 1) in vec2 aTexCoord;
@@ -277,13 +271,22 @@ class LutGLSurfaceView @JvmOverloads constructor(
         uniform float uMode;
         // 机身外壳（取景画面之外的留白）：uBodyTitan=1 时按钛面画，否则纯黑
         uniform float uBodyTitan;
-        uniform vec3 uBodyTop;
-        uniform vec3 uBodyMid;
-        uniform vec3 uBodyBot;
-        uniform float uBodyH;      // 视口高度（像素），拉丝按像素起纹
-        uniform float uBodyStep;   // 拉丝间距（像素）
+        uniform vec3 uBodyC[5];    // 受光 5 档（顶/肩/中/下/底），见 BodyTheme
+        uniform float uBodyGrain;  // 缎面砂感幅度
         in vec2 vTexCoord;
         out vec4 fragColor;
+
+        // 光滑钛面：只有大面积平缓明暗，没有拉丝纹（真机是 smooth titanium）
+        vec3 bodyShade(float t) {
+            if (t < 0.08) return mix(uBodyC[0], uBodyC[1], t / 0.08);
+            if (t < 0.42) return mix(uBodyC[1], uBodyC[2], (t - 0.08) / 0.34);
+            if (t < 0.78) return mix(uBodyC[2], uBodyC[3], (t - 0.42) / 0.36);
+            return mix(uBodyC[3], uBodyC[4], (t - 0.78) / 0.22);
+        }
+
+        float hash(vec2 p) {
+            return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
+        }
 
         void main() {
             float s = uScreenAspect / uContentAspect;
@@ -307,11 +310,15 @@ class LutGLSurfaceView @JvmOverloads constructor(
                     return;
                 }
                 float t = clamp(1.0 - vTexCoord.y, 0.0, 1.0);   // 0=顶 1=底
-                vec3 body = t < 0.46
-                    ? mix(uBodyTop, uBodyMid, t / 0.46)
-                    : mix(uBodyMid, uBodyBot, (t - 0.46) / 0.54);
-                float band = fract(t * uBodyH / max(uBodyStep, 1.0));
-                body *= band < 0.5 ? 1.04 : 0.966;
+                vec3 body = bodyShade(t);
+                // 缎面砂感：按物理像素起极细颗粒，去掉"塑料感"，肉眼看不出颗粒本身
+                float n = hash(floor(gl_FragCoord.xy));
+                body *= 1.0 + (n - 0.5) * uBodyGrain;
+                // 边缘转折：面板四周是圆角过渡到侧面的，压一点点暗，面才不死平
+                float ex = min(vTexCoord.x, 1.0 - vTexCoord.x);
+                float ey = min(vTexCoord.y, 1.0 - vTexCoord.y);
+                float e = smoothstep(0.0, 0.025, min(ex, ey));
+                body *= mix(0.94, 1.0, e);
                 fragColor = vec4(body, 1.0);
                 return;
             }

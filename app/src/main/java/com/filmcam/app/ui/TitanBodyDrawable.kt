@@ -1,6 +1,9 @@
 package com.filmcam.app.ui
 
+import android.graphics.Bitmap
+import android.graphics.BitmapShader
 import android.graphics.Canvas
+import android.graphics.Color
 import android.graphics.ColorFilter
 import android.graphics.LinearGradient
 import android.graphics.Paint
@@ -9,53 +12,80 @@ import android.graphics.Rect
 import android.graphics.Shader
 import android.graphics.drawable.Drawable
 import kotlin.math.roundToInt
+import kotlin.random.Random
 
 /**
- * 钛银机身外壳：裸钛的观感来自三件事 ——
- *   1) 大面积的冷银灰（不是纯白，也不是不锈钢那种高亮）
- *   2) 极细的横向拉丝纹（T3 钛面板是细密横纹，不是镜面）
- *   3) 上亮下暗再回一点反射光的受光明暗
- * 这里直接画在 Canvas 上：一条垂直渐变打底 + 每 3dp 一条半透明细横线做拉丝，
- * 比用图片省事，也不会随屏幕拉伸变形。
+ * 钛银机身外壳。
+ *
+ * 工艺按真机来：T3 的机身各评测一致描述为 **smooth titanium**（光滑钛面，
+ * 保时捷设计的流线平滑面），**不是拉丝面** —— 所以这里不做任何规则纹路，只有：
+ *   1) 大面积平缓的受光明暗（顶缘肩线最亮 → 中段最暗 → 底缘一线反射）
+ *   2) 极细的缎面砂感：金属哑光面那种肉眼几乎看不出、但不会显得像塑料的颗粒
+ *   3) 四面极淡的转折暗角：面板边缘是圆角过渡到侧面的，纯平铺会显得像贴纸
+ *
+ * 直接画在 Canvas 上，不用图片，不随屏幕拉伸变形。
  */
 class TitanBodyDrawable : Drawable() {
 
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
 
+    /** 砂面噪点图（128²，白黑随机点 + 随机 alpha，叠加后亮度均值不变） */
+    private val grainBitmap: Bitmap by lazy { buildGrainBitmap() }
+
     override fun draw(canvas: Canvas) {
         val b: Rect = bounds
         if (b.isEmpty) return
+        val l = b.left.toFloat(); val t = b.top.toFloat()
+        val r = b.right.toFloat(); val bt = b.bottom.toFloat()
 
-        // 1) 受光：顶部偏亮（环境光落在肩部），中段最暗，底部一线反射。
-        //    取色与 BodyTheme.bodyTopRgb/Mid/Bot 同源（裸钛在自然光下偏暖的香槟灰，
-        //    不是不锈钢冷银），GL 那侧的留白用的是同一组值。
+        // 1) 受光：5 档明暗，过渡做得很缓 —— 光滑金属的明暗是大面积的、不分区的
+        val stops = BodyTheme.BODY_SHADE_STOPS
+        val colors = BodyTheme.bodyShadeColors
         paint.shader = LinearGradient(
-            0f, b.top.toFloat(), 0f, b.bottom.toFloat(),
-            intArrayOf(0xFFDAD2C4.toInt(), 0xFFC0B7A8.toInt(), 0xFFCEC6B8.toInt()),
-            floatArrayOf(0f, 0.46f, 1f),
-            Shader.TileMode.CLAMP
+            0f, t, 0f, bt,
+            colors, stops, Shader.TileMode.CLAMP
         )
-        canvas.drawRect(b.left.toFloat(), b.top.toFloat(), b.right.toFloat(), b.bottom.toFloat(), paint)
+        canvas.drawRect(l, t, r, bt, paint)
         paint.shader = null
 
-        // 2) 拉丝：明暗交替的细横线，间隔 3dp、每条 1px
-        val step = 3f * resourcesScalar()
-        if (step <= 0f) return
-        val top = b.top.toFloat()
-        val bottom = b.bottom.toFloat()
-        var y = top
-        var i = 0
-        while (y < bottom) {
-            // 亮纹用暖白（不是纯白），暗纹用纯黑，钛面上才不会显出蓝灰调
-            paint.color = if (i % 2 == 0) 0x16FFF6E6.toInt() else 0x15000000
-            canvas.drawRect(b.left.toFloat(), y, b.right.toFloat(), y + 1f, paint)
-            y += step
-            i++
-        }
+        // 2) 缎面砂感：平铺噪点，幅度只有 ±1.4%，看不出颗粒但去掉"塑料感"
+        paint.shader = BitmapShader(grainBitmap, Shader.TileMode.REPEAT, Shader.TileMode.REPEAT)
+        paint.alpha = (BodyTheme.BODY_GRAIN / GRAIN_MEAN_ALPHA * 255).roundToInt().coerceIn(0, 255)
+        canvas.drawRect(l, t, r, bt, paint)
+        paint.shader = null
+        paint.alpha = 255
+
+        // 3) 边缘转折：四边各 2.5% 的范围压暗一点点（幅度很小，只是让面不是死平）
+        val ex = (r - l) * 0.025f
+        val ey = (bt - t) * 0.025f
+        paint.shader = LinearGradient(l, t, l + ex, t, EDGE_DARK, Color.TRANSPARENT, Shader.TileMode.CLAMP)
+        canvas.drawRect(l, t, l + ex, bt, paint)
+        paint.shader = LinearGradient(r, t, r - ex, t, EDGE_DARK, Color.TRANSPARENT, Shader.TileMode.CLAMP)
+        canvas.drawRect(r - ex, t, r, bt, paint)
+        paint.shader = LinearGradient(l, t, l, t + ey, EDGE_DARK, Color.TRANSPARENT, Shader.TileMode.CLAMP)
+        canvas.drawRect(l, t, r, t + ey, paint)
+        paint.shader = LinearGradient(l, bt, l, bt - ey, EDGE_DARK, Color.TRANSPARENT, Shader.TileMode.CLAMP)
+        canvas.drawRect(l, bt - ey, r, bt, paint)
+        paint.shader = null
     }
 
-    private fun resourcesScalar(): Float =
-        android.content.res.Resources.getSystem().displayMetrics.density
+    /**
+     * 造一张中性噪点图：每个像素随机黑或白、随机 alpha。
+     * 黑白各半所以叠加后整体亮度基本不变，只留下极细的颗粒。
+     */
+    private fun buildGrainBitmap(): Bitmap {
+        val size = 128
+        val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val px = IntArray(size * size)
+        val rnd = Random(20261101)
+        for (i in px.indices) {
+            val white = rnd.nextBoolean()
+            val a = rnd.nextInt(64)
+            px[i] = if (white) (a shl 24) or 0xFFFFFF else (a shl 24)
+        }
+        bmp.setPixels(px, 0, size, 0, 0, size, size)
+        return bmp
+    }
 
     override fun setAlpha(alpha: Int) { paint.alpha = alpha }
     override fun setColorFilter(colorFilter: ColorFilter?) { paint.colorFilter = colorFilter }
@@ -64,4 +94,10 @@ class TitanBodyDrawable : Drawable() {
 
     override fun getIntrinsicWidth(): Int = 1
     override fun getIntrinsicHeight(): Int = 1
+
+    private companion object {
+        const val EDGE_DARK = 0x14000000
+        /** 噪点图的平均 alpha（像素 alpha 取 0..63 的均匀分布 → 均值 32/255） */
+        const val GRAIN_MEAN_ALPHA = 32f / 255f
+    }
 }

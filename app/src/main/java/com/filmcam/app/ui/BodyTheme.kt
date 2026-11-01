@@ -20,6 +20,9 @@ object BodyTheme {
     const val BLACK = 0
     const val TITAN = 1
 
+    /** 受光分档的高度位置（0=顶 1=底），与 bodyShadeRgb / bodyShadeColors 一一对应 */
+    val BODY_SHADE_STOPS = floatArrayOf(0f, 0.08f, 0.42f, 0.78f, 1f)
+
     private const val PREF_KEY = "bodyTheme"
 
     var current: Int = BLACK
@@ -56,14 +59,33 @@ object BodyTheme {
     val bodyColor: Int get() = if (isTitan) 0xFFC6BEB0.toInt() else Color.BLACK
 
     /**
-     * 钛面受光三色（顶/中/底，0-1 的 RGB）。
-     * 裸钛不是不锈钢那种冷银——自然光下是偏暖的香槟灰，
-     * 所以这里整体往红黄方向拉：顶肩受光最亮、中段最暗、底部一线反射回一点。
-     * 主页的上下留白是 GL 画的（见 LutGLSurfaceView），也用这三个值。
+     * 钛面受光：5 档明暗（顶/肩/中/下/底，0-1 的 RGB），对应高度比例见 BODY_SHADE_STOPS。
+     * 真机 T3 是 **smooth titanium**（各评测原话：smooth / 流线平滑，保时捷设计），
+     * 不是拉丝面——所以这里只有大面积平缓的明暗起伏，没有任何规则纹路。
+     * 裸钛也不是不锈钢冷银，自然光下偏暖的香槟灰。
+     * 主页留白是 GL 画的（见 LutGLSurfaceView），与 TitanBodyDrawable 共用这一组值。
      */
-    val bodyTopRgb: FloatArray get() = if (isTitan) floatArrayOf(0.855f, 0.824f, 0.769f) else floatArrayOf(0f, 0f, 0f)
-    val bodyMidRgb: FloatArray get() = if (isTitan) floatArrayOf(0.753f, 0.718f, 0.659f) else floatArrayOf(0f, 0f, 0f)
-    val bodyBotRgb: FloatArray get() = if (isTitan) floatArrayOf(0.808f, 0.776f, 0.722f) else floatArrayOf(0f, 0f, 0f)
+    val bodyShadeRgb: FloatArray
+        get() = if (isTitan) floatArrayOf(
+            0.878f, 0.847f, 0.792f,   // 0.00 顶缘：肩线受光最亮
+            0.847f, 0.816f, 0.761f,   // 0.08 肩部
+            0.757f, 0.722f, 0.663f,   // 0.42 中段：最暗
+            0.808f, 0.776f, 0.718f,   // 0.78 下部回升
+            0.847f, 0.816f, 0.757f    // 1.00 底缘：一线反射
+        ) else FloatArray(15)
+
+    /** 同上，Canvas 侧的 int 颜色版（供 LinearGradient 用） */
+    val bodyShadeColors: IntArray
+        get() = if (isTitan) intArrayOf(
+            0xFFE0D9CA.toInt(),
+            0xFFD8D0C2.toInt(),
+            0xFFC1B8A9.toInt(),
+            0xFFCEC6B7.toInt(),
+            0xFFD8D0C1.toInt()
+        ) else intArrayOf(Color.BLACK, Color.BLACK, Color.BLACK, Color.BLACK, Color.BLACK)
+
+    /** 缎面砂感的强度（0-1 的亮度扰动幅度）：光滑钛面只有极细的哑光颗粒 */
+    const val BODY_GRAIN = 0.028f
 
     /** 机身底上的主文字/图标色：黑底浅字，钛底深字（像蚀刻在钛面上，偏暖的深灰） */
     val onBodyText: Int get() = if (isTitan) 0xFF2E2B27.toInt() else 0xFFE8E4DA.toInt()
