@@ -6,6 +6,10 @@
     <string name="dev_preparing_first">First run: mixing the developer…</string>
     <string name="dev_preparing">Preparing…</string>
     <string name="dev_progress">Developing %1$d/%2$d</string>
+    <!-- With estimated time left: waiting for the roll is the anxious part, a number helps -->
+    <string name="dev_progress_eta">Developing %1$d/%2$d · about %3$s left</string>
+    <string name="dev_eta_sec">%1$ds</string>
+    <string name="dev_eta_min">%1$dm %2$ds</string>
     <string name="dev_progress_done">Developed %1$d/%2$d</string>
 
     <!-- Development screen: finished -->

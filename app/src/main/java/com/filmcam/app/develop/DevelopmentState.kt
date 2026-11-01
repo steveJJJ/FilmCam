@@ -29,6 +29,25 @@ object DevelopmentState {
     /** 第一帧失败的错误消息（用于 UI/通知展示）；无错误时为 null。 */
     @Volatile var lastError: String? = null
 
+    /**
+     * 单帧耗时的指数滑动平均（毫秒）。<= 0 表示还没有样本（此时给不出预估）。
+     * 用 EMA 而不是整体平均：第一帧要等引擎预热，比后面慢不少，
+     * 整体平均会在开头把预估拉得过长，越往后越准。
+     */
+    @Volatile var frameMsEma: Float = 0f
+
+    /**
+     * 预估剩余秒数；给不出（还没样本、已经冲完、不在冲洗阶段）时为 -1。
+     * UI 与服务通知都用它，保证两处显示的是同一个数。
+     */
+    fun etaSeconds(): Int {
+        if (phase != PHASE_DEVELOPING) return -1
+        val remaining = total - done
+        val ema = frameMsEma
+        if (remaining <= 0 || ema <= 0f) return -1
+        return (ema * remaining / 1000f).toInt().coerceAtLeast(1)
+    }
+
     /** 主线程回调列表：服务每次更新进度后逐个 invoke。 */
     private val listeners = mutableListOf<() -> Unit>()
 
@@ -44,6 +63,7 @@ object DevelopmentState {
         errorCount = 0
         lastError = null
         preparingFirstTime = false
+        frameMsEma = 0f
     }
 
     fun addListener(l: () -> Unit) {

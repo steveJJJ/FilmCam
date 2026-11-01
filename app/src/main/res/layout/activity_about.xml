@@ -176,7 +176,7 @@
 
                 <View style="@style/AboutSpecDivider" />
 
-                <!-- 版本（代码填） -->
+                <!-- 版本（代码填）：连点 10 次进入工程师模式，不加波纹提示，保持刻字的样子 -->
                 <LinearLayout style="@style/AboutSpecRow">
                     <TextView
                         style="@style/AboutSpecLabel"
@@ -184,6 +184,8 @@
                     <TextView
                         android:id="@+id/tvSpecVersion"
                         style="@style/AboutSpecValue"
+                        android:clickable="true"
+                        android:focusable="true"
                         android:text="—" />
                 </LinearLayout>
             </LinearLayout>
@@ -353,34 +355,16 @@
             android:layout_marginTop="12dp"
             android:orientation="vertical" />
 
-        <!-- 版本号：连点 10 次进入工程师模式。等宽字 + 字距，像机身序列号 -->
-        <LinearLayout
+        <!-- 底部只留许可证一行（版本号已经刻在上方铭牌的 VER 行 —— 点它 10 次进工程师模式） -->
+        <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="20dp"
-            android:orientation="horizontal"
-            android:gravity="center_vertical">
-
-            <TextView
-                android:id="@+id/tvVersion"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:fontFamily="monospace"
-                android:letterSpacing="0.1"
-                android:paddingTop="8dp"
-                android:paddingBottom="8dp"
-                android:textColor="#6A6A6E"
-                android:textSize="10.5sp" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:fontFamily="monospace"
-                android:letterSpacing="0.14"
-                android:text="GPL-3.0-or-later"
-                android:textColor="#6A6A6E"
-                android:textSize="9sp" />
-        </LinearLayout>
+            android:layout_marginTop="14dp"
+            android:fontFamily="monospace"
+            android:gravity="end"
+            android:letterSpacing="0.14"
+            android:text="GPL-3.0-or-later"
+            android:textColor="#6A6A6E"
+            android:textSize="9sp" />
     </LinearLayout>
 </ScrollView>

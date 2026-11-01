@@ -47,11 +47,16 @@ App 版本：%1$s (%2$d)
 
     <!-- 开源致谢：名称 | 作者/组织 | 许可证 | 链接 | 修改说明(可选) -->
     <string-array name="oss_credits">
-        <item>SpektraLab for Android（Vulkan 后端适配、JNI、曝光-冲洗链路）|steveJJJ|GPL-3.0-or-later|https://github.com/steveJJJ/SpektraLab-Android|本项目直接使用了该移植的原生引擎库与工程结构，并按App需求做了裁剪与调整</item>
+        <item>SpektraLab for Android（Vulkan 后端适配、JNI、Android 原生引擎库）|SAINTTaiYi（原 steveJJJ）|GPL-3.0-or-later|https://github.com/SAINTTaiYi/SpektraLab-Android|本项目直接使用该移植提供的原生引擎库与工程结构，并按 App 需求做了裁剪与调整</item>
         <item>SpektraLab 物理胶片 / 相纸模拟引擎（上游）|JamesQiu2005 及 SpektraLab 贡献者|GPL-3.0-or-later|https://github.com/JamesQiu2005/SpektraLab</item>
         <item>spektrafilm 胶片模型、28 款实测配置与放大 LUT|Andrea Volpato|CC BY-SA 4.0|https://github.com/andreavolpato/spektrafilm|原素材已按本项目需求调整（ISO 适配与本地化命名），同样以 CC BY-SA 4.0 分发</item>
         <item>SpektraFilm 引擎资源（profiles / LUT / 常量表）|SpektraLab · JamesQiu2005|CC BY-SA 4.0|https://creativecommons.org/licenses/by-sa/4.0/|资源包已按本项目需要裁剪（仅保留所用型号），同样以 CC BY-SA 4.0 分发</item>
-        <item>Android Jetpack (AndroidX)|Google LLC|Apache-2.0|https://github.com/androidx/androidx</item>
+        <item>LibRaw RAW 解码库|LibRaw 贡献者|LGPL-2.1 / CDLL|https://github.com/LibRaw/LibRaw</item>
+        <item>libjpeg-turbo JPEG 编解码库|libjpeg-turbo 贡献者|BSD-3-Clause / IJG / Zlib|https://github.com/libjpeg-turbo/libjpeg-turbo</item>
+        <item>Little CMS 2 色彩管理引擎|Marti Maria Saguer|MIT|https://github.com/mm2/Little-CMS</item>
+        <item>zlib 数据压缩库|Jean-loup Gailly、Mark Adler|zlib License|https://github.com/madler/zlib</item>
+        <item>LLVM libc++ 运行时|LLVM Project|Apache-2.0 with LLVM exception|https://github.com/llvm/llvm-project</item>
+        <item>Android Jetpack（AndroidX）：Core / AppCompat / RecyclerView / ViewPager2 / ConstraintLayout / Lifecycle / ExifInterface|Google LLC|Apache-2.0|https://github.com/androidx/androidx</item>
         <item>Material Components for Android|Google LLC|Apache-2.0|https://github.com/material-components/material-components-android</item>
         <item>Kotlin / Kotlinx Coroutines|JetBrains|Apache-2.0|https://github.com/JetBrains/kotlin</item>
         <item>Coil 图片加载库|Coil Contributors|Apache-2.0|https://github.com/coil-kt/coil</item>

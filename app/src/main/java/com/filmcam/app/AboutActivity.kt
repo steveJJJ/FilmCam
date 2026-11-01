@@ -39,6 +39,7 @@ class AboutActivity : AppCompatActivity() {
         buildSelfLicense()
         bindFeedback()
         bindAppreciation()
+        paintNameplateChips()
 
         // 跟随机身配色（黑钛 / 钛银）
         com.filmcam.app.ui.BodyTheme.load(this)
@@ -47,21 +48,52 @@ class AboutActivity : AppCompatActivity() {
         root.background = com.filmcam.app.ui.BodyTheme.bodyBackground()
         com.filmcam.app.ui.BodyTheme.applySystemBars(window)
 
-        // 铭牌规格表里的版本号（等宽刻字）
-        findViewById<TextView>(R.id.tvSpecVersion).text = versionText
-
-        val tvVersion = findViewById<TextView>(R.id.tvVersion)
+        // 铭牌规格表里的版本号（等宽刻字）：连点 10 次进工程师模式。
+        // 底部不再单独摆一行版本号 —— 版本就该刻在铭牌上，重复两次反而是噪声。
+        val tvVersion = findViewById<TextView>(R.id.tvSpecVersion)
         tvVersion.text = versionText
         tvVersion.setOnClickListener {
             tapCount++
             when {
-                tapCount in 4..9 -> tvVersion.text =
-                    getString(R.string.about_tap_more, versionText, 10 - tapCount)
+                tapCount in 4..9 -> {
+                    tvVersion.text = getString(R.string.about_tap_more, versionText, 10 - tapCount)
+                    // 提示是临时的：几秒后恢复成版本刻字，不让铭牌一直挂着"再点 N 次"
+                    tvVersion.removeCallbacks(restoreVersionText)
+                    tvVersion.postDelayed(restoreVersionText, 1500L)
+                }
                 tapCount >= 10 -> {
                     tapCount = 0
                     tvVersion.text = versionText
                     showHiddenSettings()
                 }
+            }
+        }
+    }
+
+    /** 把版本号刻字恢复回来（连点提示超时） */
+    private val restoreVersionText = Runnable {
+        tapCount = 0
+        findViewById<TextView>(R.id.tvSpecVersion).text = versionText
+    }
+
+    /**
+     * 铭牌上的小 chip（问题反馈 / PayPal）是透明底 + 刻线框，字色写死在 XML 里，
+     * 主题重映射管不到（重映射只动「没有自己底色」的文字）—— 切到钛银后
+     * 浅字压在浅钛面板上等于隐形。这里按面板底重新上色。
+     */
+    private fun paintNameplateChips() {
+        val theme = com.filmcam.app.ui.BodyTheme
+        val density = resources.displayMetrics.density
+        listOf(R.id.tvFeedback, R.id.tvPaypal).forEach { id ->
+            findViewById<TextView>(id)?.apply {
+                setTextColor(theme.panelText)
+                background = GradientDrawable().apply {
+                    setColor(android.graphics.Color.TRANSPARENT)
+                    cornerRadius = 2f * density
+                    setStroke(1, theme.cardStroke)
+                }
+                compoundDrawableTintList =
+                    android.content.res.ColorStateList.valueOf(theme.panelText)
             }
         }
     }

@@ -214,6 +214,11 @@ class DevelopmentActivity : AppCompatActivity(), SensorEventListener {
 
     // ---------- 状态渲染（主线程） ----------
 
+    /** 秒 → "40 秒"（英文 "40s"）；超过一分钟拆成分 + 秒。 */
+    private fun formatEta(seconds: Int): String =
+        if (seconds < 60) getString(R.string.dev_eta_sec, seconds)
+        else getString(R.string.dev_eta_min, seconds / 60, seconds % 60)
+
     private fun renderState() {
         val st = DevelopmentState
         val info = rollInfo ?: UndevelopedFilmStore.undevelopedRolls().firstOrNull { it.rollId == st.rollId }
@@ -236,7 +241,12 @@ class DevelopmentActivity : AppCompatActivity(), SensorEventListener {
             st.phase == DevelopmentState.PHASE_PREPARING && st.preparingFirstTime ->
                 getString(R.string.dev_preparing_first)
             st.phase == DevelopmentState.PHASE_PREPARING -> getString(R.string.dev_preparing)
-            else -> getString(R.string.dev_progress, done, total)
+            else -> {
+                // 有速度样本后给预估剩余时间，跟通知栏、暗房进度条同一套措辞
+                val eta = st.etaSeconds()
+                if (eta > 0) getString(R.string.dev_progress_eta, done, total, formatEta(eta))
+                else getString(R.string.dev_progress, done, total)
+            }
         }
 
         // 胶卷条

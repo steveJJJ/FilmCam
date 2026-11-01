@@ -198,14 +198,20 @@ class DevelopmentService : Service() {
 
                 DevelopmentState.currentIndex = index
                 updateProgressNotification(
-                    index - 1, roll.shotCount,
-                    getString(R.string.dev_progress, index, roll.shotCount)
+                    index - 1, roll.shotCount, progressText(index - 1, roll.shotCount)
                 )
                 notifyStateToMain()
 
+                val frameStart = android.os.SystemClock.elapsedRealtime()
                 try {
                     processOneFrame(roll, index, paramsJson, filmDisplayName, tmpJpeg)
                     DevelopmentState.done = index
+                    // 单帧耗时走 EMA（0.7/0.3）：首帧含引擎预热偏慢，直接整体平均会把
+                    // 预估拉得很长，EMA 让它几帧之内收敛到稳态速度。
+                    val cost = (android.os.SystemClock.elapsedRealtime() - frameStart).toFloat()
+                    DevelopmentState.frameMsEma =
+                        if (DevelopmentState.frameMsEma <= 0f) cost
+                        else DevelopmentState.frameMsEma * 0.7f + cost * 0.3f
                 } catch (e: Throwable) {
                     Log.e(TAG, "帧 $index 失败，跳过", e)
                     DevelopmentState.errorCount++
@@ -246,6 +252,21 @@ class DevelopmentService : Service() {
             finishWithError(e.message ?: getString(R.string.dev_error_unknown))
         }
     }
+
+    /**
+     * 进度文案：有样本之后就带上预估剩余时间。
+     * 通知栏和暗房进度条共用同一套措辞（UI 那边算 ETA 的方式也一致）。
+     */
+    private fun progressText(done: Int, total: Int): String {
+        val eta = DevelopmentState.etaSeconds()
+        return if (eta > 0) getString(R.string.dev_progress_eta, done, total, formatEta(eta))
+        else getString(R.string.dev_progress, done, total)
+    }
+
+    /** 秒 → "40 秒"（英文 "40s"）；超过一分钟拆成分 + 秒。 */
+    private fun formatEta(seconds: Int): String =
+        if (seconds < 60) getString(R.string.dev_eta_sec, seconds)
+        else getString(R.string.dev_eta_min, seconds / 60, seconds % 60)
 
     private fun processOneFrame(
         roll: RollInfo,

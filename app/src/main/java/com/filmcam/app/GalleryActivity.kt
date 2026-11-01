@@ -26,6 +26,8 @@ class GalleryActivity : AppCompatActivity() {
 
     private companion object {
         const val TAG = "GalleryActivity"
+        /** 「冲洗完成」这条停留多久自己收起来（毫秒）：够看清，又不占着屏幕 */
+        const val DEV_BAR_AUTO_HIDE_MS = 4000L
     }
 
     private lateinit var rvGallery: RecyclerView
@@ -84,6 +86,7 @@ class GalleryActivity : AppCompatActivity() {
 
     override fun onStop() {
         com.filmcam.app.develop.DevelopmentState.removeListener(devStateListener)
+        cancelDevBarAutoHide()
         super.onStop()
     }
 
@@ -125,6 +128,7 @@ class GalleryActivity : AppCompatActivity() {
                 devProgressCard.setOnClickListener {
                     // 点完成条 = 看刚出片的结果：刷新后隐藏
                     devProgressCard.visibility = View.GONE
+                    cancelDevBarAutoHide()
                     loadUndevelopedRolls()
                     loadPhotos()
                 }
@@ -140,6 +144,9 @@ class GalleryActivity : AppCompatActivity() {
                         }",
                         Toast.LENGTH_SHORT
                     ).show()
+                    // 完成条不必等用户来点：几秒后自己收起来，并再刷一次列表与相册。
+                    // 出现过「卡片没了、下面还挂着刚冲完那卷」，多刷一拍兜住写盘/索引的最后一帧。
+                    scheduleDevBarAutoHide()
                 }
             }
             com.filmcam.app.develop.DevelopmentState.PHASE_ERROR -> {
@@ -151,20 +158,53 @@ class GalleryActivity : AppCompatActivity() {
             }
             else -> {
                 // preparing / developing
+                val done = st.done.coerceAtMost(st.total)
+                val eta = st.etaSeconds()
                 tvDevProgress.text =
                     if (st.phase == com.filmcam.app.develop.DevelopmentState.PHASE_PREPARING ||
                         st.total <= 0
                     ) {
-                        getString(R.string.dev_notif_preparing)
+                        // 准备阶段（首次要把引擎资源从 assets 拷出来）先说明在干什么，
+                        // 不然那十几秒像是卡住了
+                        if (st.preparingFirstTime) getString(R.string.dev_preparing_first)
+                        else getString(R.string.dev_notif_preparing)
+                    } else if (eta > 0) {
+                        // 有速度样本之后给预估：让用户知道还要等多久
+                        getString(R.string.dev_progress_eta, done, st.total, formatEta(eta))
                     } else {
-                        getString(R.string.dev_progress, st.done.coerceAtMost(st.total), st.total)
+                        getString(R.string.dev_progress, done, st.total)
                     }
                 pbDevProgress.progress =
-                    if (st.total > 0) (st.done * 100 / st.total) else 0
+                    if (st.total > 0) (done * 100 / st.total) else 0
                 devProgressCard.setOnClickListener { openDevelopmentScreen(rollId) }
             }
         }
         lastDevPhase = st.phase
+    }
+
+    /** 秒 → "40 秒"（英文 "40s"）；超过一分钟拆成分 + 秒。与通知栏同一套措辞。 */
+    private fun formatEta(seconds: Int): String =
+        if (seconds < 60) getString(R.string.dev_eta_sec, seconds)
+        else getString(R.string.dev_eta_min, seconds / 60, seconds % 60)
+
+    /** 完成条自动收起：顺手再把列表与相册刷一遍 */
+    private val devBarAutoHide = Runnable {
+        if (com.filmcam.app.develop.DevelopmentState.phase ==
+            com.filmcam.app.develop.DevelopmentState.PHASE_DONE
+        ) {
+            devProgressCard.visibility = View.GONE
+            loadUndevelopedRolls()
+            loadPhotos()
+        }
+    }
+
+    private fun scheduleDevBarAutoHide() {
+        devProgressCard.removeCallbacks(devBarAutoHide)
+        devProgressCard.postDelayed(devBarAutoHide, DEV_BAR_AUTO_HIDE_MS)
+    }
+
+    private fun cancelDevBarAutoHide() {
+        devProgressCard.removeCallbacks(devBarAutoHide)
     }
 
     private fun openDevelopmentScreen(rollId: String) {
@@ -177,7 +217,13 @@ class GalleryActivity : AppCompatActivity() {
     // ---------- 未冲洗胶卷区 ----------
 
     private fun loadUndevelopedRolls() {
-        val rolls = UndevelopedFilmStore.undevelopedRolls()
+        // 刚冲完的那一卷：登记里的状态有可能还没回落（写盘与索引都有一点延迟），
+        // 但用户已经看到"冲洗完成"，下面还挂着一张"未冲洗"的卡就自相矛盾。
+        // 这里按进度状态兜一道——UI 与用户看到的事实保持一致。
+        val st = com.filmcam.app.develop.DevelopmentState
+        val doneRollId =
+            if (st.phase == com.filmcam.app.develop.DevelopmentState.PHASE_DONE) st.rollId else null
+        val rolls = UndevelopedFilmStore.undevelopedRolls().filter { it.rollId != doneRollId }
         if (rolls.isEmpty()) {
             layoutUndeveloped.visibility = View.GONE
             return
