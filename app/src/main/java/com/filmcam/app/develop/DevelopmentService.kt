@@ -201,7 +201,7 @@ class DevelopmentService : Service() {
                     android.widget.Toast.LENGTH_SHORT
                 ).show()
             }
-            val effective = devSettings.copy(paperOverride = resolved.paperId)
+            var effective = devSettings.copy(paperOverride = resolved.paperId)
             // 交给引擎的参数：只包含引擎认识的键。
             // （曾把 output_style 这个自定义标记塞进去，引擎报 unknown parameter，整卷 0 帧出图。）
             val paramsJson = FilmStockMapper.buildParamsJson(roll.filmStockId, mappedPrint, effective)
@@ -225,9 +225,21 @@ class DevelopmentService : Service() {
             val scanExtras = if (effective.outputStyle.isScan) {
                 FilmStockMapper.fullExtraEntries(effective.outputStyle)
             } else emptyList()
-            val frameExtras = if (effective.frameBorder) {
-                FilmStockMapper.frameBorderEntries(roll.filmStockId)
-            } else emptyList()
+            // 片框：版式匹配是**渲染期**才校验的（参数会被收下、冲到 solve 才炸，
+            // 引擎原文 `overscan: the negative does not match this pipeline's overscan layout`），
+            // 只做 setParams 预检抓不到。所以先拿 4:3 小图真跑一遍挑出能出图的版式，
+            // 一个都不行就本次不带片框 —— 总好过整档掉回兜底白冲一张。
+            val frameFormat = if (effective.frameBorder) {
+                pickFrameFormat(roll.filmStockId, mappedPrint, effective)
+            } else null
+            if (effective.frameBorder && frameFormat == null) {
+                // 所有版式都不可用：关掉片框照常出图，别让用户等半天得到一个降级档
+                Log.w(TAG, "片框不可用，本次冲洗不带片框")
+                effective = effective.copy(frameBorder = false)
+            }
+            val frameExtras = frameFormat?.let {
+                FilmStockMapper.frameBorderEntries(roll.filmStockId, 1, it)
+            } ?: emptyList()
             val extras = scanExtras + frameExtras
             val rejected: Set<String> =
                 if (extras.isEmpty()) emptySet()
@@ -638,6 +650,47 @@ class DevelopmentService : Service() {
             runCatching { specFile.delete() }   // 跑一次就删，别每次冲洗都来一遍
         }
         Log.i(TAG, "参数对照实验完成: ${outDir.absolutePath} (${cases.size} 张)")
+    }
+
+    /**
+     * 挑一个能出图的片框版式：拿 4:3 小图**真跑一遍** render（setParams + solve + export），
+     * 第一个不报错的就用；全都不行返回 null。
+     *
+     * 为什么必须真跑：片框的版式与底片尺寸匹配是渲染期校验，setParams 会爽快收下参数，
+     * 冲到 solve 才抛 `overscan: the negative does not match this pipeline's overscan layout`。
+     * 只做参数预检的话，结果是整档掉回兜底档 —— 用户看到的就是「1 帧未能按所选风格冲洗」。
+     */
+    private fun pickFrameFormat(
+        filmStockId: String,
+        printStockId: String,
+        settings: FilmStockMapper.DevSettings,
+    ): String? {
+        val notes = ArrayList<String>()
+        var chosen: String? = null
+        for (format in FilmStockMapper.OVERSCAN_FORMAT_CANDIDATES) {
+            val json = FilmStockMapper.buildParamsJson(
+                filmStockId, printStockId, settings,
+                includeStyleMark = false,
+                extraEntries = FilmStockMapper.frameBorderEntries(filmStockId, 1, format),
+            )
+            val err = SpektraProcessor.probeRenderOk(this, json, 96, 72)
+            if (err == null) {
+                Log.i(TAG, "片框版式可用: $format")
+                notes.add("$format -> OK")
+                chosen = format
+                break
+            }
+            Log.w(TAG, "片框版式 $format 不可用: $err")
+            notes.add("$format -> $err")
+        }
+        // 落盘：logcat 不一定抓得到（无线调试经常断），留个文件随时能 pull
+        runCatching {
+            val dir = getExternalFilesDir(null) ?: filesDir
+            java.io.File(dir, "spektra_frame_probe.txt").writeText(
+                notes.joinToString("\n") + "\nchosen=" + (chosen ?: "none")
+            )
+        }
+        return chosen
     }
 
     /** 按 90° 整数倍旋转位图。整数倍旋转无插值，旋转后立即回收原图。 */

@@ -359,16 +359,25 @@ object FilmStockMapper {
      *
      * 取值全部贴着引擎默认值（真机 spektra_params.json 读出来的），只把 active 打开、
      * 再填上暗边文字与帧号：
-     *   `overscan_mode=stripe` 整条片基、`format=135`、`holes=white`、
-     *   `gate=auto`、`fog=1`、`leaks=0`（不漏光）、`pair=false`（不双联）。
+     *   `mode=strip` 整条片基、`gate=auto`、`holes=white`（齿孔透光）、
+     *   `fog=1`、`leaks=0`（不漏光）、`pair=false`（不双联）。
+     *
+     * **format 必须是 `135_half`（半格）**：我们的取景画幅是 4:3，而 135 全画幅是 3:2，
+     * 拿 `135` 去配 4:3 的底片，参数会被收下、冲到渲染才炸 ——
+     *   `overscan: the negative does not match this pipeline's overscan layout`
+     * 半格机（18×24mm，横构图正好 4:3，Olympus Pen 那类）才对得上。
      *
      * 帧号**逐帧不同**，由冲洗侧用 [withFrameNumber] 覆盖，这里只占位。
      */
-    fun frameBorderEntries(filmStockId: String, frameNumber: Int = 1): List<Pair<String, String>> =
+    fun frameBorderEntries(
+        filmStockId: String,
+        frameNumber: Int = 1,
+        format: String = OVERSCAN_FORMAT_HALF,
+    ): List<Pair<String, String>> =
         listOf(
             "overscan_active" to "true",
             "overscan_mode" to "\"strip\"",
-            "overscan_format" to "\"135\"",
+            "overscan_format" to "\"" + esc(format) + "\"",
             "overscan_gate" to "\"auto\"",
             "overscan_holes" to "\"white\"",
             "overscan_fog" to "1",
@@ -511,10 +520,11 @@ object FilmStockMapper {
             entries.forEach { (k, v) -> sb.append(",\"").append(k).append("\":").append(v) }
         }
         // 片框（整卷统一开关；帧号由冲洗侧逐帧覆盖）
-        if (settings.frameBorder) {
-            frameBorderEntries(filmStockId).forEach { (k, v) ->
-                sb.append(",\"").append(k).append("\":").append(v)
-            }
+        // extraEntries 优先：冲洗前的小图自检会挑出真正能出图的版式传进来
+        val frameEntries = extraEntries
+            ?: if (settings.frameBorder) frameBorderEntries(filmStockId) else null
+        frameEntries?.forEach { (k, v) ->
+            sb.append(",\"").append(k).append("\":").append(v)
         }
         sb.append('}')
         return sb.toString()
@@ -527,6 +537,13 @@ object FilmStockMapper {
      */
     const val SCAN_LEVEL_FULL = 0
     const val SCAN_LEVEL_SAFE = 1
+
+    /** 片框版式：半格（18×24mm，横构图 4:3）—— 与我们 4:3 的画幅对得上 */
+    const val OVERSCAN_FORMAT_HALF = "135_half"
+    /** 片框版式：135 全画幅（3:2）。4:3 的底片配它会在渲染期报版式不匹配，仅作兜底候选 */
+    const val OVERSCAN_FORMAT_FULL = "135"
+    /** 片框版式候选顺序：先试能对上的，再退而求其次（由冲洗前的小图自检挑） */
+    val OVERSCAN_FORMAT_CANDIDATES = listOf(OVERSCAN_FORMAT_HALF, OVERSCAN_FORMAT_FULL)
 
     /**
      * 店扫档追加的参数。都作用在成片链末端，不碰印相反相本身：

@@ -310,6 +310,43 @@ object SpektraProcessor {
         return rejected
     }
 
+    /**
+     * 小图**真跑一遍**（setParams → solve → export），返回 null 表示这套参数能出图，
+     * 否则返回引擎报错原文。
+     *
+     * 光做 setParams 预检不够：有些校验发生在渲染期，参数会被爽快收下、冲到 solve 才炸。
+     * 真机原文：`overscan: the negative does not match this pipeline's overscan layout`
+     * —— 片框的版式匹配就是这样，结果整档掉回兜底、白冲一张。
+     *
+     * [w]/[h] 要按真实画幅的比例给（比如 4:3 用 96×72），否则测的不是同一件事。
+     */
+    fun probeRenderOk(context: Context, paramsJson: String, w: Int, h: Int): String? {
+        val appContext = context.applicationContext
+        return runCatching {
+            val eng = ensureEngine(appContext)
+            val bmp = android.graphics.Bitmap.createBitmap(
+                w, h, android.graphics.Bitmap.Config.ARGB_8888
+            )
+            bmp.eraseColor(0xFF808080.toInt())
+            val buf = bitmapToFloatRgb(bmp)
+            bmp.recycle()
+            val out = java.io.File(appContext.cacheDir, "probe_render.jpg")
+            val session = eng.openSession(buf, w, h, 3)
+            try {
+                session.setParams(paramsJson)
+                session.solve("both")
+                val info = session.exportJpeg(out.absolutePath, 80, 512, "full")
+                if (info.size < 2 || info[0] <= 0 || info[1] <= 0) {
+                    "exportJpeg 未产出有效尺寸: ${info.joinToString(",")}"
+                } else if (!out.exists() || out.length() <= 0L) {
+                    "exportJpeg 未写出文件: ${out.absolutePath}"
+                } else null
+            } finally {
+                runCatching { session.close() }
+            }
+        }.getOrElse { t -> t.message ?: t.toString() }
+    }
+
     /** 预检结果落盘（外部私有目录，release 包也能 adb pull 出来）。 */
     private fun writeProbeReport(
         context: Context,

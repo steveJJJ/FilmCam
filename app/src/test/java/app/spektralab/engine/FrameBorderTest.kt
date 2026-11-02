@@ -61,9 +61,12 @@ class FrameBorderTest {
     fun frameBorderOn_scansTheWholeFilmBaseWithEdgeText() {
         val o = json(frameBorder = true)
         assertTrue(o.getBoolean("overscan_active"))
-        // 取值贴着引擎默认：整条片基 + 135 格式 + 自动片门，别自己发明
+        // 取值贴着引擎默认：整条片基 + 自动片门，别自己发明。
+        // format 必须是 135_half（半格）：我们的画幅是 4:3，135 全画幅是 3:2，
+        // 拿 135 配 4:3 的底片，参数会被收下、渲染时才抛
+        // `overscan: the negative does not match this pipeline's overscan layout`。
         assertEquals("strip", o.getString("overscan_mode"))
-        assertEquals("135", o.getString("overscan_format"))
+        assertEquals(FilmStockMapper.OVERSCAN_FORMAT_HALF, o.getString("overscan_format"))
         assertEquals("auto", o.getString("overscan_gate"))
         assertFalse("不双联", o.getBoolean("overscan_pair"))
         assertEquals("不漏光", 0, o.getInt("overscan_leaks"))
