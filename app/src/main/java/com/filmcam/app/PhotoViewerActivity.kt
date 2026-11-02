@@ -82,6 +82,13 @@ class PhotoViewerActivity : AppCompatActivity() {
             info.params.halationAmount?.let { putExtra(MainActivity.EXTRA_SAME_HALATION, it) }
             info.params.glareAmount?.let { putExtra(MainActivity.EXTRA_SAME_GLARE, it) }
             info.params.printExposure?.let { putExtra(MainActivity.EXTRA_SAME_EXPOSURE, it) }
+            // 拍摄参数：闪光/白平衡/曝光补偿。慢门与失焦刻意不带 —— 那是这一张的意外，
+            // 不是配方；强行复刻只会让「拍摄同款」变成必糊键。
+            info.shot?.let { shot ->
+                putExtra(MainActivity.EXTRA_SAME_FLASH, shot.flash)
+                putExtra(MainActivity.EXTRA_SAME_WB, shot.awbMode)
+                putExtra(MainActivity.EXTRA_SAME_EV, shot.ev)
+            }
         }
         startActivity(intent)
         finish()
@@ -164,6 +171,18 @@ class PhotoViewerActivity : AppCompatActivity() {
         }
         if (info.iso.isNotBlank()) {
             shootParts += "ISO ${info.iso}"
+        }
+        // 这一张的「光学设置」：闪光、慢门快门、失焦 —— 拍摄同款能不能复现就看这几项
+        info.shot?.let { shot ->
+            if (shot.flash != "OFF") shootParts += getString(R.string.pf_flash_short)
+            if (shot.shutterSec > 0f) {
+                shootParts += if (shot.shutterSec >= 1f) {
+                    String.format(java.util.Locale.US, "%.1fs", shot.shutterSec)
+                } else {
+                    "1/" + kotlin.math.round(1f / shot.shutterSec).toInt()
+                }
+            }
+            if (shot.defocus) shootParts += getString(R.string.pf_defocus_short)
         }
         tvShooting.text = shootParts.joinToString(" · ")
 

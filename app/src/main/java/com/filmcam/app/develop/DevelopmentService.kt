@@ -371,6 +371,8 @@ class DevelopmentService : Service() {
                 System.currentTimeMillis()
             }
             val iso = UndevelopedFilmStore.frameIso(roll.rollId, index)
+            // 这一帧的拍摄参数（闪光/白平衡/EV/快门/失焦）随成片 EXIF 保存，供「拍摄同款」复现
+            val shotJson = UndevelopedFilmStore.frameShot(roll.rollId, index)
 
             // 日期戳：直接画在进引擎的位图上，省掉一次全尺寸 decode + encode；
             // 水印会随 LUT 一起调色（等同底片曝光日期）。失败不影响整卷冲洗。
@@ -408,6 +410,7 @@ class DevelopmentService : Service() {
                 printStockId = roll.printStockId,
                 rollId = roll.rollId,
                 paramsJson = paramsJson,
+                shotJson = shotJson,
             )
 
             // 落盘前校验临时 JPEG 非空

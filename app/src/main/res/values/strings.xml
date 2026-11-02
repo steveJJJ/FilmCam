@@ -87,6 +87,7 @@ App 版本：%1$s (%2$d)
     <string name="quality_full">完整</string>
     <string name="quality_standard">标准</string>
     <string name="set_slow">慢门</string>
+    <string name="set_wb">白平衡</string>
     <string name="slow_off">关</string>
     <string name="slow_natural">自然</string>
     <string name="slow_frequent">偏慢</string>
@@ -109,6 +110,7 @@ App 版本：%1$s (%2$d)
         <item>@string/set_datestamp</item>
         <item>@string/set_haptic</item>
         <item>@string/set_slow</item>
+        <item>@string/set_wb</item>
         <item>@string/set_language</item>
         <item>@string/set_quality</item>
         <item>@string/set_dev</item>
@@ -119,6 +121,7 @@ App 版本：%1$s (%2$d)
         <item>成片右下角打印拍摄日期</item>
         <item>过卷与按键的马达力度</item>
         <item>暗光按胶卷快门拍，抖动那一下才是胶片</item>
+        <item>相当于换一片校色滤镜，拍完也保持不变</item>
         <item>跟随系统 / 简体中文 / English</item>
         <item>完整＝原始分辨率，慢；标准≈1200 万像素，快约 3 倍</item>
         <item>颗粒 · 辉光 · 眩光强度</item>

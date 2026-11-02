@@ -79,6 +79,7 @@ Memory available: %10$d MB / %11$d MB total
     <string name="quality_full">Full</string>
     <string name="quality_standard">Standard</string>
     <string name="set_slow">Slow shutter</string>
+    <string name="set_wb">White balance</string>
     <string name="slow_off">Off</string>
     <string name="slow_natural">Natural</string>
     <string name="slow_frequent">Slower</string>
@@ -101,6 +102,7 @@ Memory available: %10$d MB / %11$d MB total
         <item>@string/set_datestamp</item>
         <item>@string/set_haptic</item>
         <item>@string/set_slow</item>
+        <item>@string/set_wb</item>
         <item>@string/set_language</item>
         <item>@string/set_quality</item>
         <item>@string/set_dev</item>
@@ -111,6 +113,7 @@ Memory available: %10$d MB / %11$d MB total
         <item>Print the shooting date on each frame</item>
         <item>Motor strength for winding and keys</item>
         <item>Shoot at film shutter speed in low light — the shake is the point</item>
+        <item>Like changing a colour filter; stays until you change it</item>
         <item>Follow system / 简体中文 / English</item>
         <item>Full = original resolution, slower; Standard ≈ 12 MP, ~3x faster</item>
         <item>Grain, halation and glare strength</item>

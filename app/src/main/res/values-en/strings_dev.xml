@@ -55,6 +55,8 @@
     <string name="pf_same_no_params">No reproducible settings in this photo</string>
 
     <!-- Print info panel -->
+    <string name="pf_flash_short">Flash</string>
+    <string name="pf_defocus_short">Out of focus</string>
     <string name="pf_roll_id">Roll %1$s</string>
     <string name="pf_shot_at">Shot on %1$s</string>
     <string name="pf_paper">Paper %1$s</string>

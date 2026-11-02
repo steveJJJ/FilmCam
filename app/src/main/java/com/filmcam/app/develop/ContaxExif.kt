@@ -50,6 +50,7 @@ object ContaxExif {
         printStockId: String,
         rollId: String,
         paramsJson: String,
+        shotJson: String = "",
     ) {
         try {
             val exif = ExifInterface(file.absolutePath)
@@ -84,8 +85,12 @@ object ContaxExif {
             exif.setAttribute(ExifInterface.TAG_BODY_SERIAL_NUMBER, rollId)
             // Software → 应用 + 引擎标识
             exif.setAttribute(ExifInterface.TAG_SOFTWARE, "FilmCam + SpektraLab Engine")
-            // UserComment → 冲洗参数 JSON 快照（用 ASCII 前缀确保兼容性）
-            exif.setAttribute(ExifInterface.TAG_USER_COMMENT, "ASCII\n$paramsJson")
+            // UserComment → 冲洗参数 + 拍摄参数 JSON 快照（用 ASCII 前缀确保兼容性）。
+            // shot 作为嵌套对象并入同一份 JSON：一个 UserComment 装完，旧解析器读不到的键会忽略。
+            exif.setAttribute(
+                ExifInterface.TAG_USER_COMMENT,
+                "ASCII\n" + mergeShot(paramsJson, shotJson)
+            )
 
             exif.saveAttributes()
 
@@ -118,5 +123,16 @@ object ContaxExif {
             Log.e(TAG, "EXIF 写入失败: ${e.message}", e)
             throw e
         }
+    }
+
+    /**
+     * 把拍摄参数并进冲洗参数 JSON 的 `shot` 键。
+     * 解析失败时原样返回冲洗参数 —— EXIF 是附加信息，不能因为它写坏了整卷冲洗。
+     */
+    private fun mergeShot(paramsJson: String, shotJson: String): String {
+        if (shotJson.isBlank()) return paramsJson
+        return runCatching {
+            org.json.JSONObject(paramsJson).put("shot", org.json.JSONObject(shotJson)).toString()
+        }.getOrDefault(paramsJson)
     }
 }

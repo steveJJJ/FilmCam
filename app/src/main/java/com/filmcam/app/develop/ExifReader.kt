@@ -35,6 +35,7 @@ object ExifReader {
         val dateTimeOriginal: String,  // 拍摄时间
         val dimensions: String,        // 像素尺寸
         val software: String,          // 软件标识
+        val shot: com.filmcam.app.film.ShotMeta? = null,  // 拍摄参数（闪光/白平衡/EV/快门/失焦）
     )
 
     /** 冲洗参数（从 UserComment 的 JSON 解析）。 */
@@ -89,6 +90,7 @@ object ExifReader {
                     if (w.isNotEmpty() && h.isNotEmpty()) "$w × $h" else ""
                 },
                 software = exif.getAttribute(ExifInterface.TAG_SOFTWARE).orEmpty(),
+                shot = parseShot(exif.getAttribute(ExifInterface.TAG_USER_COMMENT)),
             )
         } catch (e: Throwable) {
             Log.w(TAG, "读取 EXIF 失败: ${e.message}")
@@ -104,15 +106,8 @@ object ExifReader {
      * 可能保留前缀，故这里做兜底剥离。
      */
     private fun parseParams(userComment: String?): DevParams {
-        if (userComment.isNullOrBlank()) return DevParams(null, null, null, null, null)
-        // 兜底：剥离可能的字符集标记与 NUL 字节
-        var json = userComment.trim()
-        json = json.substringAfter('\n', json)
-        json = json.removePrefix("ASCII").removePrefix("UNICODE")
-        json = json.trim().trimStart('\u0000').trim()
-        if (!json.startsWith("{")) return DevParams(null, null, null, null, null)
+        val obj = parseJson(userComment) ?: return DevParams(null, null, null, null, null)
         return try {
-            val obj = org.json.JSONObject(json)
             DevParams(
                 printExposure = obj.optDouble("print_exposure", Double.NaN).takeIf { !it.isNaN() }?.toFloat(),
                 grainAmount = obj.optDouble("grain_amount", Double.NaN).takeIf { !it.isNaN() }?.toFloat(),
@@ -122,6 +117,28 @@ object ExifReader {
             )
         } catch (e: Throwable) {
             DevParams(null, null, null, null, null)
+        }
+    }
+
+    /** 拍摄参数：UserComment 里的 `shot` 嵌套对象；老照片没有就是 null。 */
+    private fun parseShot(userComment: String?): com.filmcam.app.film.ShotMeta? {
+        val obj = parseJson(userComment) ?: return null
+        val shot = obj.optJSONObject("shot") ?: return null
+        return com.filmcam.app.film.ShotMeta.fromJson(shot.toString())
+    }
+
+    /** 把 UserComment 还原成 JSONObject（剥离字符集前缀与 NUL 字节，兼容各写入器）。 */
+    private fun parseJson(userComment: String?): org.json.JSONObject? {
+        if (userComment.isNullOrBlank()) return null
+        var json = userComment.trim()
+        json = json.substringAfter('\n', json)
+        json = json.removePrefix("ASCII").removePrefix("UNICODE")
+        json = json.trim().trimStart('\u0000').trim()
+        if (!json.startsWith("{")) return null
+        return try {
+            org.json.JSONObject(json)
+        } catch (_: Throwable) {
+            null
         }
     }
 }

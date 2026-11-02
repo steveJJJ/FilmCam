@@ -55,6 +55,8 @@
     <string name="pf_same_no_params">这张照片没有可复现的拍摄参数</string>
 
     <!-- 成片信息面板 -->
+    <string name="pf_flash_short">闪光</string>
+    <string name="pf_defocus_short">失焦</string>
     <string name="pf_roll_id">胶卷编号 %1$s</string>
     <string name="pf_shot_at">拍摄于 %1$s</string>
     <string name="pf_paper">相纸 %1$s</string>

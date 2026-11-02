@@ -66,6 +66,8 @@ class MainActivity : AppCompatActivity() {
     private var slowShutterMode = FilmExposure.Mode.OFF
     /** 慢门触发机制：纯概率 / 纯真实 / 真实+轻随机（工程师模式可切） */
     private var slowTrigger = FilmExposure.Trigger.PROBABILITY
+    /** 本次拍摄的参数快照 JSON（闪光/白平衡/EV/快门/失焦），拍照线程写入、落盘线程读取 */
+    @Volatile private var lastShotJson = ""
     private var filmRollMode = false  // 胶卷模式开关（旧设置保留兼容，计数改由 UndevelopedFilmStore 权威）
     /** 触感强度档位：0=低 1=中 2=强（用户可在设置里切，见 vibrate() 的缩放系数） */
     private var hapticLevel = 1
@@ -253,12 +255,12 @@ class MainActivity : AppCompatActivity() {
                         Math.abs(event.rawY - touchStartY) > 24f
                     ) touchMoved = true
 
-                    // 闪光开启后的横滑手势：调白平衡（上下滑仍是 EV，竖直方向优先）
+                    // 横滑手势：调白平衡（上下滑仍是 EV，竖直方向优先）。
+                    // 以前只有闪光开启时才能调，但白平衡本来就是「换一片校色滤镜」，
+                    // 与闪不闪光无关 —— 现在任何模式都能横滑换片。
                     val dx = event.rawX - touchStartX
                     val dy = event.rawY - touchStartY
-                    if (!wbDragging && flash.mode != FlashMode.OFF &&
-                        Math.abs(dx) > 32f && Math.abs(dx) > Math.abs(dy) * 1.4f
-                    ) {
+                    if (!wbDragging && Math.abs(dx) > 32f && Math.abs(dx) > Math.abs(dy) * 1.4f) {
                         wbDragging = true
                         wbVisible = true
                         binding.viewfinderFrame.notifyActivity()
@@ -386,6 +388,39 @@ class MainActivity : AppCompatActivity() {
         }
         editor.apply()
 
+        // 拍摄参数：闪光 / 白平衡 / 曝光补偿 ——「同款」不只是冲洗，还包括这张的光。
+        // 以前只带冲洗参数，闪光+白平衡拍的片子点进来就变成一台没开闪、AUTO 白平衡的机子。
+        intent.getStringExtra(EXTRA_SAME_FLASH)?.let { name ->
+            runCatching { FlashMode.valueOf(name) }.getOrNull()?.let { m ->
+                flash.mode = m
+                binding.tvFlashStatus.text = when (m) {
+                    FlashMode.OFF -> getString(R.string.main_flash_off)
+                    FlashMode.BUILT_IN -> getString(R.string.main_flash_internal)
+                    FlashMode.EXTERNAL -> getString(R.string.main_flash_external)
+                }
+                if (m == FlashMode.EXTERNAL) flash.startScan()
+                flash.setBuiltInEnabled(m == FlashMode.BUILT_IN)
+                applyExposure()
+                updateLcd()
+            }
+        }
+        intent.getIntExtra(EXTRA_SAME_WB, Int.MIN_VALUE)
+            .takeIf { it != Int.MIN_VALUE }
+            ?.let { awb ->
+                val idx = wbPresets.indexOfFirst { it.awbMode == awb }
+                if (idx >= 0) {
+                    wbIndex = idx
+                    applyWbIndex()
+                }
+            }
+        intent.getIntExtra(EXTRA_SAME_EV, Int.MIN_VALUE)
+            .takeIf { it != Int.MIN_VALUE }
+            ?.let { setEv(it, persist = false) }
+        // 套用的结果也写回 prefs：同款不是"只这一张"，用完仍保持这套设置
+        saveSettings()
+        lastIndicatorKey = ""
+        updateViewfinderIndicators(null, lastExposureSec, lastAeIso)
+
         val roll = FilmRollRepository.rolls.firstOrNull {
             runCatching { FilmStockMapper.filmStockIdFor(it.name) }.getOrNull() == stockId
         }
@@ -429,10 +464,8 @@ class MainActivity : AppCompatActivity() {
             FlashMode.valueOf(prefs.getString("flashMode", FlashMode.OFF.name) ?: FlashMode.OFF.name)
         } catch (_: Exception) { FlashMode.OFF }
         wbIndex = prefs.getInt("wbIndex", 0).coerceIn(0, wbPresets.size - 1)
-        if (flash.mode != FlashMode.OFF) {
-            // 白平衡预设只在闪光开着时有意义；恢复时同步下发，成片与预览一致
-            cameraController?.setAwbMode(wbPresets[wbIndex].awbMode)
-        }
+        // 白平衡是常驻设置，与闪不闪光无关：恢复时一律下发，成片与预览一致
+        cameraController?.setAwbMode(wbPresets[wbIndex].awbMode)
         if (flash.mode == FlashMode.BUILT_IN) {
             // 上次退出时开着内置闪光：相机建好会话后补挂（会话未建立时由 startCamera 兜底）
             cameraController?.setFlashEnabled(true)
@@ -516,7 +549,8 @@ class MainActivity : AppCompatActivity() {
         val hints = resources.getStringArray(R.array.set_hints)
         val rows = intArrayOf(
             R.id.rowSetBody, R.id.rowSetDatestamp, R.id.rowSetHaptic, R.id.rowSetSlow,
-            R.id.rowSetLanguage, R.id.rowSetQuality, R.id.rowSetDev, R.id.rowSetAbout
+            R.id.rowSetWb, R.id.rowSetLanguage, R.id.rowSetQuality, R.id.rowSetDev,
+            R.id.rowSetAbout
         )
         val theme = com.filmcam.app.ui.BodyTheme
         fun row(id: Int): android.view.View = view.findViewById(id)
@@ -576,6 +610,7 @@ class MainActivity : AppCompatActivity() {
                 if (dateStampEnabled) getString(R.string.common_on) else getString(R.string.common_off)
             value(R.id.rowSetHaptic).text = hapticLevelName()
             value(R.id.rowSetSlow).text = slowShutterName()
+            value(R.id.rowSetWb).text = wbName()
             value(R.id.rowSetLanguage).text = languageName()
             value(R.id.rowSetQuality).text = qualityName()
             value(R.id.rowSetDev).text = ""          // 动作项没有"当前读数"
@@ -637,6 +672,16 @@ class MainActivity : AppCompatActivity() {
             lastIndicatorKey = ""   // 档位变了，取景器警告灯要立刻重画
             updateViewfinderIndicators(null, lastExposureSec, lastAeIso)
         }
+        row(R.id.rowSetWb).hapticClick {
+            // 白平衡：相当于换一片校色滤镜，AUTO → 钨丝灯 → 荧光灯 → 日光 → 阴天 → 阴影 → 黄昏。
+            // 选好就一直是这一片，拍完不回弹（之前只在闪光下的横滑手势里能改，一松手就看不见了）
+            wbIndex = (wbIndex + 1) % wbPresets.size
+            applyWbIndex()
+            saveSettings()
+            refreshValues()
+            lastIndicatorKey = ""   // 档位变了，取景器里的 WB 标记要立刻重画
+            updateViewfinderIndicators(lastAfState, lastExposureSec, lastAeIso)
+        }
         row(R.id.rowSetLanguage).hapticClick {
             // 切档会重建 Activity，弹窗必须走正常 dismiss（守卫计数归位）
             dialog.dismiss()
@@ -679,6 +724,9 @@ class MainActivity : AppCompatActivity() {
         FilmExposure.Mode.SLOW -> getString(R.string.slow_frequent)
         else -> getString(R.string.slow_off)
     }
+
+    /** 白平衡档位读数：AUTO / 钨丝灯 / 荧光灯 / 日光 / 阴天 / 阴影 / 黄昏 */
+    private fun wbName(): String = wbPresets.getOrNull(wbIndex)?.label ?: "AUTO"
 
     /** 冲洗画质当前档位：完整（原始分辨率）/ 标准（约 1200 万像素，快约 3 倍） */
     private fun qualityName(): String = when (com.filmcam.app.develop.DevQuality.load(this)) {
@@ -1277,7 +1325,8 @@ class MainActivity : AppCompatActivity() {
                 shutterLit = lit,
                 shutterBlink = blink,
                 shutterSlow = slowWarn,
-                wbOn = wbVisible && flash.mode != FlashMode.OFF,
+                // 白平衡标记：非 AUTO 时常驻（设置完就一直是这一片），横滑时也会亮出来
+                wbOn = wbVisible || wbIndex != 0,
                 wbIndex = wbIndex,
                 wbCount = wbPresets.size
             )
@@ -1547,7 +1596,8 @@ class MainActivity : AppCompatActivity() {
                     savedRollId = roll.rollId
                     val iso = isoValues[isoValue]
                     val count = UndevelopedFilmStore.saveFrame(
-                        roll.rollId, bytes, System.currentTimeMillis(), iso, rotation
+                        roll.rollId, bytes, System.currentTimeMillis(), iso, rotation,
+                        shotJson = lastShotJson
                     )
                     runOnUiThread {
                         if (count >= FILM_MAX) {
@@ -1555,6 +1605,9 @@ class MainActivity : AppCompatActivity() {
                         }
                         updateLcd()
                         updateFilmInfo()
+                        // 拍完把白平衡再下发一次：HAL 在 STILL_CAPTURE 之后偶尔会把 AWB
+                        // 拨回 AUTO，表现为「设置好的校色片拍一张就没了」。
+                        applyWbIndex()
                         // 调试即时出片：拍完立即后台冲洗
                         if (debugInstantDevelop) {
                             savedRollId?.let { DevelopController.developRollInBackground(this, it) }
@@ -1747,6 +1800,15 @@ class MainActivity : AppCompatActivity() {
                 // 慢门本身已经是「废片」的一个来源，同一张再叠失焦就太狠了，概率减半。
                 val prob = if (slowNs > 0L) softFocusProb / 2 else softFocusProb
                 val defocus = softFocusEnabled && java.util.Random().nextInt(100) < prob
+                // 这一张的拍摄参数随帧落盘（冲洗时写进 EXIF），拍摄同款要靠它复现
+                lastShotJson = com.filmcam.app.film.ShotMeta(
+                    flash = flash.mode.name,
+                    awbMode = wbPresets[wbIndex].awbMode,
+                    ev = exposureComp,
+                    shutterSec = if (slowNs > 0L) (slow?.filmSec ?: 0f) else 0f,
+                    slow = slowNs > 0L,
+                    defocus = defocus
+                ).toJson()
                 cameraController?.takePicture(defocus, slowNs, slowIso)
                 android.util.Log.i(
                     "SlowShutter",
@@ -1890,6 +1952,12 @@ class MainActivity : AppCompatActivity() {
         const val EXTRA_SAME_HALATION = "same_halation"
         const val EXTRA_SAME_GLARE = "same_glare"
         const val EXTRA_SAME_EXPOSURE = "same_exposure"
+        /** 闪光模式（OFF / BUILT_IN / EXTERNAL） */
+        const val EXTRA_SAME_FLASH = "same_flash"
+        /** 白平衡的 CONTROL_AWB_MODE_* 常量 */
+        const val EXTRA_SAME_WB = "same_wb"
+        /** 曝光补偿档位 */
+        const val EXTRA_SAME_EV = "same_ev"
 
         /**
          * 弹窗关闭后的取景器触摸屏蔽时长（ms）。
@@ -1900,7 +1968,8 @@ class MainActivity : AppCompatActivity() {
         /** 套用完后要摘掉的 extras（避免横竖屏重建时重复套用 + 重复提示） */
         val EXTRA_SAME_KEYS = arrayOf(
             EXTRA_SAME_FILM, EXTRA_SAME_PAPER, EXTRA_SAME_GRAIN,
-            EXTRA_SAME_HALATION, EXTRA_SAME_GLARE, EXTRA_SAME_EXPOSURE
+            EXTRA_SAME_HALATION, EXTRA_SAME_GLARE, EXTRA_SAME_EXPOSURE,
+            EXTRA_SAME_FLASH, EXTRA_SAME_WB, EXTRA_SAME_EV
         )
     }
 }

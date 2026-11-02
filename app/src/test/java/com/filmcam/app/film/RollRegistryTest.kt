@@ -115,6 +115,28 @@ class RollRegistryTest {
         assertEquals(100, out[0].frames[0].iso)
     }
 
+    // ---------- 拍摄参数快照 ----------
+
+    @Test
+    fun `shot 字段往返保持`() {
+        val shot = ShotMeta(
+            flash = "BUILT_IN", awbMode = 6, ev = 1,
+            shutterSec = 0.125f, slow = true, defocus = true
+        ).toJson()
+        val src = listOf(roll(frames = mutableListOf(frame(1).copy(shot = shot))))
+        val back = RollRegistry.deserialize(RollRegistry.serialize(src))
+        assertEquals(shot, back[0].frames[0].shot)
+        assertEquals(6, ShotMeta.fromJson(back[0].frames[0].shot)!!.awbMode)
+    }
+
+    @Test
+    fun `旧记录没有 shot 键时读出空串`() {
+        val raw = """[{"rollId":"r","status":"shooting","frames":[{"index":1,"handle":"h","takenAtMs":5,"iso":100}]}]"""
+        val out = RollRegistry.deserialize(raw)
+        assertEquals("", out[0].frames[0].shot)
+        assertNull(ShotMeta.fromJson(out[0].frames[0].shot))
+    }
+
     // ---------- 状态规则 ----------
 
     @Test

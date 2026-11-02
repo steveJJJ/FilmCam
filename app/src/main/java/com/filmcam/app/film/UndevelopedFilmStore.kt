@@ -138,6 +138,7 @@ object UndevelopedFilmStore {
         takenAtMs: Long,
         iso: Int?,
         orientation: Int = 0,
+        shotJson: String = "",
     ): Int = synchronized(this) {
         val rolls = loadAll()
         val roll = findRec(rolls, rollId)
@@ -192,7 +193,10 @@ object UndevelopedFilmStore {
         }
 
         roll.frames.add(
-            FrameRec(index = index, handle = handle, takenAtMs = takenAtMs, iso = iso, orientation = orientation)
+            FrameRec(
+                index = index, handle = handle, takenAtMs = takenAtMs,
+                iso = iso, orientation = orientation, shot = shotJson
+            )
         )
         persist(rolls)
         roll.frames.size
@@ -209,6 +213,11 @@ object UndevelopedFilmStore {
 
     fun frameIso(rollId: String, index: Int): Int? = synchronized(this) {
         findRec(loadAll(), rollId).frames.firstOrNull { it.index == index }?.iso
+    }
+
+    /** 该帧的拍摄参数 JSON（闪光/白平衡/EV/快门/失焦）；旧记录为空串。 */
+    fun frameShot(rollId: String, index: Int): String = synchronized(this) {
+        findRec(loadAll(), rollId).frames.firstOrNull { it.index == index }?.shot.orEmpty()
     }
 
     /** 该帧像素需顺时针旋转的角度（0/90/180/270）。缺省 0。 */

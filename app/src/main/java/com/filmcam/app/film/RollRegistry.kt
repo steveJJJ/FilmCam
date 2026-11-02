@@ -18,13 +18,15 @@ object RollRegistry {
     const val STATUS_DEVELOPING = "developing"
     const val STATUS_DEVELOPED = "developed"
 
-    /** 单帧记录。orientation 缺省 0：旧记录是拍摄侧已物理旋转过的老链路产物。 */
+    /** 单帧记录。orientation 缺省 0：旧记录是拍摄侧已物理旋转过的老链路产物。
+     *  shot 是拍摄参数 JSON（闪光/白平衡/EV/快门/失焦），旧记录为空串。 */
     data class FrameRec(
         val index: Int,
         val handle: String,
         val takenAtMs: Long,
         val iso: Int?,
-        val orientation: Int = 0
+        val orientation: Int = 0,
+        val shot: String = ""
     )
 
     data class RollRec(
@@ -74,7 +76,8 @@ object RollRegistry {
                         takenAtMs = f.optLong("takenAtMs", 0L),
                         // iso 可能是 JSONObject.NULL —— 用 isNull 判断，不能用 optInt（会返回 0）
                         iso = if (f.isNull("iso")) null else f.optInt("iso", 0),
-                        orientation = f.optInt("orientation", 0)
+                        orientation = f.optInt("orientation", 0),
+                        shot = f.optString("shot", "")
                     )
                 )
             }
@@ -109,6 +112,7 @@ object RollRegistry {
                 fo.put("takenAtMs", f.takenAtMs)
                 if (f.iso == null) fo.put("iso", JSONObject.NULL) else fo.put("iso", f.iso)
                 fo.put("orientation", f.orientation)
+                if (f.shot.isNotEmpty()) fo.put("shot", f.shot)
                 fa.put(fo)
             }
             o.put("frames", fa)
