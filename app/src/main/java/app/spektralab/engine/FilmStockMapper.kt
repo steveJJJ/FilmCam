@@ -66,18 +66,22 @@ object FilmStockMapper {
      * 店里扫描扫的就是这一整条，所以成片带片框才是"这是一卷胶卷"最直白的证据。
      *
      * 档位差别全在**片门（gate）的形状**，也就是底片上真正曝光的那一格有多大：
-     *  - 半格 `135_half`：18×24mm，横过来正好是我们取景的 4:3，画面一格不裁。
-     *  - 全画幅 `135`：36×24mm，就是康泰时 T3 那一格，3:2。我们的取景是 4:3，
-     *    要套这一格，就得先按片门裁一下——真机也是这么回事：镜头成像圈是圆的，
-     *    机身只取中间那块 36×24 的矩形，画面外的部分从来就没落在底片上。
+     *  - 半格 `135_half`：18×24mm，横构图 4:3，对得上取景，画面一格不裁。
+     *  - 全画幅 `135`：36×24mm，就是康泰时 T3 那一格，3:2。取景是 4:3，要套这一格
+     *    就得先按片门裁一下——真机也是这么回事：镜头成像圈是圆的，机身只取中间那块
+     *    36×24 的矩形，画面外的部分从来就没落在底片上。
+     *
+     * **片门会跟着横竖拍转**：真机竖拍时，画面在底片上是竖着的（24 宽 × 36 高），
+     * 齿孔照样在上下（胶卷只朝一个方向走）。所以竖拍走的是 [gatePortrait]，
+     * 裁的是左右两条边（各约 5.6%），而不是把竖照片硬压成横的 3:2。
      *
      * 引擎是照着片门形状校验输入尺寸的，比例不对它会在渲染期直接拒绝
      * （`overscan: a W x H frame is not the 135 gate's shape (36 x 24)`），
      * 所以 [gateAspect] 同时用于冲洗前的裁切和自检小图的尺寸。
      */
     enum class FrameFormat(val key: String, val overscanFormat: String?, val gateAspect: Float) {
-        /** 不扫片基：成片就只是画面 */
-        OFF("off", null, 0f),
+        /** 不扫片基：成片就只是画面（画幅仍按 135 全画幅片门出，见 DevSettings.outputGate） */
+        OFF("off", null, 36f / 24f),
 
         /** 半格机（18×24mm，横构图 4:3，Olympus Pen 那类）：画面不裁 */
         HALF("135_half", OVERSCAN_FORMAT_HALF, 24f / 18f),
@@ -87,6 +91,13 @@ object FilmStockMapper {
         ;
 
         val isOn: Boolean get() = this != OFF
+
+        /** 竖拍那一格：画面转 90°，宽高比取倒数（135 竖拍 = 24×36 = 2:3） */
+        val gatePortrait: Float get() = 1f / gateAspect
+
+        /** 按朝向取片门宽高比：竖帧（宽<高）走竖置片门，横帧走横置片门 */
+        fun gateAspectFor(portrait: Boolean): Float =
+            if (portrait) gatePortrait else gateAspect
 
         companion object {
             fun fromKey(s: String?): FrameFormat =
@@ -157,7 +168,14 @@ object FilmStockMapper {
          * 半格不动画面，全画幅按 36×24 片门裁成 3:2。
          */
         val frameFormat: FrameFormat = FrameFormat.OFF,
-    )
+    ) {
+        /**
+         * 成片按哪一格片门出片。片框关着时也一样按 135 全画幅那一格（3:2）——
+         * 取景器看到的是 4:3 一整块，真正落到底片上的只有中间那块 36×24。
+         */
+        val outputGate: FrameFormat
+            get() = if (frameFormat == FrameFormat.OFF) FrameFormat.FULL else frameFormat
+    }
 
     /** 相纸下拉项（保序，来自 stock_catalog.json prints[] 顺序）。 */
     data class PrintOption(val id: String, val name: String)
@@ -413,6 +431,15 @@ object FilmStockMapper {
         saveFrameFormat(context, next)
         return next
     }
+
+    /**
+     * 按档位裁到片门：横帧走横置片门（36×24），竖帧走竖置片门（24×36）。
+     *
+     * 竖拍不能套横置片门——那等于把一张竖照片硬压成横的 3:2，画面要裁掉一半高度。
+     * 真机竖拍时画面在底片上本来就是竖着的，这里照做。
+     */
+    fun gateCrop(format: FrameFormat, srcW: Int, srcH: Int): GateCrop =
+        gateCrop(srcW, srcH, format.gateAspectFor(srcW < srcH))
 
     /**
      * 按片门形状裁画面：从 [srcW]×[srcH] 里居中外切出宽高比正好等于 [gateAspect] 的一块。

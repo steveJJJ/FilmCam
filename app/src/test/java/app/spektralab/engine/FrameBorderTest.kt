@@ -113,7 +113,7 @@ class FrameBorderTest {
     @Test
     fun gateCrop_cuts4x3ToThe135Gate() {
         // 1440×1080（4:3）套 36×24 片门：上下各裁 60px，出来的必须是精确 3:2
-        val c = FilmStockMapper.gateCrop(1440, 1080, FilmStockMapper.FrameFormat.FULL.gateAspect)
+        val c = FilmStockMapper.gateCrop(FilmStockMapper.FrameFormat.FULL, 1440, 1080)
         assertTrue("4:3 要裁", c.cropped)
         assertEquals(1440, c.w)
         assertEquals(960, c.h)
@@ -123,21 +123,49 @@ class FrameBorderTest {
     }
 
     @Test
+    fun gateCrop_usesTheUprightGateForPortraitFrames() {
+        // 竖拍绝不能套横置片门（那会把竖照片压成横的、裁掉一半高度）：
+        // 1080×1440（3:4）走 24×36 竖置片门，左右各裁 60px，出来的精确 2:3
+        val c = FilmStockMapper.gateCrop(FilmStockMapper.FrameFormat.FULL, 1080, 1440)
+        assertTrue(c.cropped)
+        assertEquals(960, c.w)
+        assertEquals(1440, c.h)
+        assertEquals(60, c.x)
+        assertEquals(0, c.y)
+        assertEquals(2f / 3f, c.w.toFloat() / c.h.toFloat(), 1e-6f)
+        // 裁掉的比例和横拍一样（各约 5.6%），只是裁的是左右两条边
+        assertEquals(0.111f, (1080 - c.w).toFloat() / 1080f, 0.002f)
+    }
+
+    @Test
+    fun outputGateIsStillFullFrameWhenTheBorderIsOff() {
+        // 片框关着也要按 135 全画幅出片 —— 取景 4:3、成片 3:2 是机身的画幅，与片框无关
+        assertEquals(
+            FilmStockMapper.FrameFormat.FULL,
+            FilmStockMapper.DevSettings(frameFormat = FilmStockMapper.FrameFormat.OFF).outputGate
+        )
+        assertEquals(
+            FilmStockMapper.FrameFormat.HALF,
+            FilmStockMapper.DevSettings(frameFormat = FilmStockMapper.FrameFormat.HALF).outputGate
+        )
+    }
+
+    @Test
     fun gateCrop_leavesAFrameThatAlreadyMatchesAlone() {
         // 已经是 3:2 的（或半格配 4:3 的）一格都不许动
-        val full = FilmStockMapper.gateCrop(1440, 960, FilmStockMapper.FrameFormat.FULL.gateAspect)
+        val full = FilmStockMapper.gateCrop(FilmStockMapper.FrameFormat.FULL, 1440, 960)
         assertFalse("3:2 不用裁", full.cropped)
-        val half = FilmStockMapper.gateCrop(1440, 1080, FilmStockMapper.FrameFormat.HALF.gateAspect)
+        val half = FilmStockMapper.gateCrop(FilmStockMapper.FrameFormat.HALF, 1440, 1080)
         assertFalse("4:3 配半格不用裁", half.cropped)
-        // 片框关着（aspect<=0）也绝不动画面
-        val off = FilmStockMapper.gateCrop(1440, 1080, FilmStockMapper.FrameFormat.OFF.gateAspect)
-        assertFalse("片框关着不该裁", off.cropped)
+        // 竖帧正好是竖置片门形状时同样不动
+        val upright = FilmStockMapper.gateCrop(FilmStockMapper.FrameFormat.FULL, 960, 1440)
+        assertFalse("2:3 竖帧不用裁", upright.cropped)
     }
 
     @Test
     fun gateCrop_trimsTheWideSideWhenTheSourceIsWiderThanTheGate() {
         // 导入的 16:9 照片套 3:2：裁宽而不是裁高，比例仍要精确
-        val c = FilmStockMapper.gateCrop(1920, 1080, FilmStockMapper.FrameFormat.FULL.gateAspect)
+        val c = FilmStockMapper.gateCrop(FilmStockMapper.FrameFormat.FULL, 1920, 1080)
         assertTrue(c.cropped)
         assertEquals(1080, c.h)
         assertEquals(1620, c.w)

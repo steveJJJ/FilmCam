@@ -720,10 +720,8 @@ class MainActivity : AppCompatActivity() {
             }
             // 当场问一次引擎：片门形状是渲染期才校验的（setParams 会收下、solve 才拒绝），
             // 与其等冲完一卷才发现退回半格，不如现在就知道这机器认不认这一格。
-            // 正在冲洗时不插队：两边共用同一个引擎实例，抢着开 session 只会互相打断。
-            if (next.isOn && com.filmcam.app.develop.DevelopmentState.phase !=
-                com.filmcam.app.develop.DevelopmentState.PHASE_DEVELOPING
-            ) probeFrameGate(next)
+            // 正在冲洗时不插队：两边共用同一个引擎实例，抢着开 session 只会互相打断
+            if (next.isOn && !developingNow()) probeFrameGate(next)
         }
         row(R.id.rowSetDev).hapticClick {
             dialog.dismiss()
@@ -780,6 +778,17 @@ class MainActivity : AppCompatActivity() {
         else -> getString(R.string.common_off)
     }
 
+    /**
+     * 有没有一卷正在冲。抄的是"服务已经接过一卷、而且还没冲完"这个状态
+     * （`phase` 的默认值就是 developing，光看 phase 会永远以为在冲）。
+     */
+    private fun developingNow(): Boolean {
+        val st = com.filmcam.app.develop.DevelopmentState
+        return st.rollId != null &&
+            st.phase != com.filmcam.app.develop.DevelopmentState.PHASE_DONE &&
+            st.phase != com.filmcam.app.develop.DevelopmentState.PHASE_ERROR
+    }
+
     @Volatile
     private var frameGateProbing = false
 
@@ -796,9 +805,6 @@ class MainActivity : AppCompatActivity() {
         frameGateProbing = true
         Thread {
             try {
-                val aspect = format.gateAspect
-                val w = 96
-                val h = (w / aspect.coerceAtLeast(0.1f)).toInt().coerceAtLeast(1)
                 val overscanFormat = format.overscanFormat ?: return@Thread
                 val json = FilmStockMapper.buildParamsJson(
                     "kodak_portra_400", FilmStockMapper.DEFAULT_PRINT_FALLBACK,
@@ -808,15 +814,29 @@ class MainActivity : AppCompatActivity() {
                         "kodak_portra_400", 1, overscanFormat
                     ),
                 )
-                val err = SpektraProcessor.probeRenderOk(applicationContext, json, w, h)
+                // 横竖两个朝向各问一遍：竖拍走的是竖置片门，引擎未必认
+                val report = StringBuilder()
+                var anyOk = false
+                for (portrait in listOf(false, true)) {
+                    val aspect = format.gateAspectFor(portrait)
+                    val long = 96
+                    val w = if (portrait) (long * aspect).toInt() else long
+                    val h = if (portrait) long else (long / aspect).toInt()
+                    val err = SpektraProcessor.probeRenderOk(
+                        applicationContext, json, w.coerceAtLeast(1), h.coerceAtLeast(1)
+                    )
+                    report.append(if (portrait) "竖 ${w}x$h" else "横 ${w}x$h")
+                        .append(" -> ").append(err ?: "OK").append('\n')
+                    if (err == null) anyOk = true
+                }
                 runCatching {
                     val dir = getExternalFilesDir(null) ?: filesDir
                     java.io.File(dir, "spektra_frame_probe.txt").writeText(
-                        "gate=${format.key} ${w}x$h -> " + (err ?: "OK")
+                        "gate=${format.key}\n$report"
                     )
                 }
-                Log.d("MainActivity", "片框自检 ${format.key}: ${err ?: "OK"}")
-                if (err != null) {
+                Log.d("MainActivity", "片框自检 ${format.key}:\n$report")
+                if (!anyOk) {
                     runOnUiThread {
                         Toast.makeText(
                             this, getString(R.string.set_frame_probe_failed), Toast.LENGTH_LONG

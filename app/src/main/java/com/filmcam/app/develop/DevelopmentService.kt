@@ -229,9 +229,10 @@ class DevelopmentService : Service() {
             // 引擎原文 `overscan: a 1440 x 1080 frame is not the 135 gate's shape (36 x 24)`），
             // 只做 setParams 预检抓不到。所以先拿该版式片门比例的小图真跑一遍挑出能出图的版式，
             // 一个都不行就本次不带片框 —— 总好过整档掉回兜底白冲一张。
-            val frameFormat = if (effective.frameFormat.isOn) {
+            val frameCheck = if (effective.frameFormat.isOn) {
                 pickFrameFormat(roll.filmStockId, mappedPrint, effective)
-            } else null
+            } else FrameCheck(null, false, false)
+            val frameFormat = frameCheck.format
             if (effective.frameFormat.isOn && frameFormat == null) {
                 // 所有版式都不可用：关掉片框照常出图，别让用户等半天得到一个降级档
                 Log.w(TAG, "片框不可用，本次冲洗不带片框")
@@ -252,10 +253,9 @@ class DevelopmentService : Service() {
                     ).show()
                 }
             }
-            // 片门宽高比：135 全画幅是 3:2，取景是 4:3，画面要先裁到片门再进引擎
-            val gateAspect = frameFormat?.let {
-                FilmStockMapper.FrameFormat.fromOverscanFormat(it).gateAspect
-            } ?: 0f
+            // 成片片门：取景 4:3，真正落到"底片"上的只有中间那块 36×24（3:2）。
+            // 片框关着也一样按这一格出片 —— 这才是"拍出来是 3:2"那件事本身。
+            val gate = effective.outputGate
             val frameExtras = frameFormat?.let {
                 FilmStockMapper.frameBorderEntries(roll.filmStockId, 1, it)
             } ?: emptyList()
@@ -279,8 +279,20 @@ class DevelopmentService : Service() {
                 scanExtraOverride = FilmStockMapper.scanFinishEntries(
                     effective.outputStyle, FilmStockMapper.SCAN_LEVEL_SAFE
                 ) + acceptedScan,
-                extraEntries = acceptedFrame.ifEmpty { null },
+                extraEntries = null,
             )
+            // 带片框的那一份（逐帧按朝向决定用哪份：引擎可能只认横置片门）
+            val frameParamsJson = if (frameFormat != null && acceptedFrame.isNotEmpty()) {
+                FilmStockMapper.buildParamsJson(
+                    roll.filmStockId, mappedPrint, effective,
+                    includeStyleMark = false,
+                    scanFinishLevel = FilmStockMapper.SCAN_LEVEL_FULL,
+                    scanExtraOverride = FilmStockMapper.scanFinishEntries(
+                        effective.outputStyle, FilmStockMapper.SCAN_LEVEL_SAFE
+                    ) + acceptedScan,
+                    extraEntries = acceptedFrame,
+                )
+            } else null
             var activeFallbackChain: List<String> = buildList {
                 if (effective.outputStyle.isScan) {
                     add(safeJson)
@@ -320,8 +332,10 @@ class DevelopmentService : Service() {
                         matrixBaseJson = if (index == 1) safeJson else null,
                         // 片框的帧号逐帧递增（底片暗边本来就印着"1""2"…"36"）
                         frameNumber = if (perFrameNumber != 0) index else 0,
-                        // 片门形状：135 全画幅 3:2，取景 4:3 —— 差的那一条边在这里裁掉
-                        gateAspect = gateAspect,
+                        // 成片片门（横 36×24 / 竖 24×36）：画面按这一格裁
+                        gate = gate,
+                        frameParamsJson = frameParamsJson,
+                        frameOkPortrait = frameCheck.okPortrait,
                     )
                     if (usedFallback) {
                         fallbackFrames++
@@ -445,11 +459,14 @@ class DevelopmentService : Service() {
         /** >0：片框帧号，逐帧覆盖进参数；0 = 不带帧号（片框关闭或引擎不认这个键）。 */
         frameNumber: Int = 0,
         /**
-         * >0：片门宽高比（36/24 或 24/18）。片框档位的片门形状跟取景画幅不一致时
-         * （135 全画幅 3:2 vs 取景 4:3），进引擎前先把画面裁到片门 —— 引擎是拿输入尺寸
-         * 对着片门校验的，差一点也不给出图。0 = 不裁。
+         * 成片片门：横帧走 36×24（3:2），竖帧走 24×36（2:3）。取景是 4:3，落到底片上的
+         * 只有中间那一格 —— 竖拍绝不能套横置片门，那等于把竖照片压成横的、裁掉一半高度。
          */
-        gateAspect: Float = 0f,
+        gate: FilmStockMapper.FrameFormat = FilmStockMapper.FrameFormat.FULL,
+        /** 非 null = 带片框的那份参数；逐帧按朝向决定用不用它。 */
+        frameParamsJson: String? = null,
+        /** 引擎是否认这一格的**竖置**片门（冲洗前的自检问过；不认的竖帧就不带片框）。 */
+        frameOkPortrait: Boolean = true,
     ): Boolean {
         val tTotal0 = android.os.SystemClock.elapsedRealtime()
 
@@ -491,17 +508,16 @@ class DevelopmentService : Service() {
 
         // 裁到片门：真机也是这么回事 —— 镜头成像圈是圆的，机身只取中间那块 36×24
         // 的矩形，画面之外的部分从来就没落在底片上。引擎同样只认片门形状的输入。
-        if (gateAspect > 0f) {
+        // 竖拍走竖置片门（画面在底片上本来就是竖的，齿孔照样在上下）。
+        val crop = FilmStockMapper.gateCrop(gate, bmp.width, bmp.height)
+        if (crop.cropped) {
             val srcW = bmp.width
             val srcH = bmp.height
-            val crop = FilmStockMapper.gateCrop(srcW, srcH, gateAspect)
-            if (crop.cropped) {
-                val gated = Bitmap.createBitmap(crop.w, crop.h, Bitmap.Config.ARGB_8888)
-                Canvas(gated).drawBitmap(bmp, -crop.x.toFloat(), -crop.y.toFloat(), Paint())
-                bmp.recycle()
-                bmp = gated
-                Log.d(TAG, "片门裁切 ${crop.w}x${crop.h}（源 ${srcW}x${srcH}）")
-            }
+            val gated = Bitmap.createBitmap(crop.w, crop.h, Bitmap.Config.ARGB_8888)
+            Canvas(gated).drawBitmap(bmp, -crop.x.toFloat(), -crop.y.toFloat(), Paint())
+            bmp.recycle()
+            bmp = gated
+            Log.d(TAG, "片门裁切 ${crop.w}x${crop.h}（源 ${srcW}x${srcH}）")
         }
 
         var writtenOk = false
@@ -549,11 +565,17 @@ class DevelopmentService : Service() {
             inW = bmp.width
             inH = bmp.height
             val tEngine0 = android.os.SystemClock.elapsedRealtime()
-            val frameParamsJson =
-                if (frameNumber > 0) FilmStockMapper.withFrameNumber(paramsJson, frameNumber)
-                else paramsJson
+            // 竖帧能不能带片框：引擎认不认竖置片门是冲洗前自检问来的，
+            // 不认就这一帧只出画面（画幅照样是竖片门那一格），别为一片片基把画面毁了。
+            val portrait = bmp.width < bmp.height
+            val useFrame = frameParamsJson != null && (!portrait || frameOkPortrait)
+            val baseJson = if (useFrame) frameParamsJson!! else paramsJson
+            val frameParamsJsonOrNull =
+                if (useFrame && frameNumber > 0) {
+                    FilmStockMapper.withFrameNumber(baseJson, frameNumber)
+                } else baseJson
             val result = SpektraProcessor.processFrame(
-                applicationContext, bmp, frameParamsJson, tmpJpeg.absolutePath,
+                applicationContext, bmp, frameParamsJsonOrNull, tmpJpeg.absolutePath,
                 recycleInput = true, fallbackParamsJsons = fallbackParamsJsons
             )
             tEngineMs = android.os.SystemClock.elapsedRealtime() - tEngine0
@@ -695,12 +717,14 @@ class DevelopmentService : Service() {
     }
 
     /**
-     * 挑一个能出图的片框版式：拿**该版式片门比例**的小图真跑一遍 render
-     * （setParams + solve + export），第一个不报错的就用；全都不行返回 null。
+     * 挑一个能出图的片框版式，并问清楚**横竖两个朝向**各自认不认。
      *
      * 为什么必须真跑：片框的版式与底片尺寸匹配是渲染期校验，setParams 会爽快收下参数，
      * 冲到 solve 才抛 `overscan: a 1440 x 1080 frame is not the 135 gate's shape (36 x 24)`。
      * 只做参数预检的话，结果是整档掉回兜底档 —— 用户看到的就是「1 帧未能按所选风格冲洗」。
+     *
+     * 为什么横竖都要测：竖拍走的是竖置片门（画面在底片上本来就是竖的），引擎未必认。
+     * 认横不认竖时，横帧照常带片框、竖帧只出画面，别为了一片片基把竖照片毁掉。
      *
      * 用户选的那格优先；它不行再退另一格（135 全画幅 ↔ 半格），总好过整卷没有片框。
      */
@@ -708,28 +732,25 @@ class DevelopmentService : Service() {
         filmStockId: String,
         printStockId: String,
         settings: FilmStockMapper.DevSettings,
-    ): String? {
+    ): FrameCheck {
         val notes = ArrayList<String>()
         var chosen: String? = null
+        var okLandscape = false
+        var okPortrait = false
         for (format in FilmStockMapper.overscanCandidates(settings.frameFormat)) {
-            // 自检小图必须按这个版式的片门比例来，否则测的就不是同一件事
-            val aspect = FilmStockMapper.FrameFormat.fromOverscanFormat(format).gateAspect
-            val pw = 96
-            val ph = (pw / aspect.coerceAtLeast(0.1f)).toInt().coerceAtLeast(1)
-            val json = FilmStockMapper.buildParamsJson(
-                filmStockId, printStockId, settings,
-                includeStyleMark = false,
-                extraEntries = FilmStockMapper.frameBorderEntries(filmStockId, 1, format),
-            )
-            val err = SpektraProcessor.probeRenderOk(this, json, pw, ph)
-            if (err == null) {
-                Log.i(TAG, "片框版式可用: $format (${pw}x$ph)")
-                notes.add("$format ${pw}x$ph -> OK")
+            val frame = FilmStockMapper.FrameFormat.fromOverscanFormat(format)
+            val lErr = probeGate(filmStockId, printStockId, settings, format, frame, false)
+            val pErr = probeGate(filmStockId, printStockId, settings, format, frame, true)
+            notes.add("$format 横 -> ${lErr ?: "OK"}")
+            notes.add("$format 竖 -> ${pErr ?: "OK"}")
+            if (lErr == null || pErr == null) {
+                Log.i(TAG, "片框版式可用: $format（横 ${lErr ?: "OK"} / 竖 ${pErr ?: "OK"}）")
                 chosen = format
+                okLandscape = lErr == null
+                okPortrait = pErr == null
                 break
             }
-            Log.w(TAG, "片框版式 $format 不可用 (${pw}x$ph): $err")
-            notes.add("$format ${pw}x$ph -> $err")
+            Log.w(TAG, "片框版式 $format 不可用: 横=$lErr | 竖=$pErr")
         }
         // 落盘：logcat 不一定抓得到（无线调试经常断），留个文件随时能 pull
         runCatching {
@@ -738,7 +759,35 @@ class DevelopmentService : Service() {
                 notes.joinToString("\n") + "\nchosen=" + (chosen ?: "none")
             )
         }
-        return chosen
+        return FrameCheck(chosen, okLandscape, okPortrait)
+    }
+
+    /** 自检结果：用的版式 + 横/竖两个朝向各自能不能出图。 */
+    private data class FrameCheck(
+        val format: String?,
+        val okLandscape: Boolean,
+        val okPortrait: Boolean,
+    )
+
+    /** 拿该版式这个朝向的片门比例跑一遍小图（96px 长边），返回引擎报错原文或 null。 */
+    private fun probeGate(
+        filmStockId: String,
+        printStockId: String,
+        settings: FilmStockMapper.DevSettings,
+        format: String,
+        frame: FilmStockMapper.FrameFormat,
+        portrait: Boolean,
+    ): String? {
+        val aspect = frame.gateAspectFor(portrait).coerceAtLeast(0.1f)
+        val long = 96
+        val w = if (portrait) (long * aspect).toInt() else long
+        val h = if (portrait) long else (long / aspect).toInt()
+        val json = FilmStockMapper.buildParamsJson(
+            filmStockId, printStockId, settings,
+            includeStyleMark = false,
+            extraEntries = FilmStockMapper.frameBorderEntries(filmStockId, 1, format),
+        )
+        return SpektraProcessor.probeRenderOk(this, json, w.coerceAtLeast(1), h.coerceAtLeast(1))
     }
 
     /** 按 90° 整数倍旋转位图。整数倍旋转无插值，旋转后立即回收原图。 */

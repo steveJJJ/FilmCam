@@ -93,7 +93,7 @@ App 版本：%1$s (%2$d)
     <string name="set_frame">胶片相框</string>
     <string name="frame_half">半格 4:3</string>
     <string name="frame_full">全画幅 3:2</string>
-    <string name="set_frame_full_hint">全画幅按 36×24 片门出片：4:3 取景上下各裁掉一点（真机也只取镜头成像圈中间那块）</string>
+    <string name="set_frame_full_hint">成片按 36×24 片门出（真机也只取镜头成像圈中间那块）：横拍上下各裁约 5%，竖拍走竖置那一格、左右各裁约 5%</string>
     <string name="set_frame_probe_failed">这一格片门引擎不认（冲洗时会自动退回另一格），详情见机身外部存储 spektra_frame_probe.txt</string>
     <string name="set_slow">慢门</string>
     <string name="set_wb">白平衡</string>
@@ -136,7 +136,7 @@ App 版本：%1$s (%2$d)
         <item>跟随系统 / 简体中文 / English</item>
         <item>完整＝原始分辨率，慢；标准≈1200 万像素，快约 3 倍</item>
         <item>放大机印成相纸，还是店里把底片扫出来</item>
-        <item>把片基、齿孔和暗边帧号一起扫进成片：半格 4:3 不动画面，全画幅 3:2 按 36×24 片门裁</item>
+        <item>成片一律按 135 片门出片（竖拍走竖置那一格）：关＝只出画面，半格 4:3 不动画面，全画幅 3:2 连片基齿孔一起扫</item>
         <item>颗粒 · 辉光 · 眩光强度</item>
         <item>机身铭牌与许可证</item>
     </string-array>
