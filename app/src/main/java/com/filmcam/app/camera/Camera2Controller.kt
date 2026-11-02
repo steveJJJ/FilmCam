@@ -107,6 +107,31 @@ class Camera2Controller(private val context: Context) {
     /** 无闪光灯单元时的兜底：torch 常亮的开启状态 */
     @Volatile private var torchOn: Boolean = false
 
+    // ---------------- 慢门（胶片曝光模型）的能力与测光快照 ----------------
+
+    /** 传感器曝光范围（秒），取自 SENSOR_INFO_EXPOSURE_TIME_RANGE */
+    private var deviceMinExposureSec = 1f / 8000f
+    private var deviceMaxExposureSec = 0.2f
+
+    /** 传感器 ISO 范围（SENSOR_INFO_SENSITIVITY_RANGE） */
+    private var deviceIsoRange = 50..3200
+
+    /** 主摄实际光圈（f 值）：把预览 AE 的曝光量还原成场景亮度要用它 */
+    private var apertureValue = 1.8f
+
+    /** 是否支持 MANUAL_SENSOR：不支持就只能降级，慢门不可用 */
+    private var hasManualSensor = false
+
+    /** 能否关掉镜头光学防抖。T3 没有防抖，不关的话长曝光根本抖不起来 */
+    private var canDisableOis = false
+
+    /** 能否关掉降噪。多帧降噪会把抖动「修」平，等于白拍 */
+    private var canDisableNr = false
+
+    /** 预览 AE 最近一次测光结果 —— 慢门决策的唯一输入 */
+    @Volatile private var lastAeSec = 0f
+    @Volatile private var lastAeIso = 0
+
     // 复刻康泰时 T3 35mm 视角：主摄等效约23mm，裁切至35mm ≈ 1.52x
     private var zoomRatio = 1.52f
 
@@ -153,7 +178,7 @@ class Camera2Controller(private val context: Context) {
     var onPhotoCaptured: ((ByteArray, Int) -> Unit)? = null
 
     /** 取景器元信息回调：(AF 状态, 曝光时间秒)，驱动 T3 取景器内的合焦灯与快门档显示 */
-    var onViewfinderMeta: ((afState: Int?, exposureSec: Float) -> Unit)? = null
+    var onViewfinderMeta: ((afState: Int?, exposureSec: Float, isoAe: Int) -> Unit)? = null
     private var lastMetaPostAt = 0L
 
     /** 当前设备屏幕旋转（0/90/180/270），拍照方向要用 */
@@ -204,6 +229,37 @@ class Camera2Controller(private val context: Context) {
 
         // 设备有没有真闪光灯：没有的话 HAL 闪光模式无效，退回手电筒顶一下的老办法
         hasFlashUnit = chars.get(CameraCharacteristics.FLASH_INFO_AVAILABLE) == true
+
+        // ---- 慢门能力探测：能手动曝光多久、能关什么（OIS / 降噪 / ZSL） ----
+        chars.get(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE)?.let { r ->
+            if (r.upper > r.lower) {
+                deviceMinExposureSec = r.lower / 1_000_000_000f
+                deviceMaxExposureSec = r.upper / 1_000_000_000f
+            }
+        }
+        chars.get(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE)?.let { r ->
+            if (r.upper > r.lower) deviceIsoRange = r.lower..r.upper
+        }
+        chars.get(CameraCharacteristics.LENS_INFO_AVAILABLE_APERTURES)
+            ?.firstOrNull { it > 0f }?.let { apertureValue = it }
+        hasManualSensor = chars.get(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES)
+            ?.contains(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_MANUAL_SENSOR) == true
+        if (android.os.Build.VERSION.SDK_INT >= 33) {
+            canDisableOis = chars
+                .get(CameraCharacteristics.LENS_INFO_AVAILABLE_OPTICAL_STABILIZATION)
+                ?.contains(android.hardware.camera2.CameraMetadata.LENS_OPTICAL_STABILIZATION_MODE_OFF) == true
+        }
+        canDisableNr = chars.get(CameraCharacteristics.NOISE_REDUCTION_AVAILABLE_NOISE_REDUCTION_MODES)
+            ?.contains(android.hardware.camera2.CameraMetadata.NOISE_REDUCTION_MODE_OFF) == true
+        val capsLine = "slowShutter caps manualSensor=$hasManualSensor " +
+            "exp=${deviceMinExposureSec}~${deviceMaxExposureSec}s iso=$deviceIsoRange " +
+            "ap=$apertureValue oisOff=$canDisableOis nrOff=$canDisableNr"
+        android.util.Log.i("SlowShutter", capsLine)
+        runCatching {
+            java.io.File(context.applicationInfo.dataDir, "files").let { d ->
+                java.io.File(d, "filmcam_diag.txt").appendText("$capsLine\n")
+            }
+        }
 
         // 预览分辨率：限制在 1920 宽以内。部分机型（三星 S25/Adreno + Android 16）
         // 把 12MP 全尺寸作为 SurfaceTexture 私有流时，GL 消费者绑定 EGLImage 会
@@ -298,11 +354,18 @@ class Camera2Controller(private val context: Context) {
         )
     }
 
-    /** 拍摄全分辨率照片。defocus=true 时本次故意对焦不准（模拟偶发失焦） */
-    fun takePicture(defocus: Boolean = false) {
+    /**
+     * 拍摄全分辨率照片。
+     *
+     * @param defocus true = 本次故意对焦不准（模拟偶发失焦）
+     * @param slowExposureNs > 0 时，本次走「胶片慢门」：手动长曝光，不走 HAL 自动测光
+     * @param slowIso 与 [slowExposureNs] 配套的感光度（守住曝光量，画面不会变亮/变黑）
+     */
+    fun takePicture(defocus: Boolean = false, slowExposureNs: Long = 0L, slowIso: Int = 0) {
         try {
             val camera = cameraDevice ?: return
             val readerSurface = imageReader!!.surface
+            val slow = slowExposureNs > 0L && slowIso > 0
             val captureBuilder = camera.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE).apply {
                 addTarget(readerSurface)
                 set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
@@ -318,9 +381,61 @@ class Camera2Controller(private val context: Context) {
                     set(CaptureRequest.LENS_FOCUS_DISTANCE, minFocusDistance * 0.6f)
                 }
                 applyFlashSettings(this)
+                // 必须放在最后：慢门要覆盖 AE 模式，也要压过上面闪光分支的 ALWAYS_FLASH
+                if (slow) applySlowShutter(this, slowExposureNs, slowIso)
             }
-            submitStillCapture(captureBuilder)
+            submitStillCapture(captureBuilder, slow)
         } catch (_: Exception) {}
+    }
+
+    /**
+     * 本次拍照强制一段长曝光（胶片慢门）。
+     *
+     * 只关 AE，不动 CONTROL_MODE —— 这样 AF / AWB 仍然自动（沿用上面 applyManualSettings
+     * 设好的焦点与白平衡）。不能用 applyManualSettings 的手动分支：它会把 CONTROL_MODE
+     * 设成 OFF，等于把白平衡也一起冻在上一次的值上。
+     *
+     * 另外三件事决定这一张到底糊不糊：
+     *   · 帧时长必须 ≥ 曝光时间，否则 HAL 会把长曝光截断回 1/30；
+     *   · 关掉 OIS —— T3 没有防抖，不关的话 1/8 秒也能被稳回来；
+     *   · 关掉降噪/ZSL —— 多帧合成会把抖动「修」平，等于白拍一张长曝光。
+     */
+    private fun applySlowShutter(builder: CaptureRequest.Builder, exposureNs: Long, iso: Int) {
+        builder.set(
+            CaptureRequest.CONTROL_MODE,
+            android.hardware.camera2.CameraMetadata.CONTROL_MODE_AUTO
+        )
+        builder.set(
+            CaptureRequest.CONTROL_AE_MODE,
+            android.hardware.camera2.CameraMetadata.CONTROL_AE_MODE_OFF
+        )
+        builder.set(CaptureRequest.SENSOR_EXPOSURE_TIME, exposureNs)
+        builder.set(CaptureRequest.SENSOR_SENSITIVITY, iso.coerceIn(deviceIsoRange.first, deviceIsoRange.last))
+        builder.set(CaptureRequest.SENSOR_FRAME_DURATION, maxOf(exposureNs, 33_000_000L))
+        if (canDisableOis && android.os.Build.VERSION.SDK_INT >= 33) {
+            runCatching {
+                builder.set(
+                    CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE,
+                    android.hardware.camera2.CameraMetadata.LENS_OPTICAL_STABILIZATION_MODE_OFF
+                )
+            }
+        }
+        if (canDisableNr) {
+            builder.set(
+                CaptureRequest.NOISE_REDUCTION_MODE,
+                android.hardware.camera2.CameraMetadata.NOISE_REDUCTION_MODE_OFF
+            )
+        }
+        // 关掉零快门延迟：ZSL 会在按下前就把帧塞进缓冲，HAL 可能挑一张「旧的」交上来，
+        // 长曝光等于没发生。这个 key 不是所有 HAL 都认，设不进去就静默跳过。
+        val zslOff = runCatching {
+            builder.set(CaptureRequest.CONTROL_ENABLE_ZSL, false)
+        }.isSuccess
+        android.util.Log.i(
+            "SlowShutter",
+            "apply exposure=${exposureNs / 1_000_000.0}ms iso=$iso " +
+                "oisOff=$canDisableOis nrOff=$canDisableNr zslOff=$zslOff"
+        )
     }
 
     /**
@@ -330,7 +445,7 @@ class Camera2Controller(private val context: Context) {
      * 等 AE 收敛（或超时兜底）再开快门，否则第一张常常曝光过亮/过暗、甚至错过闪。
      * 关闪光时走原路径，不加任何等待。
      */
-    private fun submitStillCapture(captureBuilder: CaptureRequest.Builder) {
+    private fun submitStillCapture(captureBuilder: CaptureRequest.Builder, slowShutter: Boolean = false) {
         val session = captureSession
         val camera = cameraDevice
         val surface = previewSurface
@@ -339,7 +454,8 @@ class Camera2Controller(private val context: Context) {
             session?.capture(captureBuilder.build(), null, handler)
             return
         }
-        if (!flashEnabled || manualIso != null || manualExposure != null || surface == null) {
+        // 慢门已把 AE 关掉，HAL 不会闪，也不需要预闪测光 —— 直接开快门
+        if (!flashEnabled || slowShutter || manualIso != null || manualExposure != null || surface == null) {
             // 未开闪光 / 手动曝光（HAL 不会闪）→ 直接拍
             session.capture(captureBuilder.build(), null, handler)
             return
@@ -627,12 +743,19 @@ class Camera2Controller(private val context: Context) {
                 fireFocusCallback()
             }
 
+            // 慢门决策要用同一对 (t, ISO)：只存曝光时间不够，亮度是两者的乘积
+            val isoAe = result.get(android.hardware.camera2.CaptureResult.SENSOR_SENSITIVITY) ?: 0
+            if (exposureSec > 0f && isoAe > 0) {
+                lastAeSec = exposureSec
+                lastAeIso = isoAe
+            }
+
             // 指标上报（限流 150ms，避免每帧刷 UI）
             val now = android.os.SystemClock.uptimeMillis()
             if (now - lastMetaPostAt > 150) {
                 lastMetaPostAt = now
                 val af = state
-                mainHandler.post { onViewfinderMeta?.invoke(af, exposureSec) }
+                mainHandler.post { onViewfinderMeta?.invoke(af, exposureSec, isoAe) }
             }
         }
     }
@@ -672,6 +795,24 @@ class Camera2Controller(private val context: Context) {
             captureSession?.setRepeatingRequest(it.build(), previewMetaCallback, backgroundHandler)
         }
     }
+
+    // ---------------- 慢门：给上层（胶片曝光模型）的接口 ----------------
+
+    /** 预览 AE 最近一次测光（曝光秒, ISO）。慢门决策的唯一输入，没有就返回 null */
+    fun meteringSnapshot(): Pair<Float, Int>? =
+        if (lastAeSec > 0f && lastAeIso > 0) lastAeSec to lastAeIso else null
+
+    /** 主摄光圈（f 值）：把 AE 的曝光量还原成场景亮度要用它 */
+    fun aperture(): Float = apertureValue
+
+    /** 传感器曝光范围（秒） */
+    fun deviceExposureRangeSec(): Pair<Float, Float> = deviceMinExposureSec to deviceMaxExposureSec
+
+    /** 传感器 ISO 范围 */
+    fun deviceIsoRange(): IntRange = deviceIsoRange
+
+    /** 设备支持手动曝光才有慢门（否则只能走 AE 补偿，拍不出长曝光） */
+    fun supportsSlowShutter(): Boolean = hasManualSensor
 
     fun stop() {
         captureSession?.close()

@@ -51,6 +51,7 @@ class ViewfinderFrameView @JvmOverloads constructor(
         val flash: LedMode = LedMode.OFF,  // 闪光指示
         val shutterLit: Set<String> = emptySet(),  // 点亮的快门档位，如 {"500","30"}
         val shutterBlink: Boolean = false,         // 快门档闪烁（实际最快档/过曝警告）
+        val shutterSlow: Boolean = false,          // 慢门警告：快门慢到会抖，档位慢闪（T3 手册：当心手抖）
         val wbOn: Boolean = false,         // 白平衡面板是否在显示（横滑调 WB 期间）
         val wbIndex: Int = 0,              // 当前 WB 档位序号
         val wbCount: Int = 7               // 总档位数（画档位小点时用）
@@ -223,7 +224,10 @@ class ViewfinderFrameView @JvmOverloads constructor(
         drawLed(canvas, cx, baseLine, iconSize, st.focus, alpha, 120, 255, 140)
 
         // ⑧ 快门速度档位：右侧竖排 500 / 125 / 30 / LT
-        drawShutterScale(canvas, cr - cw * 0.075f, ct, cb, st.shutterLit, st.shutterBlink, alpha)
+        drawShutterScale(
+            canvas, cr - cw * 0.075f, ct, cb, st.shutterLit,
+            st.shutterBlink, st.shutterSlow, alpha
+        )
 
         // ⑨ 白平衡面板：改为在取景器这张「玻璃」上一并绘制，样式同 ⑤⑧，
         //    不再用屏幕中间那块中文浮层——中文字体与这层线性标记不是一套东西。
@@ -448,7 +452,7 @@ class ViewfinderFrameView @JvmOverloads constructor(
     /** ⑧ 右侧快门速度档位立柱：500 / 125 / 30 / LT */
     private fun drawShutterScale(
         canvas: Canvas, right: Float, top: Float, bottom: Float,
-        lit: Set<String>, blink: Boolean, alpha: Float
+        lit: Set<String>, blink: Boolean, slow: Boolean, alpha: Float
     ) {
         val labels = listOf("500", "125", "30", "LT")
         val h = bottom - top
@@ -460,10 +464,16 @@ class ViewfinderFrameView @JvmOverloads constructor(
         }
         val y0 = top + h * 0.30f
         val stepY = h * 0.12f
-        val blinking = (SystemClock.uptimeMillis() / 125L) % 2L == 0L
+        // 慢门用 2Hz 慢闪：这是「当心手抖」的提醒，不是过曝那种急促报警，
+        // 节奏慢下来才像 T3 取景器里那盏在暗处一下一下闪的灯。
+        val blinking = if (slow) {
+            (SystemClock.uptimeMillis() / 250L) % 2L == 0L
+        } else {
+            (SystemClock.uptimeMillis() / 125L) % 2L == 0L
+        }
         labels.forEachIndexed { i, label ->
             val isLit = label in lit
-            val on = isLit && (!blink || blinking)
+            val on = isLit && (!(blink || slow) || blinking)
             paint.color = when {
                 !isLit -> Color.argb((48 * alpha).toInt(), 255, 255, 255)
                 on -> Color.argb((235 * alpha).toInt(), 150, 255, 170)

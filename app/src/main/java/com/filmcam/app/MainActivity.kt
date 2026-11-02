@@ -18,6 +18,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import app.spektralab.engine.FilmStockMapper
 import com.filmcam.app.camera.Camera2Controller
+import com.filmcam.app.camera.FilmExposure
 import com.filmcam.app.databinding.ActivityMainBinding
 import com.filmcam.app.develop.DevelopController
 import com.filmcam.app.film.UndevelopedFilmStore
@@ -61,6 +62,8 @@ class MainActivity : AppCompatActivity() {
     private var exposureComp = 0  // 曝光补偿 -3 ~ +3
     private var softFocusEnabled = false  // 模拟失焦：拍摄时对焦故意不准
     private var softFocusProb = 0         // 模拟失焦概率 0-100（工程师模式可调；0=关）
+    /** 慢门档位（胶片曝光模型）：关 / 自然 / 偏慢 —— 决定暗光下「糊一下」的概率 */
+    private var slowShutterMode = FilmExposure.Mode.OFF
     private var filmRollMode = false  // 胶卷模式开关（旧设置保留兼容，计数改由 UndevelopedFilmStore 权威）
     /** 触感强度档位：0=低 1=中 2=强（用户可在设置里切，见 vibrate() 的缩放系数） */
     private var hapticLevel = 1
@@ -411,6 +414,7 @@ class MainActivity : AppCompatActivity() {
         softFocusProb = prefs.getInt("softFocus_prob", if (softFocusEnabled) 40 else 0)
         filmRollMode = prefs.getBoolean("filmRollMode", false)
         hapticLevel = prefs.getInt("hapticLevel", 1).coerceIn(0, 2)
+        slowShutterMode = FilmExposure.Mode.fromPrefs(prefs.getInt("slowShutter", 0))
         com.filmcam.app.ui.BodyTheme.load(this)
         com.filmcam.app.ui.AppLocale.load(this)
         // 旧 filmCount 键仅作迁移保留读取，不再作为权威（张数一律读 UndevelopedFilmStore.shotCount）
@@ -446,6 +450,7 @@ class MainActivity : AppCompatActivity() {
         prefs.putBoolean("softFocus", softFocusEnabled)
         prefs.putBoolean("filmRollMode", filmRollMode)
         prefs.putInt("hapticLevel", hapticLevel)
+        prefs.putInt("slowShutter", slowShutterMode.prefs)
         // 旧 filmCount 键不再写入；权威张数来自 UndevelopedFilmStore
         prefs.putBoolean("debug_instant_develop", debugInstantDevelop)
         prefs.putString("flashMode", flash.mode.name)
@@ -505,7 +510,7 @@ class MainActivity : AppCompatActivity() {
         val labels = resources.getStringArray(R.array.set_labels)
         val hints = resources.getStringArray(R.array.set_hints)
         val rows = intArrayOf(
-            R.id.rowSetBody, R.id.rowSetDatestamp, R.id.rowSetHaptic,
+            R.id.rowSetBody, R.id.rowSetDatestamp, R.id.rowSetHaptic, R.id.rowSetSlow,
             R.id.rowSetLanguage, R.id.rowSetQuality, R.id.rowSetDev, R.id.rowSetAbout
         )
         val theme = com.filmcam.app.ui.BodyTheme
@@ -565,6 +570,7 @@ class MainActivity : AppCompatActivity() {
             value(R.id.rowSetDatestamp).text =
                 if (dateStampEnabled) getString(R.string.common_on) else getString(R.string.common_off)
             value(R.id.rowSetHaptic).text = hapticLevelName()
+            value(R.id.rowSetSlow).text = slowShutterName()
             value(R.id.rowSetLanguage).text = languageName()
             value(R.id.rowSetQuality).text = qualityName()
             value(R.id.rowSetDev).text = ""          // 动作项没有"当前读数"
@@ -606,6 +612,26 @@ class MainActivity : AppCompatActivity() {
             // 按键感之后隔一下，再按「新档位」实震一回，让用户当场比出差别
             row(R.id.rowSetHaptic).postDelayed({ vibrate(30, 200) }, 180)
         }
+        row(R.id.rowSetSlow).hapticClick {
+            // 慢门：关 → 自然 → 偏慢，就地翻转，面板不关
+            slowShutterMode = when (slowShutterMode) {
+                FilmExposure.Mode.OFF -> FilmExposure.Mode.NATURAL
+                FilmExposure.Mode.NATURAL -> FilmExposure.Mode.SLOW
+                FilmExposure.Mode.SLOW -> FilmExposure.Mode.OFF
+            }
+            saveSettings()
+            refreshValues()
+            // 慢门靠相机的手动曝光能力，机型不支持就没有意义 —— 当场说清楚，别让用户干等
+            if (slowShutterMode != FilmExposure.Mode.OFF &&
+                cameraController?.supportsSlowShutter() == false
+            ) {
+                Toast.makeText(
+                    this@MainActivity, getString(R.string.set_slow_unsupported), Toast.LENGTH_LONG
+                ).show()
+            }
+            lastIndicatorKey = ""   // 档位变了，取景器警告灯要立刻重画
+            updateViewfinderIndicators(null, lastExposureSec, lastAeIso)
+        }
         row(R.id.rowSetLanguage).hapticClick {
             // 切档会重建 Activity，弹窗必须走正常 dismiss（守卫计数归位）
             dialog.dismiss()
@@ -640,6 +666,13 @@ class MainActivity : AppCompatActivity() {
         0 -> getString(R.string.haptic_low)
         1 -> getString(R.string.haptic_mid)
         else -> getString(R.string.haptic_strong)
+    }
+
+    /** 慢门档位读数：关 / 自然 / 偏慢 */
+    private fun slowShutterName(): String = when (slowShutterMode) {
+        FilmExposure.Mode.NATURAL -> getString(R.string.slow_natural)
+        FilmExposure.Mode.SLOW -> getString(R.string.slow_frequent)
+        else -> getString(R.string.slow_off)
     }
 
     /** 冲洗画质当前档位：完整（原始分辨率）/ 标准（约 1200 万像素，快约 3 倍） */
@@ -1205,10 +1238,12 @@ class MainActivity : AppCompatActivity() {
      */
     private var lastIndicatorKey = ""
     private var lastExposureSec = 0f
+    private var lastAeIso = 0
     private var lastAfState: Int? = null
 
-    private fun updateViewfinderIndicators(afState: Int?, exposureSec: Float) {
+    private fun updateViewfinderIndicators(afState: Int?, exposureSec: Float, isoAe: Int = 0) {
         if (exposureSec > 0f) lastExposureSec = exposureSec
+        if (isoAe > 0) lastAeIso = isoAe
         if (afState != null) lastAfState = afState
         val focus = when (afState) {
             2, 5 -> if (cameraController?.isAfLocked() == true)
@@ -1218,8 +1253,13 @@ class MainActivity : AppCompatActivity() {
         }
         val lit = shutterTagsFor(lastExposureSec)
         val blink = lastExposureSec > 0f && lastExposureSec <= 1f / 1200f
+        // 慢门警告（T3 手册里快门档位闪烁 = 当心手抖）：按胶卷算出来的快门已经慢到会抖
+        val slowSec = filmShutterPreviewSec()
+        val slowWarn = slowShutterMode != FilmExposure.Mode.OFF &&
+            slowSec != null && slowSec >= 1f / 45f
         // WB 状态必须进 key：否则横滑换档时因为其它字段没变，被去重直接跳过不重画
-        val key = "${focus.ordinal}|$exposureComp|${lit.joinToString(",")}|$blink|${flash.mode}|$wbVisible|$wbIndex"
+        val key = "${focus.ordinal}|$exposureComp|${lit.joinToString(",")}|$blink|$slowWarn|" +
+            "${flash.mode}|$wbVisible|$wbIndex"
         if (key == lastIndicatorKey) return
         lastIndicatorKey = key
         binding.viewfinderFrame.setIndicators(
@@ -1231,10 +1271,47 @@ class MainActivity : AppCompatActivity() {
                         else ViewfinderFrameView.LedMode.OFF,
                 shutterLit = lit,
                 shutterBlink = blink,
+                shutterSlow = slowWarn,
                 wbOn = wbVisible && flash.mode != FlashMode.OFF,
                 wbIndex = wbIndex,
                 wbCount = wbPresets.size
             )
+        )
+    }
+
+    /** 胶卷档位（用户手动选了 ISO 就用用户的，否则按卷名里的 DX 感光度） */
+    private fun effectiveFilmIso(): Int =
+        isoValues[isoValue] ?: FilmExposure.isoFromRollName(currentRoll.name)
+
+    /** 按胶卷算出来的这张「真机快门」（秒）；取景器用它决定要不要闪慢门警告 */
+    private fun filmShutterPreviewSec(): Float? {
+        val c = cameraController ?: return null
+        val meter = c.meteringSnapshot() ?: return null
+        val ev = FilmExposure.ev100(meter.first, meter.second, c.aperture()) ?: return null
+        return FilmExposure.filmShutterSec(ev, effectiveFilmIso(), exposureComp)
+    }
+
+    /**
+     * 生成本次拍摄的慢门方案。闪光开启时一律不慢门 ——
+     * 真机闪光同步最快也就 1/60，闪光 + 长曝光只会拍成一团糊光。
+     */
+    private fun planSlowShutter(): FilmExposure.Plan? {
+        if (slowShutterMode == FilmExposure.Mode.OFF) return null
+        if (flash.mode != FlashMode.OFF) return null
+        val c = cameraController ?: return null
+        if (!c.supportsSlowShutter()) return null
+        val meter = c.meteringSnapshot() ?: return null
+        val (minSec, maxSec) = c.deviceExposureRangeSec()
+        return FilmExposure.plan(
+            tAeSec = meter.first,
+            isoAe = meter.second,
+            aperture = c.aperture(),
+            filmIso = effectiveFilmIso(),
+            mode = slowShutterMode,
+            evCompSteps = exposureComp,
+            deviceMinSec = minSec,
+            deviceMaxSec = maxSec,
+            deviceIsoRange = c.deviceIsoRange()
         )
     }
 
@@ -1430,8 +1507,8 @@ class MainActivity : AppCompatActivity() {
         // 相机可能已经先于闪光灯档位恢复而建好会话，这里补一次当前档位
         cameraController?.setFlashEnabled(flash.mode == FlashMode.BUILT_IN)
         // 实时元数据 → 取景器内的 T3 指示灯（合焦灯 / 快门档位）
-        cameraController?.onViewfinderMeta = { afState, exposureSec ->
-            updateViewfinderIndicators(afState, exposureSec)
+        cameraController?.onViewfinderMeta = { afState, exposureSec, isoAe ->
+            updateViewfinderIndicators(afState, exposureSec, isoAe)
         }
         // 全分辨率拍照回调：后台把原帧 JPEG 存入未冲洗胶卷（零处理，不做 LUT/日期戳/EXIF——那些在冲洗侧做）
         cameraController?.onPhotoCaptured = { bytes, rotation ->
@@ -1617,23 +1694,46 @@ class MainActivity : AppCompatActivity() {
         if (isCapturing) return
         isCapturing = true
 
-        playShutterFeedback()  // 快门声音 + 振动
+        // 慢门决策：按胶卷曝光模型掷骰，命中才真的把这张拍糊
+        val slow = planSlowShutter()
+        val slowNs = if (slow != null && slow.applied) slow.exposureNs else 0L
+        val slowIso = if (slow != null && slowNs > 0L) slow.iso else 0
+
+        playShutterFeedback()  // 开帘：快门声音 + 振动
         flash.trigger()
         binding.btnShutter.animate().scaleX(0.85f).scaleY(0.85f).setDuration(80)
             .withEndAction {
                 binding.btnShutter.animate().scaleX(1f).scaleY(1f).duration = 80
             }
 
-        // 拍摄后一体声（快门+过卷）由 playShutterFeedback 播放，过卷动画立即同步启动
-        showDevelopingAnimation()
+        if (slowNs > 0L) {
+            // 慢门：快门还开着，得等曝光走完才有「闭帘」和过卷声。
+            // 真机也是曝光结束马达才过片，这段等待本身就是慢门的仪式感。
+            val closeAt = slowNs / 1_000_000L + SHUTTER_OPEN_LATENCY_MS
+            binding.glSurfaceView.postDelayed({
+                if (isCapturing) playShutterCloseFeedback()
+            }, closeAt)
+            binding.glSurfaceView.postDelayed({
+                if (isCapturing) showDevelopingAnimation()
+            }, closeAt + 40)
+        } else {
+            // 常规：快门 + 过卷一体声，过卷动画立即同步启动
+            showDevelopingAnimation()
+        }
 
         // 闪光灯按键触发，立即拍照
         binding.glSurfaceView.post {
             try {
-                // 模拟失焦：工程师模式设定的概率触发对焦不准（0-100%，0=关闭）
-                val defocus = softFocusEnabled &&
-                    java.util.Random().nextInt(100) < softFocusProb
-                cameraController?.takePicture(defocus)
+                // 模拟失焦：工程师模式设定的概率触发对焦不准（0-100%，0=关闭）。
+                // 慢门本身已经是「废片」的一个来源，同一张再叠失焦就太狠了，概率减半。
+                val prob = if (slowNs > 0L) softFocusProb / 2 else softFocusProb
+                val defocus = softFocusEnabled && java.util.Random().nextInt(100) < prob
+                cameraController?.takePicture(defocus, slowNs, slowIso)
+                android.util.Log.i(
+                    "SlowShutter",
+                    "capture ev=${slow?.ev100} film=${slow?.let { FilmExposure.shutterLabel(it.filmSec) }}" +
+                        " iso=${slow?.iso} applied=${slowNs > 0} exposureMs=${slowNs / 1_000_000} mode=$slowShutterMode"
+                )
             } catch (e: Exception) {
                 Toast.makeText(this, getString(R.string.main_toast_capture_error, e.message), Toast.LENGTH_LONG).show()
                 isCapturing = false
@@ -1641,8 +1741,23 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * 「闭帘」反馈：慢门曝光结束时把快门声再补一记。
+     * 音高略压、音量略低 —— 第一声是叶片打开，第二声是合上，不该和开帘一样响。
+     */
+    private fun playShutterCloseFeedback() {
+        try {
+            if (shutterSoundId != 0) {
+                shutterSoundPool?.play(shutterSoundId, 0.82f, 0.82f, 1, 0, 0.94f)
+            }
+        } catch (_: Exception) {}
+        vibrate(26, 190)
+    }
+
     /** 自动过卷动画：拍照后模拟 T3 自动过卷（胶卷条滚动动画 + 过卷声 + 微弱震动），照片在后台处理 */
     private fun showDevelopingAnimation() {
+        // 慢门会把这段延迟到曝光结束，极快的小尺寸出片可能已经跑完 —— 别把遮罩又拉起来
+        if (!isCapturing) return
         binding.developingOverlay.visibility = android.view.View.VISIBLE
 
         // 显示当前胶卷条，模拟胶片被马达拖过片门
@@ -1727,6 +1842,12 @@ class MainActivity : AppCompatActivity() {
 
         /** 过卷声播放音量：真实录音 + 0.45 音量，避免像合成音那样"炸耳朵" */
         const val ADVANCE_VOLUME = 0.45f
+
+        /**
+         * 从按下快门到 HAL 真正开帘的延迟（ms）。
+         * 慢门的「闭帘」声要在这之后补，否则第二声会比实际曝光早一百多毫秒，节奏听着不对。
+         */
+        private const val SHUTTER_OPEN_LATENCY_MS = 120L
 
         /**
          * 触感强度基准（1-255）。三星这类线性马达对低振幅短脉冲几乎不响应，
