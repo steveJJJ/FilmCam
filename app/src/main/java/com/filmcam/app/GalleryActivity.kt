@@ -13,7 +13,11 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import app.spektralab.engine.FilmStockMapper
@@ -28,6 +32,10 @@ class GalleryActivity : AppCompatActivity() {
         const val TAG = "GalleryActivity"
         /** 「冲洗完成」这条停留多久自己收起来（毫秒）：够看清，又不占着屏幕 */
         const val DEV_BAR_AUTO_HIDE_MS = 4000L
+        /** 一卷 36 张（与 RollRegistry.MAX_SHOTS 一致），导入超了就截断 */
+        const val MAX_IMPORT_FRAMES = 36
+        /** 导入照片的像素上限：超过就降采样，别拿 50MP 去喂引擎 */
+        const val MAX_IMPORT_PIXELS = 24_000_000
     }
 
     private lateinit var rvGallery: RecyclerView
@@ -81,6 +89,152 @@ class GalleryActivity : AppCompatActivity() {
         // 暗房不跟随机身主题：机身配色是相机外壳的事，暗房是红灯下的工作环境，
         // 全黑底才能看片（银底会把成片的暗部压掉，也会破坏暗房氛围）。
         // 这里刻意不做 BodyTheme 重映射，保持原来的暗房配色。
+
+        btnImport = findViewById(R.id.btnImport)
+        btnImport.setOnClickListener { pickPhotos.launch(arrayOf("image/*")) }
+    }
+
+    // ---------- 导入本地照片冲洗 ----------
+
+    private lateinit var btnImport: TextView
+
+    /**
+     * 从相册挑已有的照片来冲。走 SAF（无需存储权限），选完再问装哪卷胶卷 ——
+     * 这些照片本来就是别人拿数码拍的，装进哪一卷，出片就是哪一卷的味道。
+     */
+    private val pickPhotos = registerForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris ->
+        if (uris.isNullOrEmpty()) return@registerForActivityResult
+        askFilmAndImport(uris)
+    }
+
+    private fun askFilmAndImport(uris: List<Uri>) {
+        val rolls = com.filmcam.app.filter.FilmRollRepository.rolls
+        val ids = rolls.map { runCatching { FilmStockMapper.filmStockIdFor(it.name) }.getOrNull() }
+        val names = rolls.map { runCatching { FilmStockMapper.stockDisplayName(FilmStockMapper.filmStockIdFor(it.name)) }.getOrDefault(it.name) }
+        androidx.appcompat.app.AlertDialog.Builder(this, com.filmcam.app.ui.BodyTheme.dialogTheme)
+            .setTitle(getString(R.string.gallery_import_pick_film))
+            .setItems(names.toTypedArray()) { d, which ->
+                d.dismiss()
+                val id = ids[which]
+                if (id == null) {
+                    Toast.makeText(this, getString(R.string.gallery_import_failed, names[which]), Toast.LENGTH_SHORT).show()
+                } else {
+                    importAsRoll(uris, id)
+                }
+            }
+            .setNegativeButton(getString(R.string.main_cancel), null)
+            .show()
+    }
+
+    private fun importAsRoll(uris: List<Uri>, stockId: String) {
+        // 一卷只能装一卷：还有没冲的卷就别混进来，否则两种胶卷的味道会串在同一卷里
+        val active = UndevelopedFilmStore.currentRoll()
+        if (active != null && UndevelopedFilmStore.shotCount(active.rollId) > 0) {
+            Toast.makeText(this, getString(R.string.gallery_import_busy), Toast.LENGTH_LONG).show()
+            return
+        }
+        val take = uris.take(MAX_IMPORT_FRAMES)
+        if (uris.size > MAX_IMPORT_FRAMES) {
+            Toast.makeText(this, getString(R.string.gallery_import_too_many), Toast.LENGTH_LONG).show()
+        }
+        // 装卷要解码 + 转码，几十兆一张的图不能占着主线程
+        lifecycleScope.launch(Dispatchers.IO) {
+            val outcome = runCatching { loadIntoFreshRoll(take, stockId) }
+            withContext(Dispatchers.Main) {
+                outcome.onSuccess { (rollId, count) ->
+                    if (count <= 0) {
+                        Toast.makeText(this@GalleryActivity, getString(R.string.gallery_import_none), Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(
+                            this@GalleryActivity,
+                            getString(R.string.gallery_import_loaded, count), Toast.LENGTH_SHORT
+                        ).show()
+                        loadUndevelopedRolls()
+                        openDevelopmentScreen(rollId)
+                    }
+                }.onFailure { e ->
+                    Log.w(TAG, "导入冲洗失败", e)
+                    Toast.makeText(
+                        this@GalleryActivity,
+                        getString(R.string.gallery_import_failed, e.message ?: ""), Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
+        }
+    }
+
+    /** 新建一卷，把选中的照片按帧写进去，返回 (rollId, 成功张数)。 */
+    private fun loadIntoFreshRoll(uris: List<Uri>, stockId: String): Pair<String, Int> {
+        UndevelopedFilmStore.init(this)
+        val printId = FilmStockMapper.rollTable().values.firstOrNull { it.first == stockId }?.second
+            ?: FilmStockMapper.rollTable().values.first().second
+        val roll = UndevelopedFilmStore.startRoll(stockId, printId)
+        var count = 0
+        for (uri in uris) {
+            val frame = readPhotoAsFrame(uri) ?: continue
+            UndevelopedFilmStore.saveFrame(
+                roll.rollId, frame.bytes, frame.takenAtMs, null, frame.orientation
+            )
+            count++
+        }
+        return roll.rollId to count
+    }
+
+    private class ImportedFrame(val bytes: ByteArray, val takenAtMs: Long, val orientation: Int)
+
+    /**
+     * 读一张本地照片：按像素上限降采样后重新压成 JPEG。
+     * 降采样是必须的 —— 现在手机一张 50MP，直接喂给引擎既慢又容易顶到内存上限，
+     * 而冲洗本来就是按胶卷的分辨率出片，多出来的像素没有意义。
+     * 方向与拍摄时刻照抄 EXIF：否则横拍的照片会躺倒，日期戳也会变成导入当天。
+     */
+    private fun readPhotoAsFrame(uri: Uri): ImportedFrame? {
+        val cr = contentResolver
+        val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        cr.openInputStream(uri)?.use { android.graphics.BitmapFactory.decodeStream(it, null, bounds) }
+            ?: return null
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+        var sample = 1
+        while ((bounds.outWidth / sample) * (bounds.outHeight / sample) > MAX_IMPORT_PIXELS) sample *= 2
+        val bmp = cr.openInputStream(uri)?.use {
+            android.graphics.BitmapFactory.decodeStream(
+                it, null,
+                android.graphics.BitmapFactory.Options().apply { inSampleSize = sample }
+            )
+        } ?: return null
+        val bytes = java.io.ByteArrayOutputStream().use { out ->
+            bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 95, out)
+            out.toByteArray()
+        }
+        bmp.recycle()
+
+        var orientation = 0
+        var takenAtMs = System.currentTimeMillis()
+        runCatching {
+            cr.openInputStream(uri)?.use { s ->
+                val exif = androidx.exifinterface.media.ExifInterface(s)
+                orientation = when (
+                    exif.getAttributeInt(
+                        androidx.exifinterface.media.ExifInterface.TAG_ORIENTATION,
+                        androidx.exifinterface.media.ExifInterface.ORIENTATION_NORMAL
+                    )
+                ) {
+                    androidx.exifinterface.media.ExifInterface.ORIENTATION_ROTATE_90 -> 90
+                    androidx.exifinterface.media.ExifInterface.ORIENTATION_ROTATE_180 -> 180
+                    androidx.exifinterface.media.ExifInterface.ORIENTATION_ROTATE_270 -> 270
+                    else -> 0
+                }
+                val dt = exif.getAttribute(androidx.exifinterface.media.ExifInterface.TAG_DATETIME_ORIGINAL)
+                    ?: exif.getAttribute(androidx.exifinterface.media.ExifInterface.TAG_DATETIME)
+                if (!dt.isNullOrBlank()) {
+                    val parsed = java.text.SimpleDateFormat("yyyy:MM:dd HH:mm:ss", java.util.Locale.US).parse(dt)
+                    if (parsed != null) takenAtMs = parsed.time
+                }
+            }
+        }
+        return ImportedFrame(bytes, takenAtMs, orientation)
     }
 
     override fun onStart() {

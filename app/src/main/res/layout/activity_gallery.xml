@@ -38,6 +38,24 @@
             android:textColor="#6E6E6E"
             android:textSize="10sp"
             android:letterSpacing="0.25" />
+
+        <View
+            android:layout_width="0dp"
+            android:layout_height="1dp"
+            android:layout_weight="1" />
+
+        <!-- 导入本地照片冲洗：把相册里已有的照片当底片装卷再进暗房 -->
+        <TextView
+            android:id="@+id/btnImport"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/gallery_import"
+            android:textColor="#FFC107"
+            android:textSize="13sp"
+            android:paddingStart="12dp"
+            android:paddingEnd="4dp"
+            android:paddingTop="6dp"
+            android:paddingBottom="6dp" />
     </LinearLayout>
 
     <!-- 冲洗进度条：后台冲洗时回到暗房，这里是唯一能看见进度的位置。

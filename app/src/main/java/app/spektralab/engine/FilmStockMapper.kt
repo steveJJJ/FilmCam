@@ -91,6 +91,11 @@ object FilmStockMapper {
         "scene_latitude_max_lift", "scene_latitude_norm", "scene_latitude_split",
         "scene_latitude_highlight_knee", "scene_latitude_highlight_room",
         "scene_latitude_shadow_knee", "scene_latitude_shadow_room",
+        // 片框（film_render.overscan.*）：片基 / 齿孔 / 暗边文字 / 帧号
+        "overscan_active", "overscan_mode", "overscan_format", "overscan_gate",
+        "overscan_holes", "overscan_fog", "overscan_leaks", "overscan_pair",
+        "overscan_carrier", "overscan_edge_text", "overscan_frame_number",
+        "overscan_frame_seed", "overscan_camera_seed", "overscan_f_number",
     )
 
     /** 冲洗（暗房）用户可调参数；未改设置时全部取冻结模板默认值。 */
@@ -101,6 +106,8 @@ object FilmStockMapper {
         val printExposure: Float = 1.0f,   // 预留：放大机曝光（本轮不暴露 UI，只留读取位）
         val paperOverride: String? = null, // 预留：相纸 id 覆盖（null/空白 = 用胶卷映射的 print_stock）
         val outputStyle: OutputStyle = OutputStyle.PRINT, // 成片出口：印相 / Frontier / Noritsu
+        /** 片框：把片基、齿孔、暗边文字一起扫进来，成片像一张底片扫描件（引擎 overscan）。 */
+        val frameBorder: Boolean = false,
     )
 
     /** 相纸下拉项（保序，来自 stock_catalog.json prints[] 顺序）。 */
@@ -328,9 +335,54 @@ object FilmStockMapper {
             printExposure = exposure,
             paperOverride = paper,
             // 出口是整卷统一的口味，不按胶卷存；脏值回退印相
+            // 片框是整卷统一的输出样式（跟出口档位一样），不按胶卷存
+            frameBorder = sp.getBoolean(PREF_FRAME_BORDER, false),
             outputStyle = OutputStyle.fromPrefs(sp.getInt("filmcam_output_style", OutputStyle.PRINT.prefs)),
         )
     }
+
+    private const val PREF_FRAME_BORDER = "filmcam_frame_border"
+
+    /** 片框开关（整卷统一）。 */
+    fun readFrameBorder(context: Context): Boolean =
+        context.getSharedPreferences("filmcam", Context.MODE_PRIVATE)
+            .getBoolean(PREF_FRAME_BORDER, false)
+
+    fun saveFrameBorder(context: Context, on: Boolean) {
+        context.getSharedPreferences("filmcam", Context.MODE_PRIVATE)
+            .edit().putBoolean(PREF_FRAME_BORDER, on).apply()
+    }
+
+    /**
+     * 片框参数（引擎 `film_render.overscan.*`）：真实扫描是把片基一起扫进来的，
+     * 所以成片四周会有齿孔、暗边印刷字和帧号 —— 这也是「这是一卷胶卷」最直白的证据。
+     *
+     * 取值全部贴着引擎默认值（真机 spektra_params.json 读出来的），只把 active 打开、
+     * 再填上暗边文字与帧号：
+     *   `overscan_mode=stripe` 整条片基、`format=135`、`holes=white`、
+     *   `gate=auto`、`fog=1`、`leaks=0`（不漏光）、`pair=false`（不双联）。
+     *
+     * 帧号**逐帧不同**，由冲洗侧用 [withFrameNumber] 覆盖，这里只占位。
+     */
+    fun frameBorderEntries(filmStockId: String, frameNumber: Int = 1): List<Pair<String, String>> =
+        listOf(
+            "overscan_active" to "true",
+            "overscan_mode" to "\"strip\"",
+            "overscan_format" to "\"135\"",
+            "overscan_gate" to "\"auto\"",
+            "overscan_holes" to "\"white\"",
+            "overscan_fog" to "1",
+            "overscan_leaks" to "0",
+            "overscan_pair" to "false",
+            // 暗边印刷字：真卷片基边缘都印着胶卷型号和帧号，留空就没有"底片感"
+            "overscan_edge_text" to "\"" + esc(stockDisplayName(filmStockId).uppercase()) + "\"",
+            "overscan_frame_number" to frameNumber.coerceAtLeast(0).toString(),
+        )
+
+    /** 逐帧把帧号填进参数（片框开启时用；解析失败就原样返回，不因它失败整卷）。 */
+    fun withFrameNumber(paramsJson: String, frameNumber: Int): String = runCatching {
+        org.json.JSONObject(paramsJson).apply { put("overscan_frame_number", frameNumber) }.toString()
+    }.getOrDefault(paramsJson)
 
     /** 成片出口（整卷统一，不按胶卷分）。 */
     fun readOutputStyle(context: Context): OutputStyle =
@@ -412,6 +464,7 @@ object FilmStockMapper {
      * @param scanExtraOverride 非空时**替换**店扫档的味道参数（键-值对，值已是 JSON 字面量）。
      *   冲洗前会拿它做一遍引擎预检，把引擎不接受的键剔掉再传进来，
      *   这样新参数被拒时只丢这一味，不会整档掉回印相。
+     * @param extraEntries 追加的额外参数（片框那类与风格无关的键），同样是 JSON 字面量。
      */
     fun buildParamsJson(
         filmStockId: String,
@@ -420,6 +473,7 @@ object FilmStockMapper {
         includeStyleMark: Boolean,
         scanFinishLevel: Int = SCAN_LEVEL_FULL,
         scanExtraOverride: List<Pair<String, String>>? = null,
+        extraEntries: List<Pair<String, String>>? = null,
     ): String {
         val effectivePrintStock = settings.paperOverride?.takeIf { it.isNotBlank() } ?: printStockId
         // scan_film 只对反转片成立：正片本身就是可直接观看的正像。
@@ -455,6 +509,12 @@ object FilmStockMapper {
         if (style.isScan) {
             val entries = scanExtraOverride ?: scanFinishEntries(style, scanFinishLevel)
             entries.forEach { (k, v) -> sb.append(",\"").append(k).append("\":").append(v) }
+        }
+        // 片框（整卷统一开关；帧号由冲洗侧逐帧覆盖）
+        if (settings.frameBorder) {
+            frameBorderEntries(filmStockId).forEach { (k, v) ->
+                sb.append(",\"").append(k).append("\":").append(v)
+            }
         }
         sb.append('}')
         return sb.toString()

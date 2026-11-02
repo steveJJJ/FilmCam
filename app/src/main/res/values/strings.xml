@@ -90,6 +90,7 @@ App 版本：%1$s (%2$d)
     <string name="style_print">印相</string>
     <string name="style_frontier">Frontier 扫描</string>
     <string name="style_noritsu">Noritsu 扫描</string>
+    <string name="set_frame">胶片相框</string>
     <string name="set_slow">慢门</string>
     <string name="set_wb">白平衡</string>
     <string name="slow_off">关</string>
@@ -118,6 +119,7 @@ App 版本：%1$s (%2$d)
         <item>@string/set_language</item>
         <item>@string/set_quality</item>
         <item>@string/set_style</item>
+        <item>@string/set_frame</item>
         <item>@string/set_dev</item>
         <item>@string/set_about</item>
     </string-array>
@@ -130,6 +132,7 @@ App 版本：%1$s (%2$d)
         <item>跟随系统 / 简体中文 / English</item>
         <item>完整＝原始分辨率，慢；标准≈1200 万像素，快约 3 倍</item>
         <item>放大机印成相纸，还是店里把底片扫出来</item>
+        <item>把片基、齿孔和暗边帧号一起扫进成片</item>
         <item>颗粒 · 辉光 · 眩光强度</item>
         <item>机身铭牌与许可证</item>
     </string-array>
@@ -198,6 +201,13 @@ App 版本：%1$s (%2$d)
     <string name="main_cd_film_advancing">过卷</string>
     <string name="main_cd_film_icon">胶卷图标</string>
     <string name="main_darkroom">暗房</string>
+    <string name="gallery_import">导入照片冲洗</string>
+    <string name="gallery_import_pick_film">装哪卷胶卷？</string>
+    <string name="gallery_import_loaded">已装卷 %1$d 张，开始冲洗</string>
+    <string name="gallery_import_too_many">一卷最多 36 张，只取了前 36 张</string>
+    <string name="gallery_import_busy">当前还有没冲洗的胶卷，先冲完再导入</string>
+    <string name="gallery_import_none">没读到这些照片</string>
+    <string name="gallery_import_failed">导入失败：%1$s</string>
 
     <!-- ===== 布局：胶卷选择底部弹层 ===== -->
     <string name="main_sort_hint">长按可拖拽排序</string>

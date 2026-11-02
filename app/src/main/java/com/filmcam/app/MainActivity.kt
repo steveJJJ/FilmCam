@@ -554,7 +554,7 @@ class MainActivity : AppCompatActivity() {
         val rows = intArrayOf(
             R.id.rowSetBody, R.id.rowSetDatestamp, R.id.rowSetHaptic, R.id.rowSetSlow,
             R.id.rowSetWb, R.id.rowSetLanguage, R.id.rowSetQuality, R.id.rowSetStyle,
-            R.id.rowSetDev, R.id.rowSetAbout
+            R.id.rowSetFrame, R.id.rowSetDev, R.id.rowSetAbout
         )
         val theme = com.filmcam.app.ui.BodyTheme
         fun row(id: Int): android.view.View = view.findViewById(id)
@@ -618,6 +618,7 @@ class MainActivity : AppCompatActivity() {
             value(R.id.rowSetLanguage).text = languageName()
             value(R.id.rowSetQuality).text = qualityName()
             value(R.id.rowSetStyle).text = outputStyleName()
+            value(R.id.rowSetFrame).text = frameBorderName()
             value(R.id.rowSetDev).text = ""          // 动作项没有"当前读数"
             value(R.id.rowSetAbout).text = versionLabel()
             paintPanel()
@@ -704,6 +705,13 @@ class MainActivity : AppCompatActivity() {
             FilmStockMapper.cycleOutputStyle(this@MainActivity)
             refreshValues()
         }
+        row(R.id.rowSetFrame).hapticClick {
+            // 胶片相框：把片基、齿孔、暗边帧号一起扫进成片。就地翻转，只影响下次冲洗。
+            FilmStockMapper.saveFrameBorder(
+                this@MainActivity, !FilmStockMapper.readFrameBorder(this@MainActivity)
+            )
+            refreshValues()
+        }
         row(R.id.rowSetDev).hapticClick {
             dialog.dismiss()
             showDevParamsDialog()
@@ -751,6 +759,11 @@ class MainActivity : AppCompatActivity() {
         FilmStockMapper.OutputStyle.NORITSU -> getString(R.string.style_noritsu)
         else -> getString(R.string.style_print)
     }
+
+    /** 设置面板「胶片相框」当前档位：开 / 关 */
+    private fun frameBorderName(): String =
+        if (FilmStockMapper.readFrameBorder(this)) getString(R.string.common_on)
+        else getString(R.string.common_off)
 
     /** 语言当前档位名：跟随系统 / 简体中文 / English */
     private fun languageName(): String = when (com.filmcam.app.ui.AppLocale.mode) {

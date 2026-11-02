@@ -214,36 +214,44 @@ class DevelopmentService : Service() {
             // 机型或引擎版本不认就整卷冲不出来。逐级退：
             //   完整店扫 → 保守店扫（真机已验证的那几个键，仍保留店扫的基本差别）→ 印相档
             val safeJson =
-                if (effective.outputStyle.isScan) {
-                    FilmStockMapper.buildParamsJson(
-                        roll.filmStockId, mappedPrint, effective,
-                        includeStyleMark = false,
-                        scanFinishLevel = FilmStockMapper.SCAN_LEVEL_SAFE,
-                    )
-                } else null
-            var activeParamsJson =
-                if (safeJson != null) {
-                    // 先问引擎哪些新键能收（真机上 y_filter_shift 越界曾让两档整档降级），
-                    // 被拒的剔掉、剩下的照常下发 —— 丢一味好过整档掉回印相。
-                    val extras = FilmStockMapper.fullExtraEntries(effective.outputStyle)
-                    val rejected = runCatching {
-                        SpektraProcessor.probeRejectedKeys(this, safeJson, extras)
-                    }.onFailure { Log.w(TAG, "参数预检失败，按保守档出图", it) }
-                        .getOrDefault(extras.map { it.first }.toSet())
-                    val accepted = extras.filter { it.first !in rejected }
-                    FilmStockMapper.buildParamsJson(
-                        roll.filmStockId, mappedPrint, effective,
-                        includeStyleMark = false,
-                        scanFinishLevel = FilmStockMapper.SCAN_LEVEL_FULL,
-                        scanExtraOverride = FilmStockMapper.scanFinishEntries(
-                            effective.outputStyle, FilmStockMapper.SCAN_LEVEL_SAFE
-                        ) + accepted,
-                    )
-                } else {
-                    FilmStockMapper.buildParamsJson(roll.filmStockId, mappedPrint, effective)
-                }
+                FilmStockMapper.buildParamsJson(
+                    roll.filmStockId, mappedPrint, effective,
+                    includeStyleMark = false,
+                    scanFinishLevel = FilmStockMapper.SCAN_LEVEL_SAFE,
+                )
+            // 未经验证的键（店扫新味 + 片框）先问过引擎再下发：
+            // 真机上 y_filter_shift 越界曾让两档整档降级，引擎还可能收下键却不认值。
+            // 被拒的剔掉，丢一味好过整档掉回印相。
+            val scanExtras = if (effective.outputStyle.isScan) {
+                FilmStockMapper.fullExtraEntries(effective.outputStyle)
+            } else emptyList()
+            val frameExtras = if (effective.frameBorder) {
+                FilmStockMapper.frameBorderEntries(roll.filmStockId)
+            } else emptyList()
+            val extras = scanExtras + frameExtras
+            val rejected: Set<String> =
+                if (extras.isEmpty()) emptySet()
+                else runCatching { SpektraProcessor.probeRejectedKeys(this, safeJson, extras) }
+                    .onFailure { Log.w(TAG, "参数预检失败，按保守档出图", it) }
+                    .getOrDefault(extras.map { it.first }.toSet())
+            val scanKeys = scanExtras.map { it.first }.toSet()
+            val frameKeys = frameExtras.map { it.first }.toSet()
+            val acceptedScan = scanExtras.filter { it.first !in rejected }
+            val acceptedFrame = frameExtras.filter { it.first !in rejected }
+            // 片框开着但帧号没被接受时，逐帧覆盖会把被拒的键塞回去 → 整卷失败，故记录
+            val perFrameNumber =
+                if (effective.frameBorder && "overscan_frame_number" !in rejected) 1 else 0
+            var activeParamsJson = FilmStockMapper.buildParamsJson(
+                roll.filmStockId, mappedPrint, effective,
+                includeStyleMark = false,
+                scanFinishLevel = FilmStockMapper.SCAN_LEVEL_FULL,
+                scanExtraOverride = FilmStockMapper.scanFinishEntries(
+                    effective.outputStyle, FilmStockMapper.SCAN_LEVEL_SAFE
+                ) + acceptedScan,
+                extraEntries = acceptedFrame.ifEmpty { null },
+            )
             var activeFallbackChain: List<String> = buildList {
-                if (safeJson != null) {
+                if (effective.outputStyle.isScan) {
                     add(safeJson)
                     add(
                         FilmStockMapper.buildParamsJson(
@@ -279,6 +287,8 @@ class DevelopmentService : Service() {
                         tmpJpeg, framePixelLimit, activeFallbackChain,
                         // 对照实验只在第一帧跑一次（基线用保守档，实验结果才好对比）
                         matrixBaseJson = if (index == 1) safeJson else null,
+                        // 片框的帧号逐帧递增（底片暗边本来就印着"1""2"…"36"）
+                        frameNumber = if (perFrameNumber != 0) index else 0,
                     )
                     if (usedFallback) {
                         fallbackFrames++
@@ -399,6 +409,8 @@ class DevelopmentService : Service() {
         framePixelLimit: Int = 0,
         fallbackParamsJsons: List<String> = emptyList(),
         matrixBaseJson: String? = null,
+        /** >0：片框帧号，逐帧覆盖进参数；0 = 不带帧号（片框关闭或引擎不认这个键）。 */
+        frameNumber: Int = 0,
     ): Boolean {
         val tTotal0 = android.os.SystemClock.elapsedRealtime()
 
@@ -483,8 +495,11 @@ class DevelopmentService : Service() {
             inW = bmp.width
             inH = bmp.height
             val tEngine0 = android.os.SystemClock.elapsedRealtime()
+            val frameParamsJson =
+                if (frameNumber > 0) FilmStockMapper.withFrameNumber(paramsJson, frameNumber)
+                else paramsJson
             val result = SpektraProcessor.processFrame(
-                applicationContext, bmp, paramsJson, tmpJpeg.absolutePath,
+                applicationContext, bmp, frameParamsJson, tmpJpeg.absolutePath,
                 recycleInput = true, fallbackParamsJsons = fallbackParamsJsons
             )
             tEngineMs = android.os.SystemClock.elapsedRealtime() - tEngine0
