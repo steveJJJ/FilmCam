@@ -272,6 +272,62 @@ object SpektraProcessor {
     }
 
     /**
+     * 参数预检：逐个候选键单独开一个小 session 试 setParams，返回引擎**不接受**的键。
+     *
+     * 为什么要有这一步：引擎对未知键 / 越界值都是硬失败，而且**只有真下发才会暴露** ——
+     * 真机原文：`'y_filter_shift'=12.000000 is outside [-1.000000, 1.000000]`。
+     * 与其等整卷冲出来才发现整档掉回印相，不如冲洗前花一次引擎预热的代价先问清楚，
+     * 被拒的键剔掉、剩下的照常下发，下次再加新参数也不会重蹈覆辙。
+     *
+     * 96x96 小图只为走通校验：不 solve、不导 JPEG。
+     */
+    fun probeRejectedKeys(
+        context: Context,
+        baseJson: String,
+        entries: List<Pair<String, String>>,
+    ): Set<String> {
+        if (entries.isEmpty()) return emptySet()
+        val appContext = context.applicationContext
+        val eng = ensureEngine(appContext)
+        val n = 96
+        val buf = ByteBuffer.allocateDirect(n * n * 3 * 4).order(ByteOrder.nativeOrder())
+        val rejected = LinkedHashSet<String>()
+        val body = baseJson.trimEnd().removeSuffix("}")
+        for ((key, value) in entries) {
+            val probe = "$body,\"$key\":$value}"
+            val session = eng.openSession(buf, n, n, 3)
+            try {
+                session.setParams(probe)
+                Log.i(TAG, "参数预检通过: $key=$value")
+            } catch (t: Throwable) {
+                rejected.add(key)
+                Log.w(TAG, "参数预检被拒: $key=$value -> ${t.message}")
+            } finally {
+                runCatching { session.close() }
+            }
+        }
+        writeProbeReport(appContext, entries, rejected)
+        return rejected
+    }
+
+    /** 预检结果落盘（外部私有目录，release 包也能 adb pull 出来）。 */
+    private fun writeProbeReport(
+        context: Context,
+        entries: List<Pair<String, String>>,
+        rejected: Set<String>,
+    ) {
+        runCatching {
+            val dir = context.getExternalFilesDir(null) ?: context.filesDir
+            val f = java.io.File(dir, "spektra_probe.txt")
+            f.writeText(
+                "entries=" + entries.joinToString { "${it.first}=${it.second}" } + "\n" +
+                    "rejected=" + rejected.joinToString() + "\n"
+            )
+            Log.i(TAG, "参数预检结果: ${f.absolutePath}")
+        }.onFailure { Log.w(TAG, "写预检结果失败", it) }
+    }
+
+    /**
      * 把引擎解析后的**全量**参数落一份到 filesDir/spektra_params.json。
      *
      * 我们 setParams 只传 11 个扁平字段，引擎内部还有一整棵参数树

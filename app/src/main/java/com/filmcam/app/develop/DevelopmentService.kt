@@ -210,19 +210,41 @@ class DevelopmentService : Service() {
             // 兜底链：扫描档下发了一批引擎新参数，机型/引擎版本认不全就整卷冲不出来。
             // 逐级退到更保守的印相档（即上一版已验证能出图的参数集），至少保证出图。
             // 一旦确认某档不被接受，后续帧直接从兜底档起跑，不再每帧白试一次。
-            var activeParamsJson = FilmStockMapper.buildParamsJson(roll.filmStockId, mappedPrint, effective)
             // 兜底链：店扫档的完整味道里有一批引擎还没验过的键（滤色片/gamma/层间效应），
             // 机型或引擎版本不认就整卷冲不出来。逐级退：
             //   完整店扫 → 保守店扫（真机已验证的那几个键，仍保留店扫的基本差别）→ 印相档
-            var activeFallbackChain: List<String> = buildList {
+            val safeJson =
                 if (effective.outputStyle.isScan) {
-                    add(
-                        FilmStockMapper.buildParamsJson(
-                            roll.filmStockId, mappedPrint, effective,
-                            includeStyleMark = false,
-                            scanFinishLevel = FilmStockMapper.SCAN_LEVEL_SAFE
-                        )
+                    FilmStockMapper.buildParamsJson(
+                        roll.filmStockId, mappedPrint, effective,
+                        includeStyleMark = false,
+                        scanFinishLevel = FilmStockMapper.SCAN_LEVEL_SAFE,
                     )
+                } else null
+            var activeParamsJson =
+                if (safeJson != null) {
+                    // 先问引擎哪些新键能收（真机上 y_filter_shift 越界曾让两档整档降级），
+                    // 被拒的剔掉、剩下的照常下发 —— 丢一味好过整档掉回印相。
+                    val extras = FilmStockMapper.fullExtraEntries(effective.outputStyle)
+                    val rejected = runCatching {
+                        SpektraProcessor.probeRejectedKeys(this, safeJson, extras)
+                    }.onFailure { Log.w(TAG, "参数预检失败，按保守档出图", it) }
+                        .getOrDefault(extras.map { it.first }.toSet())
+                    val accepted = extras.filter { it.first !in rejected }
+                    FilmStockMapper.buildParamsJson(
+                        roll.filmStockId, mappedPrint, effective,
+                        includeStyleMark = false,
+                        scanFinishLevel = FilmStockMapper.SCAN_LEVEL_FULL,
+                        scanExtraOverride = FilmStockMapper.scanFinishEntries(
+                            effective.outputStyle, FilmStockMapper.SCAN_LEVEL_SAFE
+                        ) + accepted,
+                    )
+                } else {
+                    FilmStockMapper.buildParamsJson(roll.filmStockId, mappedPrint, effective)
+                }
+            var activeFallbackChain: List<String> = buildList {
+                if (safeJson != null) {
+                    add(safeJson)
                     add(
                         FilmStockMapper.buildParamsJson(
                             roll.filmStockId, mappedPrint,

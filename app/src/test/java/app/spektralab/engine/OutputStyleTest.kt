@@ -206,9 +206,27 @@ class OutputStyleTest {
             f.getDouble("dir_couplers_amount") > n.getDouble("dir_couplers_amount")
         )
         assertTrue(
-            "Frontier 曝光更亮",
-            f.getDouble("print_exposure") > n.getDouble("print_exposure")
+            "Frontier 曝光更亮 → EV 更小（正 EV = 放大机照更久 = 更暗）",
+            f.getDouble("print_exposure") < n.getDouble("print_exposure")
         )
+    }
+
+    @Test
+    fun tasteParams_stayInsideEngineLimitsLearnedOnDevice() {
+        // 两个区间都是真机报错原文给的，别再靠猜：
+        //   'y_filter_shift'=12.000000 is outside [-1.000000, 1.000000]
+        //   DIR couplers 滑杆止于 1.0（超过胶片本身强度后反解曲线无解）
+        for (style in listOf(
+            FilmStockMapper.OutputStyle.FRONTIER,
+            FilmStockMapper.OutputStyle.NORITSU,
+        )) {
+            val o = json(style)
+            val shift = o.getDouble("y_filter_shift")
+            assertTrue("$style y_filter_shift=$shift 越界（引擎区间 [-1,1]）", shift >= -1.0 && shift <= 1.0)
+            assertTrue("$style 滤色片不该是 0（那样就没色温差了）", shift != 0.0)
+            val couplers = o.getDouble("dir_couplers_amount")
+            assertTrue("$style dir_couplers_amount=$couplers 越界（上限 1.0）", couplers in 0.0..1.0)
+        }
     }
 
     @Test
