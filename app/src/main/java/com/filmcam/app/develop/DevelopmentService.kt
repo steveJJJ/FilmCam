@@ -8,7 +8,12 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.RadialGradient
+import android.graphics.Shader
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
@@ -384,6 +389,13 @@ class DevelopmentService : Service() {
                 }
             }
 
+            // 镜头光学：暗角压在日期戳之后（真机的日期也是透过同一支镜头曝在底片上的）
+            try {
+                applySonnarVignette(bmp)
+            } catch (e: Throwable) {
+                Log.e(TAG, "暗角绘制失败（跳过）: ${e.message}", e)
+            }
+
             // 引擎冲洗到临时 JPEG（全分辨率）
             // recycleInput=true：像素转入 float 缓冲后立即回收位图，把 48MB 堆让给 solve 阶段
             tDecodeMs = android.os.SystemClock.elapsedRealtime() - tDecode0
@@ -445,14 +457,48 @@ class DevelopmentService : Service() {
         }
     }
 
-    /** 按 90° 整数倍旋转位图。filter=false 保证纯像素搬运（无插值），旋转后立即回收原图。 */
-    private fun rotateBitmap(src: android.graphics.Bitmap, degrees: Int): android.graphics.Bitmap {
-        val m = android.graphics.Matrix().apply { postRotate(degrees.toFloat()) }
-        return try {
-            android.graphics.Bitmap.createBitmap(src, 0, 0, src.width, src.height, m, false)
-        } finally {
-            src.recycle()
+    /** 按 90° 整数倍旋转位图。整数倍旋转无插值，旋转后立即回收原图。 */
+    private fun rotateBitmap(src: Bitmap, degrees: Int): Bitmap {
+        val swap = degrees % 180 != 0
+        val outW = if (swap) src.height else src.width
+        val outH = if (swap) src.width else src.height
+        // 必须新建 mutable 位图：后面要在上面叠暗角（只读位图无法就地绘制）
+        val out = Bitmap.createBitmap(outW, outH, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(out)
+        canvas.translate(outW / 2f, outH / 2f)
+        canvas.rotate(degrees.toFloat())
+        canvas.translate(-src.width / 2f, -src.height / 2f)
+        canvas.drawBitmap(src, 0f, 0f, Paint())
+        src.recycle()
+        return out
+    }
+
+    /**
+     * 蔡司 Sonnar 35/2.8 全开的轻微暗角。
+     *
+     * 手机 HAL 会把镜头阴影校正得很干净，四角衰减几乎为零 —— 这也是「数码味」的一部分：
+     * 真机全开时四角约 -0.25 EV，收到 f/5.6 才基本消失。这里按全开还原一个很轻的衰减，
+     * 只在四角动手（中心 58% 半径内完全不动），不会压暗主体。
+     *
+     * 就地叠加，不额外分配位图 —— 12MP 再来一张 48MB 会顶爆堆。
+     */
+    private fun applySonnarVignette(bmp: Bitmap) {
+        if (bmp.isRecycled || !bmp.isMutable) return
+        val w = bmp.width
+        val h = bmp.height
+        if (w <= 0 || h <= 0) return
+        val cx = w / 2f
+        val cy = h / 2f
+        val r = kotlin.math.hypot(cx.toDouble(), cy.toDouble()).toFloat()
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            shader = RadialGradient(
+                cx, cy, r,
+                intArrayOf(0x00000000, 0x00000000, 0x2A000000),
+                floatArrayOf(0f, 0.58f, 1f),
+                Shader.TileMode.CLAMP
+            )
         }
+        Canvas(bmp).drawRect(0f, 0f, w.toFloat(), h.toFloat(), paint)
     }
 
     /** 日期水印开关（与拍摄侧共用 "filmcam" 偏好；默认开） */

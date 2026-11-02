@@ -128,6 +128,15 @@ class Camera2Controller(private val context: Context) {
     /** 能否关掉降噪。多帧降噪会把抖动「修」平，等于白拍 */
     private var canDisableNr = false
 
+    /** 降噪最低档（关不掉时的次优选择，比默认档少抹细节） */
+    private var canDisableNrMinimal = false
+
+    /** 能否关掉边缘锐化。手机的锐化会在边缘留 halo，正是「数码味」的来源之一 */
+    private var canDisableEdge = false
+
+    /** 能否关掉零快门延迟（ZSL）。不能关时 HAL 可能从缓冲里挑一张合成过的旧帧 */
+    private var canDisableZsl = false
+
     /** 预览 AE 最近一次测光结果 —— 慢门决策的唯一输入 */
     @Volatile private var lastAeSec = 0f
     @Volatile private var lastAeIso = 0
@@ -251,9 +260,17 @@ class Camera2Controller(private val context: Context) {
         }
         canDisableNr = chars.get(CameraCharacteristics.NOISE_REDUCTION_AVAILABLE_NOISE_REDUCTION_MODES)
             ?.contains(android.hardware.camera2.CameraMetadata.NOISE_REDUCTION_MODE_OFF) == true
+        canDisableNrMinimal = chars.get(CameraCharacteristics.NOISE_REDUCTION_AVAILABLE_NOISE_REDUCTION_MODES)
+            ?.contains(android.hardware.camera2.CameraMetadata.NOISE_REDUCTION_MODE_MINIMAL) == true
+        canDisableEdge = chars.get(CameraCharacteristics.EDGE_AVAILABLE_EDGE_MODES)
+            ?.contains(android.hardware.camera2.CameraMetadata.EDGE_MODE_OFF) == true
+        // ZSL 开关是 API 30 才有的 key，且没有公开的能力查询接口：
+        // 只能在请求里试着设，失败就静默跳过（部分 HAL 不认这个 key）。
+        canDisableZsl = android.os.Build.VERSION.SDK_INT >= 30
         val capsLine = "slowShutter caps manualSensor=$hasManualSensor " +
             "exp=${deviceMinExposureSec}~${deviceMaxExposureSec}s iso=$deviceIsoRange " +
-            "ap=$apertureValue oisOff=$canDisableOis nrOff=$canDisableNr"
+            "ap=$apertureValue oisOff=$canDisableOis nrOff=$canDisableNr " +
+            "nrMin=$canDisableNrMinimal edgeOff=$canDisableEdge zslOff=$canDisableZsl"
         android.util.Log.i("SlowShutter", capsLine)
         runCatching {
             java.io.File(context.applicationInfo.dataDir, "files").let { d ->
@@ -381,11 +398,57 @@ class Camera2Controller(private val context: Context) {
                     set(CaptureRequest.LENS_FOCUS_DISTANCE, minFocusDistance * 0.6f)
                 }
                 applyFlashSettings(this)
+                // 采集端「不加工」：胶片模拟要从最生的像素开始
+                applyCaptureTuning(this)
                 // 必须放在最后：慢门要覆盖 AE 模式，也要压过上面闪光分支的 ALWAYS_FLASH
                 if (slow) applySlowShutter(this, slowExposureNs, slowIso)
             }
             submitStillCapture(captureBuilder, slow)
         } catch (_: Exception) {}
+    }
+
+    /**
+     * 采集端「不加工」。
+     *
+     * 手机在写 JPEG 之前会做三件事：边缘锐化、多帧降噪、ZSL 取旧帧。
+     * 这三件事正好把胶片最值钱的东西抹掉 —— 锐化在轮廓留一圈 halo（放大看就是数码味），
+     * 多帧降噪把细节和颗粒一起抹平（之后冲洗再叠颗粒，等于在磨皮脸上撒沙子），
+     * ZSL 则会从缓冲里挑一张合成过的旧帧。T3 的底片没有这些步骤。
+     *
+     * 能力不支持的机型逐项跳过，不影响正常拍摄。
+     */
+    private fun applyCaptureTuning(builder: CaptureRequest.Builder) {
+        if (canDisableEdge) {
+            runCatching {
+                builder.set(
+                    CaptureRequest.EDGE_MODE,
+                    android.hardware.camera2.CameraMetadata.EDGE_MODE_OFF
+                )
+            }
+        }
+        if (canDisableNr) {
+            runCatching {
+                builder.set(
+                    CaptureRequest.NOISE_REDUCTION_MODE,
+                    android.hardware.camera2.CameraMetadata.NOISE_REDUCTION_MODE_OFF
+                )
+            }
+        } else if (canDisableNrMinimal) {
+            runCatching {
+                builder.set(
+                    CaptureRequest.NOISE_REDUCTION_MODE,
+                    android.hardware.camera2.CameraMetadata.NOISE_REDUCTION_MODE_MINIMAL
+                )
+            }
+        }
+        if (canDisableZsl) {
+            // 关掉零快门延迟：避免 HAL 从缓冲里挑一张已经多帧合成过的帧
+            runCatching { builder.set(CaptureRequest.CONTROL_ENABLE_ZSL, false) }
+        }
+        android.util.Log.i(
+            "CaptureTuning",
+            "edgeOff=$canDisableEdge nrOff=$canDisableNr nrMin=$canDisableNrMinimal zslOff=$canDisableZsl"
+        )
     }
 
     /**

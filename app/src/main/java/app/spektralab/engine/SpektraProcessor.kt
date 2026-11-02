@@ -194,6 +194,7 @@ object SpektraProcessor {
             val session = eng.openSession(buf, w, h, 3)
             try {
                 session.setParams(paramsJson)
+                dumpParamsOnce(context, session)
                 session.solve("both")
                 val info = session.exportJpeg(outJpegPath, 95, 512, "full")
                 // 硬校验：原生侧可能返回 info 但未真正写文件（静默失败会被误判为成功）。
@@ -221,6 +222,30 @@ object SpektraProcessor {
             if (scaledByProcessor) working.recycle()
         }
     }
+
+    /**
+     * 把引擎解析后的**全量**参数落一份到 filesDir/spektra_params.json。
+     *
+     * 我们 setParams 只传 11 个扁平字段，引擎内部还有一整棵参数树
+     * （扫描仪模糊、黑白校正、片基边框、场景宽容度、对比遮罩……）。
+     * 摸清这棵树才能做「印相 / Frontier / Noritsu」三种输出，否则只能靠猜。
+     * 每个进程只写一次，不影响冲洗耗时。
+     */
+    private fun dumpParamsOnce(context: Context, session: SpektraLabEngine.Session) {
+        if (paramsDumped) return
+        synchronized(this) {
+            if (paramsDumped) return
+            paramsDumped = true
+            runCatching {
+                val f = java.io.File(context.applicationContext.filesDir, "spektra_params.json")
+                f.writeText(session.getParams())
+                Log.i(TAG, "引擎参数快照: ${f.absolutePath} (${f.length()}B)")
+            }.onFailure { Log.w(TAG, "写引擎参数快照失败", it) }
+        }
+    }
+
+    @Volatile
+    private var paramsDumped = false
 
     /**
      * 引擎单帧像素上限（<=0 表示不限）。会复用已就绪的引擎；引擎未就绪时这里负责拉起。
