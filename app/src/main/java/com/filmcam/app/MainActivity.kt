@@ -713,12 +713,6 @@ class MainActivity : AppCompatActivity() {
             // 就地翻转，只影响下次冲洗。
             val next = FilmStockMapper.cycleFrameFormat(this@MainActivity)
             refreshValues()
-            // 全画幅要把 4:3 取景裁成 3:2（真机也只取镜头成像圈中间那块），当场说清楚
-            if (next == FilmStockMapper.FrameFormat.FULL) {
-                Toast.makeText(
-                    this@MainActivity, getString(R.string.set_frame_full_hint), Toast.LENGTH_LONG
-                ).show()
-            }
             // 当场问一次引擎：片门形状是渲染期才校验的（setParams 会收下、solve 才拒绝），
             // 与其等冲完一卷才发现退回半格，不如现在就知道这机器认不认这一格。
             // 正在冲洗时不插队：两边共用同一个引擎实例，抢着开 session 只会互相打断
