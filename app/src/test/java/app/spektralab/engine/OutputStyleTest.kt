@@ -3,8 +3,10 @@ package app.spektralab.engine
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 import org.json.JSONObject
+import java.io.File
 
 /**
  * 成片「输出风格」三档（印相 / Frontier 扫描 / Noritsu 扫描）的参数生成。
@@ -16,6 +18,16 @@ import org.json.JSONObject
  *     output_style 就曾经这样让整卷一帧都出不来（它只该进 EXIF）。
  */
 class OutputStyleTest {
+
+    /** 装真实 catalog，让 isPositive（反转片判定）在测试里也是真的。 */
+    @Before
+    fun setUp() {
+        val f = File("src/main/assets/resources/stock_catalog.json")
+        assertTrue("缺少 catalog: ${f.absolutePath}", f.exists())
+        FilmStockMapper.installCatalog(
+            FilmStockMapper.parseCatalog(f.readText(Charsets.UTF_8))
+        )
+    }
 
     private fun json(style: FilmStockMapper.OutputStyle): JSONObject =
         JSONObject(
@@ -72,28 +84,30 @@ class OutputStyleTest {
     }
 
     @Test
-    fun frontierStyle_enablesScanPathAndSoftScannerOptics() {
+    fun frontierStyle_hasSoftShoulderAndSofterScannerOptics() {
         val o = json(FilmStockMapper.OutputStyle.FRONTIER)
-        assertTrue("扫描档必须走 scan_film", o.getBoolean("scan_film"))
-        assertTrue(o.getBoolean("contrast_mask_active"))
-        assertEquals("gaussian", o.getString("contrast_mask_scheme"))
-        assertTrue("Frontier 镜头偏柔，颗粒被轻微抹平", o.getDouble("scanner_lens_blur") > 0.5)
+        // 负片必须仍走印相（否则出的是底片），店扫味靠末端参数
+        assertFalse(o.optBoolean("scan_film", false))
+        assertEquals("kodak_portra_endura", o.getString("print_stock"))
         assertTrue(o.getBoolean("scene_latitude_active"))
+        assertTrue("Frontier 镜头偏柔，颗粒被轻微抹平", o.getDouble("scanner_lens_blur") > 1.0)
     }
 
     @Test
-    fun noritsuStyle_isFlatterAndSharperThanFrontier() {
+    fun noritsuStyle_isHarderAndSharperThanFrontier() {
         val f = json(FilmStockMapper.OutputStyle.FRONTIER)
         val n = json(FilmStockMapper.OutputStyle.NORITSU)
-        assertTrue(n.getBoolean("scan_film"))
-        assertFalse("Noritsu 更平，不加局部反差", n.getBoolean("contrast_mask_active"))
         assertTrue(
-            "Noritsu 颗粒更清晰 → 扫描镜头柔化更小",
+            "Noritsu 颗粒更清晰 → 扫描仪柔化更小",
             n.getDouble("scanner_lens_blur") < f.getDouble("scanner_lens_blur")
         )
         assertTrue(
             "Frontier 高光更柔 → 肩部 rolloff 更长",
             f.getDouble("scene_latitude_rolloff") > n.getDouble("scene_latitude_rolloff")
+        )
+        assertTrue(
+            "Frontier 抬暗部更多",
+            f.getDouble("scene_latitude_max_lift") > n.getDouble("scene_latitude_max_lift")
         )
     }
 
@@ -128,6 +142,41 @@ class OutputStyleTest {
         assertEquals(FilmStockMapper.OutputStyle.PRINT, FilmStockMapper.OutputStyle.fromPrefs(-1))
         assertEquals(FilmStockMapper.OutputStyle.PRINT, FilmStockMapper.OutputStyle.fromWire("sp3000"))
         assertEquals(FilmStockMapper.OutputStyle.PRINT, FilmStockMapper.OutputStyle.fromWire(null))
+    }
+
+    @Test
+    fun negativeFilm_neverGoesThroughScanPath() {
+        // 负片走 scan_film 出来的是未反相的底片（橙罩负像、没有色彩）：
+        // 负→正是放大机把底片投到相纸上那一步物理完成的，跳过印相就没有正像。
+        // scan_film 只属于反转片。
+        for (style in FilmStockMapper.OutputStyle.values()) {
+            assertFalse(
+                "负片在 ${style.wire} 档不该走 scan_film",
+                json(style).optBoolean("scan_film", false)
+            )
+        }
+        // 反转片仍必须直扫
+        val slide = JSONObject(
+            FilmStockMapper.buildParamsJson(
+                "kodak_kodachrome_64", "kodak_endura_premier",
+                FilmStockMapper.DevSettings(outputStyle = FilmStockMapper.OutputStyle.FRONTIER)
+            )
+        )
+        assertTrue("反转片必须直扫", slide.getBoolean("scan_film"))
+    }
+
+    @Test
+    fun scanStylesDropPaperGlareAndVaryScannerBlur() {
+        // glare 是纸面反射的环境光；店扫拿的是数字图，没有印相表面
+        val f = json(FilmStockMapper.OutputStyle.FRONTIER)
+        val n = json(FilmStockMapper.OutputStyle.NORITSU)
+        assertFalse(f.getBoolean("glare_active"))
+        assertFalse(n.getBoolean("glare_active"))
+        // scanner_lens_blur 单位是像素：Frontier 镜头柔（抹平颗粒），Noritsu 锐（颗粒清晰）
+        assertTrue(
+            "Frontier 应比 Noritsu 更柔",
+            f.getDouble("scanner_lens_blur") > n.getDouble("scanner_lens_blur")
+        )
     }
 
     @Test

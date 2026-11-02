@@ -76,7 +76,7 @@ object FilmStockMapper {
         "print_exposure", "preview_long_edge", "exposure_compensation_ev",
         "auto_exposure_method", "lens_blur_um",
         // 胶片质感
-        "grain_amount", "halation_amount", "glare_amount",
+        "grain_amount", "halation_amount", "glare_amount", "glare_active",
         // 扫描仪
         "scanner_lens_blur", "scanner_black_correction", "scanner_white_correction",
         // 局部反差（print_render.contrast_mask.*）
@@ -403,8 +403,11 @@ object FilmStockMapper {
         includeStyleMark: Boolean,
     ): String {
         val effectivePrintStock = settings.paperOverride?.takeIf { it.isNotBlank() } ?: printStockId
-        // 反转片不走放大机/相纸：加 scan_film=true，引擎按「直接扫描正片」出图
-        val scan = isPositive(filmStockId) || settings.outputStyle.isScan
+        // scan_film 只对反转片成立：正片本身就是可直接观看的正像。
+        // 负片一旦走 scan_film，出来的是**未反相的底片**（负像、带橙罩、没有色彩）——
+        // 负→正的反相是放大机把底片投到相纸上那一步物理完成的，跳过印相就没有正像。
+        // 所以「店扫」档也必须走印相通路，再用扫描仪/宽容度参数塑造店扫味。
+        val scan = isPositive(filmStockId)
         val sb = StringBuilder(256)
         sb.append('{')
           .append("\"film_stock\":\"").append(esc(filmStockId)).append("\",")
@@ -423,42 +426,40 @@ object FilmStockMapper {
         if (includeStyleMark) {
             sb.append(",\"").append(MARK_OUTPUT_STYLE).append("\":\"").append(settings.outputStyle.wire).append('"')
         }
-        // 扫描通路专属：扫描仪镜头、局部反差、场景宽容度
+        // 店扫味（走印相通路，靠末端参数拉开与光学印相的差别）
         if (settings.outputStyle.isScan) sb.append(scanFinishParams(settings.outputStyle))
         sb.append('}')
         return sb.toString()
     }
 
     /**
-     * 扫描档追加的参数。三组分别对应：
-     *  - scanner_lens_blur：扫描仪自身镜头的柔化（像素）。Frontier 的镜头偏柔，
-     *    颗粒会被轻微抹平；Noritsu 更锐，颗粒粒粒可数。
-     *  - contrast_mask_*：成片阶段的局部反差，也就是"蔡司立体感"在数码端最接近的对应物。
-     *    核心/暗部/高光分开给，暗部给得比高光少，才不会把暗部噪声一起放大。
-     *  - scene_latitude_*：负片的宽容度模型 —— 高光走肩部压过去而不是硬切，
-     *    暗部有趾部兜底。rolloff 越大肩部越长（Frontier 的 Highlight Soft）。
-     *    rolloff ∈ [1,4]、max_lift ∈ [0.25,12]、norm ∈ {power,y,max} 是引擎的硬校验区间，
-     *    膝点一律交给引擎自己解（我们只给形状，不给位置）。
+     * 店扫档追加的参数。都作用在成片链末端，不碰印相反相本身：
+     *
+     *  - `scanner_lens_blur`：扫描仪自身光学带来的柔化，**单位是像素**（0 = 关）。
+     *    Frontier 镜头偏柔，颗粒被抹平；Noritsu 更锐，颗粒粒粒可数。
+     *  - `glare_active:false`：glare 是「纸面反射的室内光」，店扫拿到的是屏幕上的数字图，
+     *    没有印相表面可反光 —— 关掉它，扫描档的黑位更实。
+     *  - `scene_latitude_*`：宽容度模型，高光走肩部压过去而不是硬切。rolloff 越大肩越长
+     *    （Frontier 的 Highlight Soft）；max_lift 控制暗部能被抬多少（Frontier 抬暗部，
+     *    Noritsu 暗部留给后期）。区间 rolloff∈[1,4]、max_lift∈[0.25,12]。
+     *
+     * 注意：这里**没有** contrast_mask —— 引擎 capabilities 明确列了
+     * `unsupported_features:["contrast_mask"]`，下发只会白担一次失败风险。
      */
     private fun scanFinishParams(style: OutputStyle): String = when (style) {
         OutputStyle.FRONTIER ->
-            ",\"scanner_lens_blur\":0.9" +
-            ",\"contrast_mask_active\":true" +
-            ",\"contrast_mask_scheme\":\"gaussian\"" +
-            ",\"contrast_mask_scale\":0.35" +
-            ",\"contrast_mask_core\":0.55" +
-            ",\"contrast_mask_shadows\":0.30" +
-            ",\"contrast_mask_highlights\":0.45" +
+            ",\"scanner_lens_blur\":1.6" +
+            ",\"glare_active\":false" +
             ",\"scene_latitude_active\":true" +
             ",\"scene_latitude_rolloff\":2.6" +
-            ",\"scene_latitude_max_lift\":1.6" +
+            ",\"scene_latitude_max_lift\":3.0" +
             ",\"scene_latitude_norm\":\"power\""
         OutputStyle.NORITSU ->
-            ",\"scanner_lens_blur\":0.35" +
-            ",\"contrast_mask_active\":false" +
+            ",\"scanner_lens_blur\":0.4" +
+            ",\"glare_active\":false" +
             ",\"scene_latitude_active\":true" +
             ",\"scene_latitude_rolloff\":1.8" +
-            ",\"scene_latitude_max_lift\":1.0" +
+            ",\"scene_latitude_max_lift\":1.5" +
             ",\"scene_latitude_norm\":\"power\""
         else -> ""
     }
