@@ -20,6 +20,45 @@ object FilmStockMapper {
     /** 该 film stock 是否为反转片。 */
     fun isPositive(filmStockId: String): Boolean = filmTypeOf(filmStockId) == "positive"
 
+    /**
+     * 成片出口：同一卷底片，最后一步怎么变成你看到的那张图。
+     *
+     * 真机的成片从来不是「负片本身」，而是负片经过某个出口之后的产物，
+     * 而出口不同，味道完全不同：
+     *  - 印相：放大机把负片投到相纸上，纸基白、黑位实、高光脆。
+     *  - 扫描：店里把冲好的负片放进扫描仪读出来（网上绝大多数 T3 样片都是这个）。
+     *    Frontier 与 Noritsu 是两家铺得最广的店扫，差别一眼可辨。
+     *
+     * 引擎里这两条路是分开的：`scan_film=true` 且不带 print_stock 时走扫描通路
+     * （放大机/相纸整段跳过），否则走印相通路。
+     */
+    enum class OutputStyle(val prefs: Int, val wire: String) {
+        /** 光学印相：放大机 → 相纸，纸面反射光被"看"到 */
+        PRINT(0, "print"),
+
+        /**
+         * 富士 Frontier 店扫：暗部偏冷、对比强、高光柔（店员常开 Highlight Soft）、
+         * 颗粒被扫描镜头轻微抹平。网上 T3 样片里最常见的那一种。
+         */
+        FRONTIER(1, "frontier"),
+
+        /** 诺日士 Noritsu 店扫：整体更平、颗粒更清晰偏单色，暗部细节留得多，适合后期再调。 */
+        NORITSU(2, "noritsu"),
+
+        /** 现有机身上没有的第三档以后：未知值一律按印相处理 */
+        ;
+
+        val isScan: Boolean get() = this != PRINT
+
+        companion object {
+            fun fromPrefs(v: Int): OutputStyle =
+                values().firstOrNull { it.prefs == v } ?: PRINT
+
+            fun fromWire(s: String?): OutputStyle =
+                values().firstOrNull { it.wire == s } ?: PRINT
+        }
+    }
+
     /** 冲洗（暗房）用户可调参数；未改设置时全部取冻结模板默认值。 */
     data class DevSettings(
         val grainAmount: Float = 1.0f,
@@ -27,6 +66,7 @@ object FilmStockMapper {
         val glareAmount: Float = 3.0f,
         val printExposure: Float = 1.0f,   // 预留：放大机曝光（本轮不暴露 UI，只留读取位）
         val paperOverride: String? = null, // 预留：相纸 id 覆盖（null/空白 = 用胶卷映射的 print_stock）
+        val outputStyle: OutputStyle = OutputStyle.PRINT, // 成片出口：印相 / Frontier / Noritsu
     )
 
     /** 相纸下拉项（保序，来自 stock_catalog.json prints[] 顺序）。 */
@@ -253,7 +293,32 @@ object FilmStockMapper {
             glareAmount = glare,
             printExposure = exposure,
             paperOverride = paper,
+            // 出口是整卷统一的口味，不按胶卷存；脏值回退印相
+            outputStyle = OutputStyle.fromPrefs(sp.getInt("filmcam_output_style", OutputStyle.PRINT.prefs)),
         )
+    }
+
+    /** 成片出口（整卷统一，不按胶卷分）。 */
+    fun readOutputStyle(context: Context): OutputStyle =
+        OutputStyle.fromPrefs(
+            context.getSharedPreferences("filmcam", Context.MODE_PRIVATE)
+                .getInt("filmcam_output_style", OutputStyle.PRINT.prefs)
+        )
+
+    fun saveOutputStyle(context: Context, style: OutputStyle) {
+        context.getSharedPreferences("filmcam", Context.MODE_PRIVATE)
+            .edit().putInt("filmcam_output_style", style.prefs).apply()
+    }
+
+    /** 出口档位循环：印相 → Frontier → Noritsu → 印相 */
+    fun cycleOutputStyle(context: Context): OutputStyle {
+        val next = when (readOutputStyle(context)) {
+            OutputStyle.PRINT -> OutputStyle.FRONTIER
+            OutputStyle.FRONTIER -> OutputStyle.NORITSU
+            OutputStyle.NORITSU -> OutputStyle.PRINT
+        }
+        saveOutputStyle(context, next)
+        return next
     }
 
     /**
@@ -266,10 +331,11 @@ object FilmStockMapper {
 
     /**
      * 规格 §2 冻结模板，用户可调值替换 print_exposure / grain_amount / halation_amount /
-     * glare_amount；print_stock 受 settings.paperOverride 覆盖。
-     * 字段顺序仍为：film_stock, print_stock, input_color_space, input_cctf_decoding,
-     * output_color_space, print_exposure, preview_long_edge, grain_amount,
-     * halation_amount, glare_amount, film_format_mm。
+     * glare_amount；print_stock 受 settings.paperOverride 覆盖；
+     * settings.outputStyle 决定走印相通路还是扫描通路，并在扫描通路追加扫描仪/宽容度参数。
+     *
+     * 扫描档仍然下发 print_stock：引擎要求 print_stock 是能加载的合法 profile（反转片也是
+     * 这么兜底的），真正的通路切换靠 scan_film —— 放大机整段会被跳过。
      */
     fun buildParamsJson(
         filmStockId: String,
@@ -278,7 +344,7 @@ object FilmStockMapper {
     ): String {
         val effectivePrintStock = settings.paperOverride?.takeIf { it.isNotBlank() } ?: printStockId
         // 反转片不走放大机/相纸：加 scan_film=true，引擎按「直接扫描正片」出图
-        val positiveFlag = if (isPositive(filmStockId)) ",\"scan_film\":true" else ""
+        val scan = isPositive(filmStockId) || settings.outputStyle.isScan
         val sb = StringBuilder(256)
         sb.append('{')
           .append("\"film_stock\":\"").append(esc(filmStockId)).append("\",")
@@ -292,9 +358,46 @@ object FilmStockMapper {
           .append("\"halation_amount\":").append(jsonNum(settings.halationAmount)).append(',')
           .append("\"glare_amount\":").append(jsonNum(settings.glareAmount)).append(',')
           .append("\"film_format_mm\":36.0")
-          .append(positiveFlag)
-          .append('}')
+        if (scan) sb.append(",\"scan_film\":true")
+        sb.append(",\"output_style\":\"").append(settings.outputStyle.wire).append('"')
+        // 扫描通路专属：扫描仪镜头、局部反差、场景宽容度
+        if (settings.outputStyle.isScan) sb.append(scanFinishParams(settings.outputStyle))
+        sb.append('}')
         return sb.toString()
+    }
+
+    /**
+     * 扫描档追加的参数。三组分别对应：
+     *  - scanner_lens_blur：扫描仪自身镜头的柔化（像素）。Frontier 的镜头偏柔，
+     *    颗粒会被轻微抹平；Noritsu 更锐，颗粒粒粒可数。
+     *  - contrast_mask_*：成片阶段的局部反差，也就是"蔡司立体感"在数码端最接近的对应物。
+     *    核心/暗部/高光分开给，暗部给得比高光少，才不会把暗部噪声一起放大。
+     *  - scene_latitude_*：负片的宽容度模型 —— 高光走肩部压过去而不是硬切，
+     *    暗部有趾部兜底。rolloff 越大肩部越长（Frontier 的 Highlight Soft）。
+     *    rolloff ∈ [1,4]、max_lift ∈ [0.25,12]、norm ∈ {power,y,max} 是引擎的硬校验区间，
+     *    膝点一律交给引擎自己解（我们只给形状，不给位置）。
+     */
+    private fun scanFinishParams(style: OutputStyle): String = when (style) {
+        OutputStyle.FRONTIER ->
+            ",\"scanner_lens_blur\":0.9" +
+            ",\"contrast_mask_active\":true" +
+            ",\"contrast_mask_scheme\":\"gaussian\"" +
+            ",\"contrast_mask_scale\":0.35" +
+            ",\"contrast_mask_core\":0.55" +
+            ",\"contrast_mask_shadows\":0.30" +
+            ",\"contrast_mask_highlights\":0.45" +
+            ",\"scene_latitude_active\":true" +
+            ",\"scene_latitude_rolloff\":2.6" +
+            ",\"scene_latitude_max_lift\":1.6" +
+            ",\"scene_latitude_norm\":\"power\""
+        OutputStyle.NORITSU ->
+            ",\"scanner_lens_blur\":0.35" +
+            ",\"contrast_mask_active\":false" +
+            ",\"scene_latitude_active\":true" +
+            ",\"scene_latitude_rolloff\":1.8" +
+            ",\"scene_latitude_max_lift\":1.0" +
+            ",\"scene_latitude_norm\":\"power\""
+        else -> ""
     }
 
     // ---------- 内部 ----------

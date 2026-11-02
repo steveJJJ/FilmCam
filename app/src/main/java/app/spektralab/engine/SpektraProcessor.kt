@@ -146,6 +146,10 @@ object SpektraProcessor {
      *    引擎自身分配内存，输入位图（12MP 8888 约 48MB）晚一秒回收都可能顶爆堆。
      *    调用方此后不得再使用 input。
      *  - 任何异常捕获后返回 ProcessResult(false,0,0,downscaled,e.message)。
+     *  - fallbackParamsJson 非空时，主参数失败会**另开一个 session**用兜底参数重跑一次。
+     *    扫描档会下发一批引擎新增参数（扫描仪镜头/局部反差/宽容度），老引擎可能不认；
+     *    与其让整卷冲不出来，不如退成印相档出图。不能在同一 session 上补发：
+     *    规格要求 session 打开后不得再发含 film_stock/print_stock 的 delta。
      */
     fun processFrame(
         context: Context,
@@ -153,6 +157,7 @@ object SpektraProcessor {
         paramsJson: String,
         outJpegPath: String,
         recycleInput: Boolean = false,
+        fallbackParamsJson: String? = null,
     ): ProcessResult {
         var downscaled = false
         var working = input
@@ -191,26 +196,14 @@ object SpektraProcessor {
                 // 输入像素已全部进入缓冲，此刻回收可省 48MB 堆给 solve 阶段
                 working.recycle()
             }
-            val session = eng.openSession(buf, w, h, 3)
-            try {
-                session.setParams(paramsJson)
-                dumpParamsOnce(context, session)
-                session.solve("both")
-                val info = session.exportJpeg(outJpegPath, 95, 512, "full")
-                // 硬校验：原生侧可能返回 info 但未真正写文件（静默失败会被误判为成功）。
-                val outFile = java.io.File(outJpegPath)
-                val validDims = info.size >= 2 && info[0] > 0 && info[1] > 0
-                if (!validDims || !outFile.exists() || outFile.length() <= 0L) {
-                    throw java.io.IOException(
-                        "exportJpeg 未产出有效文件: path=$outJpegPath exists=${outFile.exists()} size=${outFile.length()} info=${info.joinToString(",")}"
-                    )
-                }
-                val outW = info[0]
-                val outH = info[1]
-                ProcessResult(true, outW, outH, downscaled, "")
-            } finally {
-                session.close()
+            var rendered = renderOne(eng, buf, w, h, paramsJson, outJpegPath, context)
+            if (rendered == null && fallbackParamsJson != null) {
+                // 主参数失败：另开 session 用兜底参数重跑。buf 仍是完整像素，可以再来一次。
+                Log.w(TAG, "主参数冲洗失败，回退到兜底参数重跑: $outJpegPath")
+                rendered = renderOne(eng, buf, w, h, fallbackParamsJson, outJpegPath, context)
             }
+            val dims = rendered ?: throw IllegalStateException("冲洗失败")
+            ProcessResult(true, dims.first, dims.second, downscaled, "")
         } catch (e: Throwable) {
             Log.e(
                 TAG,
@@ -220,6 +213,42 @@ object SpektraProcessor {
             ProcessResult(false, 0, 0, downscaled, e.message ?: e.javaClass.simpleName)
         } finally {
             if (scaledByProcessor) working.recycle()
+        }
+    }
+
+    /**
+     * 开一个 session 跑完整条冲洗链（setParams → solve → exportJpeg）。
+     * 返回输出尺寸；失败返回 null（异常已记录，给调用方决定要不要换参数重来）。
+     */
+    private fun renderOne(
+        eng: SpektraLabEngine,
+        buf: ByteBuffer,
+        w: Int,
+        h: Int,
+        paramsJson: String,
+        outJpegPath: String,
+        context: Context,
+    ): Pair<Int, Int>? {
+        val session = eng.openSession(buf, w, h, 3)
+        return try {
+            session.setParams(paramsJson)
+            dumpParamsOnce(context, session)
+            session.solve("both")
+            val info = session.exportJpeg(outJpegPath, 95, 512, "full")
+            // 硬校验：原生侧可能返回 info 但未真正写文件（静默失败会被误判为成功）。
+            val outFile = java.io.File(outJpegPath)
+            val validDims = info.size >= 2 && info[0] > 0 && info[1] > 0
+            if (!validDims || !outFile.exists() || outFile.length() <= 0L) {
+                throw java.io.IOException(
+                    "exportJpeg 未产出有效文件: path=$outJpegPath exists=${outFile.exists()} size=${outFile.length()} info=${info.joinToString(",")}"
+                )
+            }
+            info[0] to info[1]
+        } catch (e: Throwable) {
+            Log.e(TAG, "renderOne 失败: ${e.message} | ${w}x$h out=$outJpegPath", e)
+            null
+        } finally {
+            session.close()
         }
     }
 

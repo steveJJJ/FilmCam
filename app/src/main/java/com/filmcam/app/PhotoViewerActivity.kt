@@ -82,6 +82,8 @@ class PhotoViewerActivity : AppCompatActivity() {
             info.params.halationAmount?.let { putExtra(MainActivity.EXTRA_SAME_HALATION, it) }
             info.params.glareAmount?.let { putExtra(MainActivity.EXTRA_SAME_GLARE, it) }
             info.params.printExposure?.let { putExtra(MainActivity.EXTRA_SAME_EXPOSURE, it) }
+            // 输出风格也一起带回去：同一卷用 Frontier 扫的和用放大机印的，本来就是两张不同的片子
+            info.params.outputStyle?.let { putExtra(MainActivity.EXTRA_SAME_STYLE, it.prefs) }
             // 拍摄参数：闪光/白平衡/曝光补偿。慢门与失焦刻意不带 —— 那是这一张的意外，
             // 不是配方；强行复刻只会让「拍摄同款」变成必糊键。
             info.shot?.let { shot ->

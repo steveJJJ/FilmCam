@@ -416,6 +416,10 @@ class MainActivity : AppCompatActivity() {
         intent.getIntExtra(EXTRA_SAME_EV, Int.MIN_VALUE)
             .takeIf { it != Int.MIN_VALUE }
             ?.let { setEv(it, persist = false) }
+        // 输出风格：整卷统一的口味，同款要一并还原（印相 / Frontier / Noritsu）
+        intent.getIntExtra(EXTRA_SAME_STYLE, Int.MIN_VALUE)
+            .takeIf { it != Int.MIN_VALUE }
+            ?.let { FilmStockMapper.saveOutputStyle(this, FilmStockMapper.OutputStyle.fromPrefs(it)) }
         // 套用的结果也写回 prefs：同款不是"只这一张"，用完仍保持这套设置
         saveSettings()
         lastIndicatorKey = ""
@@ -549,8 +553,8 @@ class MainActivity : AppCompatActivity() {
         val hints = resources.getStringArray(R.array.set_hints)
         val rows = intArrayOf(
             R.id.rowSetBody, R.id.rowSetDatestamp, R.id.rowSetHaptic, R.id.rowSetSlow,
-            R.id.rowSetWb, R.id.rowSetLanguage, R.id.rowSetQuality, R.id.rowSetDev,
-            R.id.rowSetAbout
+            R.id.rowSetWb, R.id.rowSetLanguage, R.id.rowSetQuality, R.id.rowSetStyle,
+            R.id.rowSetDev, R.id.rowSetAbout
         )
         val theme = com.filmcam.app.ui.BodyTheme
         fun row(id: Int): android.view.View = view.findViewById(id)
@@ -613,6 +617,7 @@ class MainActivity : AppCompatActivity() {
             value(R.id.rowSetWb).text = wbName()
             value(R.id.rowSetLanguage).text = languageName()
             value(R.id.rowSetQuality).text = qualityName()
+            value(R.id.rowSetStyle).text = outputStyleName()
             value(R.id.rowSetDev).text = ""          // 动作项没有"当前读数"
             value(R.id.rowSetAbout).text = versionLabel()
             paintPanel()
@@ -693,6 +698,12 @@ class MainActivity : AppCompatActivity() {
             com.filmcam.app.develop.DevQuality.cycle(this@MainActivity)
             refreshValues()
         }
+        row(R.id.rowSetStyle).hapticClick {
+            // 输出风格：印相 → Frontier 扫描 → Noritsu 扫描，就地翻转。
+            // 只影响下一次冲洗的成片，已经在相册里的成片不会重扫。
+            FilmStockMapper.cycleOutputStyle(this@MainActivity)
+            refreshValues()
+        }
         row(R.id.rowSetDev).hapticClick {
             dialog.dismiss()
             showDevParamsDialog()
@@ -732,6 +743,13 @@ class MainActivity : AppCompatActivity() {
     private fun qualityName(): String = when (com.filmcam.app.develop.DevQuality.load(this)) {
         com.filmcam.app.develop.DevQuality.STANDARD -> getString(R.string.quality_standard)
         else -> getString(R.string.quality_full)
+    }
+
+    /** 输出风格当前档位：印相（放大机→相纸）/ Frontier 扫描 / Noritsu 扫描 */
+    private fun outputStyleName(): String = when (FilmStockMapper.readOutputStyle(this)) {
+        FilmStockMapper.OutputStyle.FRONTIER -> getString(R.string.style_frontier)
+        FilmStockMapper.OutputStyle.NORITSU -> getString(R.string.style_noritsu)
+        else -> getString(R.string.style_print)
     }
 
     /** 语言当前档位名：跟随系统 / 简体中文 / English */
@@ -1958,6 +1976,8 @@ class MainActivity : AppCompatActivity() {
         const val EXTRA_SAME_WB = "same_wb"
         /** 曝光补偿档位 */
         const val EXTRA_SAME_EV = "same_ev"
+        /** 成片出口档位（OutputStyle.prefs；缺省 = 印相） */
+        const val EXTRA_SAME_STYLE = "same_output_style"
 
         /**
          * 弹窗关闭后的取景器触摸屏蔽时长（ms）。
@@ -1969,7 +1989,7 @@ class MainActivity : AppCompatActivity() {
         val EXTRA_SAME_KEYS = arrayOf(
             EXTRA_SAME_FILM, EXTRA_SAME_PAPER, EXTRA_SAME_GRAIN,
             EXTRA_SAME_HALATION, EXTRA_SAME_GLARE, EXTRA_SAME_EXPOSURE,
-            EXTRA_SAME_FLASH, EXTRA_SAME_WB, EXTRA_SAME_EV
+            EXTRA_SAME_FLASH, EXTRA_SAME_WB, EXTRA_SAME_EV, EXTRA_SAME_STYLE
         )
     }
 }

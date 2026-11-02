@@ -45,6 +45,8 @@ object ExifReader {
         val halationAmount: Float?,
         val glareAmount: Float?,
         val filmFormatMm: Float?,
+        /** 成片出口：印相 / Frontier / Noritsu（老照片没有该字段时为 null，按印相处理） */
+        val outputStyle: app.spektralab.engine.FilmStockMapper.OutputStyle? = null,
     )
 
     /**
@@ -114,6 +116,9 @@ object ExifReader {
                 halationAmount = obj.optDouble("halation_amount", Double.NaN).takeIf { !it.isNaN() }?.toFloat(),
                 glareAmount = obj.optDouble("glare_amount", Double.NaN).takeIf { !it.isNaN() }?.toFloat(),
                 filmFormatMm = obj.optDouble("film_format_mm", Double.NaN).takeIf { !it.isNaN() }?.toFloat(),
+                outputStyle = obj.optString("output_style", "")
+                    .takeIf { it.isNotBlank() }
+                    ?.let { app.spektralab.engine.FilmStockMapper.OutputStyle.fromWire(it) },
             )
         } catch (e: Throwable) {
             DevParams(null, null, null, null, null)

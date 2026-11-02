@@ -203,6 +203,14 @@ class DevelopmentService : Service() {
             }
             val effective = devSettings.copy(paperOverride = resolved.paperId)
             val paramsJson = FilmStockMapper.buildParamsJson(roll.filmStockId, mappedPrint, effective)
+            // 扫描档会下发一批引擎新参数，老引擎可能不认；兜底参数 = 同一卷走印相档，
+            // 保证再怎么不兼容也能出图，而不是整卷冲不出来。
+            val fallbackJson = if (effective.outputStyle.isScan) {
+                FilmStockMapper.buildParamsJson(
+                    roll.filmStockId, mappedPrint,
+                    effective.copy(outputStyle = FilmStockMapper.OutputStyle.PRINT)
+                )
+            } else null
             val filmDisplayName = FilmStockMapper.stockDisplayName(roll.filmStockId)
             // 临时文件名带 rollId：即使并发（例如被系统重新拉起）也不会互相覆写同一个文件
             val tmpJpeg = File(cacheDir, "develop_${roll.rollId}.jpg")
@@ -223,7 +231,7 @@ class DevelopmentService : Service() {
 
                 val frameStart = android.os.SystemClock.elapsedRealtime()
                 try {
-                    processOneFrame(roll, index, paramsJson, filmDisplayName, tmpJpeg, framePixelLimit)
+                    processOneFrame(roll, index, paramsJson, filmDisplayName, tmpJpeg, framePixelLimit, fallbackJson)
                     DevelopmentState.done = index
                     // 单帧耗时走 EMA（0.7/0.3）：首帧含引擎预热偏慢，直接整体平均会把
                     // 预估拉得很长，EMA 让它几帧之内收敛到稳态速度。
@@ -321,6 +329,7 @@ class DevelopmentService : Service() {
         filmDisplayName: String,
         tmpJpeg: File,
         framePixelLimit: Int = 0,
+        fallbackParamsJson: String? = null,
     ) {
         val tTotal0 = android.os.SystemClock.elapsedRealtime()
 
@@ -404,7 +413,7 @@ class DevelopmentService : Service() {
             val tEngine0 = android.os.SystemClock.elapsedRealtime()
             val result = SpektraProcessor.processFrame(
                 applicationContext, bmp, paramsJson, tmpJpeg.absolutePath,
-                recycleInput = true
+                recycleInput = true, fallbackParamsJson = fallbackParamsJson
             )
             tEngineMs = android.os.SystemClock.elapsedRealtime() - tEngine0
             outW = result.width
