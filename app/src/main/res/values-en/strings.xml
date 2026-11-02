@@ -242,6 +242,11 @@ Memory available: %10$d MB / %11$d MB total
     <string name="about_source_subject">FILMCAM source request</string>
     <string name="about_gpl_full">GNU GPL-3.0 full text</string>
     <string name="hidden_title">Engineer mode</string>
+    <string name="hidden_slow_trigger">Slow shutter trigger</string>
+    <string name="hidden_slow_prob">Pure chance: sometimes blurred, sometimes sharp</string>
+    <string name="hidden_slow_real">Pure faithful: always slow in low light</string>
+    <string name="hidden_slow_mix">Faithful + slight luck: always slow, sometimes one stop slower</string>
+    <string name="hidden_slow_note">All three need Settings → Slow shutter set to Natural or Slow. Never fires in daylight or with flash.</string>
     <string name="hidden_save">Save</string>
     <string name="hidden_saved">Saved</string>
     <string name="hidden_diag_title">Develop timing diagnostics</string>

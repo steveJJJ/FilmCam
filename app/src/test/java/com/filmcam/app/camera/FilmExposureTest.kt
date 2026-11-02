@@ -25,6 +25,7 @@ class FilmExposureTest {
         isoFilm: Int = 400,
         mode: FilmExposure.Mode = FilmExposure.Mode.NATURAL,
         comp: Int = 0,
+        trigger: FilmExposure.Trigger = FilmExposure.Trigger.PROBABILITY,
         random: Float = 0.1f,
     ) = FilmExposure.plan(
         tAeSec = tAe,
@@ -36,6 +37,7 @@ class FilmExposureTest {
         deviceMinSec = 1f / 12000f,
         deviceMaxSec = 0.176f,
         deviceIsoRange = 12..3200,
+        trigger = trigger,
         random = FixedRandom(random)
     )
 
@@ -136,8 +138,57 @@ class FilmExposureTest {
     }
 
     @Test
-    fun isoFromRollName_readsDxSpeed() {
-        assertEquals(400, FilmExposure.isoFromRollName("PORTRA 400"))
+    fun realTrigger_ignoresDice() {
+        // 骰子给 0.99：纯概率派必不中，纯真实派照样慢门（真机没有随机）
+        val p = plan(tAe = 1f / 30f, isoAe = 400, trigger = FilmExposure.Trigger.REAL, random = 0.99f)
+        assertNotNull(p)
+        assertTrue(p!!.applied)
+        assertTrue(p.exposureNs > 0L)
+    }
+
+    @Test
+    fun realTrigger_stillIgnoresDaylight() {
+        // 纯真实派也不是无脑慢门：白天真机不糊，这里同样不干预
+        val p = plan(tAe = 1f / 1000f, isoAe = 100, trigger = FilmExposure.Trigger.REAL, random = 0.99f)
+        assertNotNull(p)
+        assertTrue(!p!!.applied)
+        assertEquals(0L, p.exposureNs)
+    }
+
+    @Test
+    fun realMix_withoutExtraStopEqualsReal() {
+        val real = plan(tAe = 1f / 60f, isoAe = 400, trigger = FilmExposure.Trigger.REAL)
+        val mix = plan(tAe = 1f / 60f, isoAe = 400, trigger = FilmExposure.Trigger.REAL_MIX, random = 0.99f)
+        assertEquals(real!!.filmSec, mix!!.filmSec, 1e-6f)
+        assertEquals(real.iso, mix.iso)
+    }
+
+    @Test
+    fun realMix_extraStopDoublesExposureAndHalvesIso() {
+        // 额外慢一档：快门 ×2，感光度 ÷2 —— t×ISO 守恒，亮度不变只是更抖
+        val real = plan(tAe = 1f / 60f, isoAe = 400, trigger = FilmExposure.Trigger.REAL)
+        val mix = plan(
+            tAe = 1f / 60f, isoAe = 400,
+            trigger = FilmExposure.Trigger.REAL_MIX, random = 0.05f
+        )
+        assertNotNull(real)
+        assertNotNull(mix)
+        assertTrue("real=${real!!.filmSec} mix=${mix!!.filmSec}", mix.filmSec > real.filmSec * 1.9f)
+        assertEquals(real.iso / 2, mix!!.iso)
+        assertEquals(real.filmSec * real.iso, mix.filmSec * mix.iso, real.filmSec * real.iso * 0.02f)
+    }
+
+    @Test
+    fun triggerFromPrefs_defaultsToProbability() {
+        assertEquals(FilmExposure.Trigger.PROBABILITY, FilmExposure.Trigger.fromPrefs(0))
+        assertEquals(FilmExposure.Trigger.REAL, FilmExposure.Trigger.fromPrefs(1))
+        assertEquals(FilmExposure.Trigger.REAL_MIX, FilmExposure.Trigger.fromPrefs(2))
+        // 脏数据 / 旧版本没写过 → 退回纯概率派（现有默认行为）
+        assertEquals(FilmExposure.Trigger.PROBABILITY, FilmExposure.Trigger.fromPrefs(99))
+    }
+
+    @Test
+    fun isoFromRollName_readsDxSpeed() {        assertEquals(400, FilmExposure.isoFromRollName("PORTRA 400"))
         assertEquals(100, FilmExposure.isoFromRollName("EKTAR 100"))
         assertEquals(800, FilmExposure.isoFromRollName("CINESTILL 800T"))
         assertEquals(800, FilmExposure.isoFromRollName("PORTRA 800 PUSH 1"))

@@ -20,8 +20,12 @@ import kotlin.math.roundToInt
  * 曝光量守恒（t × ISO 不变），所以成片亮度与手机 AE 一致 —— 只是更慢、更抖。
  * 唯一例外：快门撞到「本档最慢值」或设备上限时，成片会欠曝（真机也一样）。
  *
- * 触发方式（纯概率派）：只有快门慢到「可能糊」的亮度区间才掷骰，命中才真的切手动慢门。
- * 同一场景有时糊有时不糊 —— 正是胶片的不确定性；而白天永远不触发，因为真机在白天也不会糊。
+ * 触发方式有三种（工程师模式可切，见 [Trigger]）：
+ * - 纯概率派：只有快门慢到「可能糊」的亮度区间才掷骰，命中才真的切手动慢门；
+ * - 纯真实派：慢到会抖就一定慢门，完全不掷骰 —— 真机没有随机，糊不糊只看你的手；
+ * - 真实派 + 轻随机：必然慢门，再按档位概率多慢一档，让张与张的抖动程度不一样。
+ *
+ * 白天永远不触发，因为真机在白天也不会糊。
  */
 object FilmExposure {
 
@@ -57,8 +61,38 @@ object FilmExposure {
             return (baseProb + boost).coerceAtMost(1f)
         }
 
+        /**
+         * 「真实派 + 轻随机」里额外慢一档的概率。
+         * 纯真实派是每张都糊得一样；加这一档之后，同一场景有的 1/20、有的 1/10，
+         * 像同一卷里换了个更慢的卷 —— 张与张之间有差异，但没有回到纯掷骰。
+         */
+        fun extraStopProbability(): Float = when (this) {
+            OFF -> 0f
+            NATURAL -> 0.30f
+            SLOW -> 0.60f
+        }
+
         companion object {
             fun fromPrefs(v: Int): Mode = Mode.values().firstOrNull { it.prefs == v } ?: OFF
+        }
+    }
+
+    /**
+     * 慢门触发机制（工程师模式可切）。
+     *
+     * 真机其实没有随机：暗了就一定慢门，糊不糊全看你手。所以这里有三种取舍：
+     * - [PROBABILITY] 纯概率派：只有掷中才切慢门，同一场景有时糊有时不糊（默认，最"出片可控"）
+     * - [REAL] 纯真实派：快门慢到会抖就一定慢门，完全不掷骰（最忠于真机）
+     * - [REAL_MIX] 真实派 + 轻随机：必然慢门，再按档位概率额外慢一档（糊的程度有差异）
+     */
+    enum class Trigger(val prefs: Int) {
+        PROBABILITY(0),
+        REAL(1),
+        REAL_MIX(2);
+
+        companion object {
+            fun fromPrefs(v: Int): Trigger =
+                values().firstOrNull { it.prefs == v } ?: PROBABILITY
         }
     }
 
@@ -112,6 +146,7 @@ object FilmExposure {
      * @param filmIso 胶卷 DX 感光度（被用户手动 ISO 覆盖时取用户值）
      * @param deviceMinSec / deviceMaxSec 设备传感器曝光范围（秒）
      * @param maxSlowSec 本档最慢快门
+     * @param trigger 触发机制：纯概率 / 纯真实 / 真实+轻随机（工程师模式可切）
      */
     fun plan(
         tAeSec: Float,
@@ -124,6 +159,7 @@ object FilmExposure {
         deviceMaxSec: Float,
         deviceIsoRange: IntRange,
         maxSlowSec: Float = MAX_SLOW_SEC,
+        trigger: Trigger = Trigger.PROBABILITY,
         random: java.util.Random = java.util.Random(),
     ): Plan? {
         if (mode == Mode.OFF) return null
@@ -142,10 +178,30 @@ object FilmExposure {
         }
         sec = sec.coerceIn(deviceMinSec, slowest)
 
-        // 不够慢就不干预：白天/阴天这台「T3」本来也不会糊
+        // 不够慢就不干预：白天/阴天这台「T3」本来也不会糊（三种机制都一样）
         if (sec < CANDIDATE_SEC) return Plan(ev, sec, iso, false, 0L)
 
-        val hit = random.nextFloat() < mode.probability(sec)
+        val hit: Boolean
+        when (trigger) {
+            Trigger.PROBABILITY -> hit = random.nextFloat() < mode.probability(sec)
+
+            Trigger.REAL -> hit = true
+
+            Trigger.REAL_MIX -> {
+                hit = true
+                // 轻随机：这一张再慢一档（快门 ×2），用「降感光度」换回曝光量。
+                // t×ISO 恒定 → 亮度不变，只是更抖；ISO 已到设备下限时快门就停在原处。
+                if (sec < slowest && random.nextFloat() < mode.extraStopProbability()) {
+                    val target = minOf(sec * 2f, slowest)
+                    val slowerIso = (iso * sec / target).roundToInt()
+                        .coerceIn(deviceIsoRange.first, deviceIsoRange.last)
+                    if (slowerIso < iso) {
+                        iso = slowerIso
+                        sec = filmShutterSec(ev, iso, evCompSteps).coerceIn(deviceMinSec, slowest)
+                    }
+                }
+            }
+        }
         val ns = if (hit) (sec.toDouble() * 1_000_000_000.0).toLong() else 0L
         return Plan(ev, sec, iso, hit, ns)
     }

@@ -48,6 +48,51 @@
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:layout_marginTop="20dp"
+        android:text="@string/hidden_slow_trigger"
+        android:textSize="15sp" />
+
+    <!-- 慢门三种触发机制：真机没有随机，这里让用户自己决定要多「真」 -->
+    <RadioGroup
+        android:id="@+id/rgSlowTrigger"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:orientation="vertical">
+
+        <RadioButton
+            android:id="@+id/rbSlowProb"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/hidden_slow_prob"
+            android:textSize="14sp" />
+
+        <RadioButton
+            android:id="@+id/rbSlowReal"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/hidden_slow_real"
+            android:textSize="14sp" />
+
+        <RadioButton
+            android:id="@+id/rbSlowMix"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/hidden_slow_mix"
+            android:textSize="14sp" />
+    </RadioGroup>
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:text="@string/hidden_slow_note"
+        android:textColor="#888"
+        android:textSize="12sp" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
         android:layout_marginTop="12dp"
         android:layout_marginBottom="8dp"
         android:text="@string/main_debug_note"

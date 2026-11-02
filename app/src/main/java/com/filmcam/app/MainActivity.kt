@@ -64,6 +64,8 @@ class MainActivity : AppCompatActivity() {
     private var softFocusProb = 0         // 模拟失焦概率 0-100（工程师模式可调；0=关）
     /** 慢门档位（胶片曝光模型）：关 / 自然 / 偏慢 —— 决定暗光下「糊一下」的概率 */
     private var slowShutterMode = FilmExposure.Mode.OFF
+    /** 慢门触发机制：纯概率 / 纯真实 / 真实+轻随机（工程师模式可切） */
+    private var slowTrigger = FilmExposure.Trigger.PROBABILITY
     private var filmRollMode = false  // 胶卷模式开关（旧设置保留兼容，计数改由 UndevelopedFilmStore 权威）
     /** 触感强度档位：0=低 1=中 2=强（用户可在设置里切，见 vibrate() 的缩放系数） */
     private var hapticLevel = 1
@@ -415,6 +417,9 @@ class MainActivity : AppCompatActivity() {
         filmRollMode = prefs.getBoolean("filmRollMode", false)
         hapticLevel = prefs.getInt("hapticLevel", 1).coerceIn(0, 2)
         slowShutterMode = FilmExposure.Mode.fromPrefs(prefs.getInt("slowShutter", 0))
+        slowTrigger = FilmExposure.Trigger.fromPrefs(
+            prefs.getInt("slowTrigger", FilmExposure.Trigger.PROBABILITY.prefs)
+        )
         com.filmcam.app.ui.BodyTheme.load(this)
         com.filmcam.app.ui.AppLocale.load(this)
         // 旧 filmCount 键仅作迁移保留读取，不再作为权威（张数一律读 UndevelopedFilmStore.shotCount）
@@ -1311,7 +1316,8 @@ class MainActivity : AppCompatActivity() {
             evCompSteps = exposureComp,
             deviceMinSec = minSec,
             deviceMaxSec = maxSec,
-            deviceIsoRange = c.deviceIsoRange()
+            deviceIsoRange = c.deviceIsoRange(),
+            trigger = slowTrigger
         )
     }
 
@@ -1455,6 +1461,19 @@ class MainActivity : AppCompatActivity() {
         // 「冲洗完成」这条状态汇报该从机顶 LCD 出来，而不是弹一个 Android 式吐司。
         com.filmcam.app.develop.DevelopmentState.addListener(devStateListener)
         announceDevelopedOnLcd()
+
+        // 工程师模式里可能刚改过慢门触发机制/档位：回前台重新对齐，不必重启 App
+        val prefs = getSharedPreferences("filmcam", MODE_PRIVATE)
+        val newTrigger = FilmExposure.Trigger.fromPrefs(
+            prefs.getInt("slowTrigger", FilmExposure.Trigger.PROBABILITY.prefs)
+        )
+        val newMode = FilmExposure.Mode.fromPrefs(prefs.getInt("slowShutter", 0))
+        if (newTrigger != slowTrigger || newMode != slowShutterMode) {
+            slowTrigger = newTrigger
+            slowShutterMode = newMode
+            lastIndicatorKey = ""   // 机制变了，取景器警告灯按新档重画
+            updateViewfinderIndicators(null, lastExposureSec, lastAeIso)
+        }
     }
 
     // ===== 机顶 LCD：后台冲洗完成通报 =====
@@ -1732,7 +1751,8 @@ class MainActivity : AppCompatActivity() {
                 android.util.Log.i(
                     "SlowShutter",
                     "capture ev=${slow?.ev100} film=${slow?.let { FilmExposure.shutterLabel(it.filmSec) }}" +
-                        " iso=${slow?.iso} applied=${slowNs > 0} exposureMs=${slowNs / 1_000_000} mode=$slowShutterMode"
+                        " iso=${slow?.iso} applied=${slowNs > 0} exposureMs=${slowNs / 1_000_000} " +
+                        "mode=$slowShutterMode trigger=$slowTrigger"
                 )
             } catch (e: Exception) {
                 Toast.makeText(this, getString(R.string.main_toast_capture_error, e.message), Toast.LENGTH_LONG).show()

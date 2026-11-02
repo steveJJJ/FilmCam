@@ -384,6 +384,21 @@ class AboutActivity : AppCompatActivity() {
         val swSkip = view.findViewById<android.widget.Switch>(R.id.swSkipDevelop)
         val sbProb = view.findViewById<SeekBar>(R.id.sbSoftFocusProb)
         val tvProb = view.findViewById<TextView>(R.id.tvSoftFocusProb)
+        val rgTrigger = view.findViewById<android.widget.RadioGroup>(R.id.rgSlowTrigger)
+
+        // 慢门触发机制：三选一（默认纯概率派，与设置面板现有行为一致）
+        rgTrigger.check(
+            when (com.filmcam.app.camera.FilmExposure.Trigger.fromPrefs(
+                prefs.getInt(
+                    "slowTrigger",
+                    com.filmcam.app.camera.FilmExposure.Trigger.PROBABILITY.prefs
+                )
+            )) {
+                com.filmcam.app.camera.FilmExposure.Trigger.PROBABILITY -> R.id.rbSlowProb
+                com.filmcam.app.camera.FilmExposure.Trigger.REAL -> R.id.rbSlowReal
+                com.filmcam.app.camera.FilmExposure.Trigger.REAL_MIX -> R.id.rbSlowMix
+            }
+        )
 
         swSkip.isChecked = prefs.getBoolean("debug_instant_develop", false)
         // 概率缺省：老用户开过模拟失焦 → 40%（旧版硬编码值）；否则 0（关）
@@ -419,10 +434,16 @@ class AboutActivity : AppCompatActivity() {
             .setTitle(R.string.hidden_title)
             .setView(view)
             .setPositiveButton(R.string.hidden_save) { _, _ ->
+                val trigger = when (rgTrigger.checkedRadioButtonId) {
+                    R.id.rbSlowReal -> com.filmcam.app.camera.FilmExposure.Trigger.REAL
+                    R.id.rbSlowMix -> com.filmcam.app.camera.FilmExposure.Trigger.REAL_MIX
+                    else -> com.filmcam.app.camera.FilmExposure.Trigger.PROBABILITY
+                }
                 prefs.edit()
                     .putBoolean("debug_instant_develop", swSkip.isChecked)
                     .putInt("softFocus_prob", sbProb.progress)
                     .putBoolean("softFocus", sbProb.progress > 0)
+                    .putInt("slowTrigger", trigger.prefs)
                     .apply()
                 Toast.makeText(this, R.string.hidden_saved, Toast.LENGTH_SHORT).show()
             }
