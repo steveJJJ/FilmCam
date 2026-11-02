@@ -277,6 +277,8 @@ class DevelopmentService : Service() {
                     val usedFallback = processOneFrame(
                         roll, index, activeParamsJson, exifParamsJson, filmDisplayName,
                         tmpJpeg, framePixelLimit, activeFallbackChain,
+                        // 对照实验只在第一帧跑一次（基线用保守档，实验结果才好对比）
+                        matrixBaseJson = if (index == 1) safeJson else null,
                     )
                     if (usedFallback) {
                         fallbackFrames++
@@ -396,6 +398,7 @@ class DevelopmentService : Service() {
         tmpJpeg: File,
         framePixelLimit: Int = 0,
         fallbackParamsJsons: List<String> = emptyList(),
+        matrixBaseJson: String? = null,
     ): Boolean {
         val tTotal0 = android.os.SystemClock.elapsedRealtime()
 
@@ -475,6 +478,8 @@ class DevelopmentService : Service() {
             // 引擎冲洗到临时 JPEG（全分辨率）
             // recycleInput=true：像素转入 float 缓冲后立即回收位图，把 48MB 堆让给 solve 阶段
             tDecodeMs = android.os.SystemClock.elapsedRealtime() - tDecode0
+            // 参数对照实验：只在外部私有目录放了 spektra_matrix.json 时才跑（跑完即删）
+            runMatrixProbe(bmp, matrixBaseJson)
             inW = bmp.width
             inH = bmp.height
             val tEngine0 = android.os.SystemClock.elapsedRealtime()
@@ -533,6 +538,77 @@ class DevelopmentService : Service() {
             )
         }
         return fellBack
+    }
+
+    /**
+     * 参数对照实验：**只有**外部私有目录里存在 `spektra_matrix.json` 时才跑（跑完即删）。
+     *
+     * 为什么要它：肉眼反馈「偏暖 / 偏冷」太粗 —— 翻了滤色片符号还说一样，
+     * 就无法判断到底是这个键没生效、还是被别的参数盖过去了。这里用同一张帧、
+     * 同一套基线参数，逐个键各渲一张小图，拉回来做像素统计就能定量看出
+     * 哪个键真有作用、方向朝哪、量级多大。
+     *
+     * 配置格式（值写 JSON 字面量）：
+     * ```json
+     * [{"name":"y_plus","extra":{"y_filter_shift":"1.0"}}, ...]
+     * ```
+     */
+    private fun runMatrixProbe(bmp: Bitmap, baseJson: String?) {
+        if (baseJson == null) return
+        val dir = getExternalFilesDir(null) ?: return
+        val specFile = java.io.File(dir, "spektra_matrix.json")
+        if (!specFile.exists()) return
+        val cases = runCatching {
+            val arr = org.json.JSONArray(specFile.readText())
+            (0 until arr.length()).map { i ->
+                val o = arr.getJSONObject(i)
+                val extra = o.optJSONObject("extra")
+                val map = LinkedHashMap<String, String>()
+                if (extra != null) {
+                    val it = extra.keys()
+                    while (it.hasNext()) {
+                        val k = it.next()
+                        map[k] = extra.getString(k)
+                    }
+                }
+                o.getString("name") to map
+            }
+        }.onFailure { Log.w(TAG, "矩阵配置解析失败", it) }.getOrNull()
+        if (cases.isNullOrEmpty()) {
+            runCatching { specFile.delete() }
+            return
+        }
+        val outDir = java.io.File(dir, "matrix_out")
+        runCatching { outDir.deleteRecursively() }
+        outDir.mkdirs()
+        // 小图渲染只为看色彩方向，640px 足够，跑一组不至于让冲洗慢到不能忍
+        val smallW = 640
+        val smallH = (smallW.toFloat() * bmp.height / bmp.width).toInt().coerceAtLeast(1)
+        val small = android.graphics.Bitmap.createScaledBitmap(bmp, smallW, smallH, true)
+        val body = baseJson.trimEnd().removeSuffix("}")
+        val report = StringBuilder()
+        try {
+            for ((name, extra) in cases) {
+                val json = buildString {
+                    append(body)
+                    extra.forEach { (k, v) -> append(",\"").append(k).append("\":").append(v) }
+                    append('}')
+                }
+                val out = java.io.File(outDir, "$name.jpg")
+                val r = runCatching {
+                    SpektraProcessor.processFrame(
+                        applicationContext, small, json, out.absolutePath, recycleInput = false
+                    )
+                }.getOrNull()
+                report.append(name).append(' ').append(r?.ok).append(' ').append(r?.message).append('\n')
+                Log.i(TAG, "矩阵 $name -> ok=${r?.ok} ${r?.message}")
+            }
+        } finally {
+            small.recycle()
+            runCatching { java.io.File(dir, "spektra_matrix_report.txt").writeText(report.toString()) }
+            runCatching { specFile.delete() }   // 跑一次就删，别每次冲洗都来一遍
+        }
+        Log.i(TAG, "参数对照实验完成: ${outDir.absolutePath} (${cases.size} 张)")
     }
 
     /** 按 90° 整数倍旋转位图。整数倍旋转无插值，旋转后立即回收原图。 */
