@@ -29,6 +29,7 @@ import com.filmcam.app.filter.FilmRollAdapter
 import com.filmcam.app.filter.FilmRollRepository
 import com.filmcam.app.flash.FlashController
 import com.filmcam.app.flash.FlashMode
+import com.filmcam.app.ui.AdvanceRitual
 import com.filmcam.app.ui.T3LcdView
 import com.filmcam.app.ui.ViewfinderFrameView
 import com.google.android.material.bottomsheet.BottomSheetDialog
@@ -877,6 +878,8 @@ class MainActivity : AppCompatActivity() {
     private fun showRewindAnimation(onEnd: () -> Unit) {
         if (isCapturing) return
         isCapturing = true
+        captureSeq++              // 作废上一张残留的过卷回调
+        captureStartMs = SystemClock.elapsedRealtime()
         binding.developingOverlay.visibility = android.view.View.VISIBLE
         binding.ivDeveloping.setIcon(currentRoll.iconResId)
         binding.ivDeveloping.visibility = android.view.View.VISIBLE
@@ -885,7 +888,7 @@ class MainActivity : AppCompatActivity() {
 
         playAdvanceSound()
         // 手动回卷：同样是齿孔一格一格退回去的手感，全程 1.4s 连续轻震
-        startGearHaptics(fromMs = 0, toMs = 1400, stepMs = 58)
+        startGearHaptics(captureSeq, fromMs = 0, toMs = 1400, stepMs = 58)
 
         // 快速回卷：胶片带高速倒着被卷回暗盒（速度越快拖影越长），1.6s 后收尾
         binding.ivDeveloping.startSpinning(5.0f)
@@ -1733,10 +1736,11 @@ class MainActivity : AppCompatActivity() {
                         Toast.makeText(this, getString(R.string.main_toast_save_failed, e.message), Toast.LENGTH_LONG).show()
                     }
                 } finally {
+                    val seq = captureSeq
                     runOnUiThread {
-                        stopDevelopingAnimation()
-                        binding.developingOverlay.visibility = android.view.View.GONE
-                        isCapturing = false
+                        // 只记账、不收尾：过卷仪式有自己的时长，走完才由 finishCapture 复位。
+                        // 以前这里直接收尾，写入快的帧会把过卷声和动画一起吞掉。
+                        scheduleFinishAfterRitual(seq)
                     }
                 }
             }
@@ -1770,6 +1774,32 @@ class MainActivity : AppCompatActivity() {
 
     private var isCapturing = false
 
+    /**
+     * 过卷时序的「这一次拍摄」序号。
+     *
+     * 之前所有延时回调都以 `isCapturing` 为条件，而它在照片写完的瞬间就被置回 false ——
+     * 于是出现「声音/动画被保存速度掐断」：写入快的帧，过卷声根本来不及播，遮罩也一闪
+     * 而过，用户以为没拍上就再按一次，听起来就是「两声快门、没有过卷」。
+     *
+     * 真机不是这样：马达走完一格是固定的机械动作，跟底片多快曝光完无关。所以时序一律
+     * 挂在序号上（序号一变，上一张的回调全部作废），而 `isCapturing` 只负责「能不能再按」。
+     */
+    private var captureSeq = 0
+    /** 本次拍摄的起点（SystemClock.elapsedRealtime），所有时序都相对它排 */
+    private var captureStartMs = 0L
+    /** 本次过卷仪式的最短时长：照片写得再快，也要等它走完才收尾 */
+    private var captureRitualMs = 0L
+    private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
+
+    /**
+     * 相对本次拍摄起点的定时（挂在序号上，不用 View.post —— 退到后台 View 会 detach，
+     * 回调就再也不来了）。序号不匹配说明这张已经翻篇，回调直接作废。
+     */
+    private fun postAt(seq: Int, atMs: Long, action: () -> Unit) {
+        val delay = (atMs - (SystemClock.elapsedRealtime() - captureStartMs)).coerceAtLeast(0L)
+        mainHandler.postDelayed({ if (captureSeq == seq) action() }, delay)
+    }
+
     private fun triggerShutter() {
         // 拍满 36 张：先播回卷动画，再弹窗引导冲洗
         if (currentShotCount() >= FILM_MAX) {
@@ -1787,6 +1817,7 @@ class MainActivity : AppCompatActivity() {
     private fun startSelfTimer() {
         if (isCapturing) return
         isCapturing = true
+        captureSeq++              // 作废上一张残留的过卷回调
         binding.developingOverlay.visibility = android.view.View.VISIBLE
         binding.ivDeveloping.visibility = android.view.View.GONE
         binding.tvDevelopingText.visibility = android.view.View.VISIBLE
@@ -1880,11 +1911,20 @@ class MainActivity : AppCompatActivity() {
     private fun doCapture() {
         if (isCapturing) return
         isCapturing = true
+        val seq = ++captureSeq
+        captureStartMs = SystemClock.elapsedRealtime()
 
         // 慢门决策：按胶卷曝光模型掷骰，命中才真的把这张拍糊
         val slow = planSlowShutter()
         val slowNs = if (slow != null && slow.applied) slow.exposureNs else 0L
         val slowIso = if (slow != null && slowNs > 0L) slow.iso else 0
+
+        // 先把整条过卷时序排出来：真机上这是马达的机械动作，时长固定，
+        // 不随照片多快写完而变。慢门要等曝光走完（闭帘）马达才过片。
+        val timeline = AdvanceRitual.plan(slowNs)
+        val closeAt = timeline.closeAtMs
+        val advanceAt = timeline.advanceAtMs
+        captureRitualMs = timeline.ritualMs
 
         playShutterFeedback()  // 开帘：快门声音 + 振动
         flash.trigger()
@@ -1896,16 +1936,11 @@ class MainActivity : AppCompatActivity() {
         if (slowNs > 0L) {
             // 慢门：快门还开着，得等曝光走完才有「闭帘」和过卷声。
             // 真机也是曝光结束马达才过片，这段等待本身就是慢门的仪式感。
-            val closeAt = slowNs / 1_000_000L + SHUTTER_OPEN_LATENCY_MS
-            binding.glSurfaceView.postDelayed({
-                if (isCapturing) playShutterCloseFeedback()
-            }, closeAt)
-            binding.glSurfaceView.postDelayed({
-                if (isCapturing) showDevelopingAnimation()
-            }, closeAt + 40)
+            postAt(seq, closeAt) { playShutterCloseFeedback() }
+            postAt(seq, closeAt + 40) { showDevelopingAnimation(seq, advanceAt) }
         } else {
             // 常规：快门 + 过卷一体声，过卷动画立即同步启动
-            showDevelopingAnimation()
+            showDevelopingAnimation(seq, advanceAt)
         }
 
         // 闪光灯按键触发，立即拍照
@@ -1933,7 +1968,7 @@ class MainActivity : AppCompatActivity() {
                 )
             } catch (e: Exception) {
                 Toast.makeText(this, getString(R.string.main_toast_capture_error, e.message), Toast.LENGTH_LONG).show()
-                isCapturing = false
+                finishCapture(seq)
             }
         }
     }
@@ -1951,10 +1986,13 @@ class MainActivity : AppCompatActivity() {
         vibrate(26, 190)
     }
 
-    /** 自动过卷动画：拍照后模拟 T3 自动过卷（胶卷条滚动动画 + 过卷声 + 微弱震动），照片在后台处理 */
-    private fun showDevelopingAnimation() {
-        // 慢门会把这段延迟到曝光结束，极快的小尺寸出片可能已经跑完 —— 别把遮罩又拉起来
-        if (!isCapturing) return
+    /**
+     * 自动过卷动画：拍照后模拟 T3 自动过卷（胶卷条滚动动画 + 过卷声 + 微弱震动），照片在后台处理。
+     * @param seq 本次拍摄序号（序号不对说明这张已经翻篇，整个过卷作废）
+     * @param advanceAtMs 马达进场的时刻，相对本次拍摄起点
+     */
+    private fun showDevelopingAnimation(seq: Int, advanceAtMs: Long) {
+        if (captureSeq != seq) return   // 慢门会把这段延迟到曝光结束，期间这一张可能已经翻篇
         binding.developingOverlay.visibility = android.view.View.VISIBLE
 
         // 显示当前胶卷条，模拟胶片被马达拖过片门
@@ -1963,7 +2001,7 @@ class MainActivity : AppCompatActivity() {
         binding.tvDevelopingText.text = "FILM ADVANCING..."
         binding.tvDevelopingText.visibility = android.view.View.VISIBLE
 
-        // 过卷等待动画：胶卷条匀速滚动，持续到处理+保存完成（胶片相机拍完需等冲洗，动画连贯不跳变）
+        // 过卷等待动画：胶卷条匀速滚动，持续到过卷走完（胶片相机拍完需等冲洗，动画连贯不跳变）
         startDevelopingAnimation()
 
         // 过卷声音：真实 T3 的顺序是「叶片先喀一声曝光」→ 停顿一下 →「马达拖动齿轮过卷」，
@@ -1972,28 +2010,23 @@ class MainActivity : AppCompatActivity() {
         // 用户反馈"没有停顿、不好听"。这里延后 420ms：快门结束后留出约 340ms 的
         // 明确静默，再让马达进场；0.75 速率把素材拉长到约 450ms、音调略沉
         // （更接近马达带负载的质感）。
-        binding.ivDeveloping.postDelayed({
-            if (isCapturing) playAdvanceSound()
-        }, 420)
+        // 慢门时 advanceAtMs 是「闭帘后 200ms」，节奏一样是「先静一下再让马达进场」。
+        postAt(seq, advanceAtMs) { playAdvanceSound() }
 
         // 过卷触感：马达带动胶卷时齿孔被齿轮一格一格啃过去——用连续的短促轻震
-        // 模拟"卷在转"的颗粒感，与马达声同步起（420ms），收尾再补一记顿挫。
-        startGearHaptics(fromMs = 420, toMs = 1060, stepMs = 58)
+        // 模拟"卷在转"的颗粒感，与马达声同步起，收尾再补一记顿挫。
+        startGearHaptics(seq, fromMs = advanceAtMs, toMs = advanceAtMs + AdvanceRitual.GEAR_HAPTIC_SPAN_MS)
 
-        // 750ms 后文案切到 PROCESSING...；真正的完成收尾由 onPhotoCaptured 回调 finally 里做
-        binding.ivDeveloping.postDelayed({
+        // 文案切到 PROCESSING...：等马达进场之后再说（慢门时 750ms 还在曝光，别提前剧透）
+        postAt(seq, maxOf(750L, advanceAtMs + 120)) {
             binding.tvDevelopingText.text = "PROCESSING..."
-        }, 750)
+        }
 
         // 看门狗：相机回调迟迟不来（>20s）时兜底复位，避免卡死在过卷界面
-        binding.ivDeveloping.postDelayed({
-            if (isCapturing) {
-                stopDevelopingAnimation()
-                binding.developingOverlay.visibility = android.view.View.GONE
-                isCapturing = false
-                Toast.makeText(this, getString(R.string.main_toast_capture_timeout), Toast.LENGTH_SHORT).show()
-            }
-        }, 20_000)
+        postAt(seq, AdvanceRitual.WATCHDOG_MS) {
+            finishCapture(seq)
+            Toast.makeText(this, getString(R.string.main_toast_capture_timeout), Toast.LENGTH_SHORT).show()
+        }
     }
 
     /**
@@ -2001,13 +2034,36 @@ class MainActivity : AppCompatActivity() {
      * 模拟胶片齿孔被齿轮一格一格啃过去的手感（不是单次"嗡"一下），
      * 末尾再给一记稍明显的顿挫表示这一格走完了。
      */
-    private fun startGearHaptics(fromMs: Long, toMs: Long, stepMs: Long) {
+    private fun startGearHaptics(
+        seq: Int, fromMs: Long, toMs: Long, stepMs: Long = AdvanceRitual.GEAR_HAPTIC_STEP_MS
+    ) {
         var t = fromMs
         while (t <= toMs) {
-            binding.ivDeveloping.postDelayed({ if (isCapturing) vibrate(18, 140) }, t)
+            postAt(seq, t) { vibrate(18, 140) }
             t += stepMs
         }
-        binding.ivDeveloping.postDelayed({ if (isCapturing) vibrate(32, 210) }, toMs + 60)
+        postAt(seq, toMs + 60) { vibrate(32, 210) }
+    }
+
+    /**
+     * 收尾一次拍摄：停动画、收遮罩、放开快门。
+     * 只在「还是这一次拍摄」时生效 —— 用户中途切走或又按了一次都不会误收。
+     */
+    private fun finishCapture(seq: Int) {
+        if (captureSeq != seq) return
+        stopDevelopingAnimation()
+        binding.developingOverlay.visibility = android.view.View.GONE
+        isCapturing = false
+    }
+
+    /**
+     * 照片写完后调用：真机上马达走完一格才允许拍下一张，所以这里**不立刻收尾**，
+     * 而是补上过卷仪式剩下的时间（写入快的帧以前就是在这里把过卷声整个吞掉的）。
+     */
+    private fun scheduleFinishAfterRitual(seq: Int) {
+        val elapsed = SystemClock.elapsedRealtime() - captureStartMs
+        val wait = AdvanceRitual.finishDelayMs(elapsed, captureRitualMs)
+        mainHandler.postDelayed({ finishCapture(seq) }, wait)
     }
 
     /** 过卷等待动画：胶片带匀速被拖过片门，持续到后台处理+保存完成（连贯不跳变） */
@@ -2040,11 +2096,7 @@ class MainActivity : AppCompatActivity() {
         /** 过卷声播放音量：真实录音 + 0.45 音量，避免像合成音那样"炸耳朵" */
         const val ADVANCE_VOLUME = 0.45f
 
-        /**
-         * 从按下快门到 HAL 真正开帘的延迟（ms）。
-         * 慢门的「闭帘」声要在这之后补，否则第二声会比实际曝光早一百多毫秒，节奏听着不对。
-         */
-        private const val SHUTTER_OPEN_LATENCY_MS = 120L
+        /** 过卷时序的常数都在 com.filmcam.app.ui.AdvanceRitual（那边有单测兜着） */
 
         /**
          * 触感强度基准（1-255）。三星这类线性马达对低振幅短脉冲几乎不响应，
