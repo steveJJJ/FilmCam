@@ -59,6 +59,36 @@ object FilmStockMapper {
         }
     }
 
+    /**
+     * 引擎已知参数名白名单（逐条对照 libspektrafilm_engine.so 字符串表核过）。
+     *
+     * 引擎对不认识的键直接报 `unknown parameter 'xxx'` 并让 setParams 失败——
+     * 也就是说，往这份 JSON 里塞任何一个「只给我们自己看」的字段，
+     * 代价是整卷一帧都出不来。这类标记必须走 [buildExifParamsJson]（只进 EXIF）。
+     * OutputStyleTest 会拿这份集合把三档参数逐键校验一遍。
+     */
+    val ENGINE_KNOWN_KEYS: Set<String> = setOf(
+        // 通路 / 介质
+        "film_stock", "print_stock", "scan_film", "film_format_mm",
+        // 色彩
+        "input_color_space", "input_cctf_decoding", "output_color_space",
+        // 曝光 / 预览
+        "print_exposure", "preview_long_edge", "exposure_compensation_ev",
+        "auto_exposure_method", "lens_blur_um",
+        // 胶片质感
+        "grain_amount", "halation_amount", "glare_amount",
+        // 扫描仪
+        "scanner_lens_blur", "scanner_black_correction", "scanner_white_correction",
+        // 局部反差（print_render.contrast_mask.*）
+        "contrast_mask_active", "contrast_mask_scheme", "contrast_mask_scale",
+        "contrast_mask_core", "contrast_mask_shadows", "contrast_mask_highlights",
+        // 场景宽容度（camera.scene_latitude.*）
+        "scene_latitude_active", "scene_latitude_b_active", "scene_latitude_rolloff",
+        "scene_latitude_max_lift", "scene_latitude_norm", "scene_latitude_split",
+        "scene_latitude_highlight_knee", "scene_latitude_highlight_room",
+        "scene_latitude_shadow_knee", "scene_latitude_shadow_room",
+    )
+
     /** 冲洗（暗房）用户可调参数；未改设置时全部取冻结模板默认值。 */
     data class DevSettings(
         val grainAmount: Float = 1.0f,
@@ -337,10 +367,40 @@ object FilmStockMapper {
      * 扫描档仍然下发 print_stock：引擎要求 print_stock 是能加载的合法 profile（反转片也是
      * 这么兜底的），真正的通路切换靠 scan_film —— 放大机整段会被跳过。
      */
+    /**
+     * 成片「输出风格」标记。
+     *
+     * 这是**我们自己**的元数据：只写进成片 EXIF（供「拍摄同款」还原），
+     * 绝不能发给引擎——引擎没有这个参数，收到就是 `unknown parameter` 整卷失败。
+     * 引擎侧的通路切换靠 scan_film 与扫描档附加参数，不看这个字段。
+     */
+    private const val MARK_OUTPUT_STYLE = "output_style"
+
+    /**
+     * 引擎参数（严格）。任何只给自己看的标记都不在这里出现；
+     * 引擎对未知键会直接报 unknown parameter 并让整帧失败。
+     */
     fun buildParamsJson(
         filmStockId: String,
         printStockId: String,
         settings: DevSettings,
+    ): String = buildParamsJson(filmStockId, printStockId, settings, includeStyleMark = false)
+
+    /**
+     * 写进成片 EXIF 的参数快照 = 引擎参数 + [MARK_OUTPUT_STYLE]。
+     * 「拍摄同款」靠它把风格也一起还原。
+     */
+    fun buildExifParamsJson(
+        filmStockId: String,
+        printStockId: String,
+        settings: DevSettings,
+    ): String = buildParamsJson(filmStockId, printStockId, settings, includeStyleMark = true)
+
+    fun buildParamsJson(
+        filmStockId: String,
+        printStockId: String,
+        settings: DevSettings,
+        includeStyleMark: Boolean,
     ): String {
         val effectivePrintStock = settings.paperOverride?.takeIf { it.isNotBlank() } ?: printStockId
         // 反转片不走放大机/相纸：加 scan_film=true，引擎按「直接扫描正片」出图
@@ -359,7 +419,10 @@ object FilmStockMapper {
           .append("\"glare_amount\":").append(jsonNum(settings.glareAmount)).append(',')
           .append("\"film_format_mm\":36.0")
         if (scan) sb.append(",\"scan_film\":true")
-        sb.append(",\"output_style\":\"").append(settings.outputStyle.wire).append('"')
+        // 风格标记只在 EXIF 快照里出现；发给引擎会触发 unknown parameter，整卷出不了图
+        if (includeStyleMark) {
+            sb.append(",\"").append(MARK_OUTPUT_STYLE).append("\":\"").append(settings.outputStyle.wire).append('"')
+        }
         // 扫描通路专属：扫描仪镜头、局部反差、场景宽容度
         if (settings.outputStyle.isScan) sb.append(scanFinishParams(settings.outputStyle))
         sb.append('}')

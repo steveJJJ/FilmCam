@@ -37,6 +37,7 @@
     <string name="dev_error_engine_init">Engine init failed: %1$s</string>
     <string name="dev_error_frames_detail">%1$d/%2$d frames unfinished: %3$s</string>
     <string name="dev_toast_slide_no_paper">Slide film develops straight to a positive, no paper involved — paper selection ignored</string>
+    <string name="dev_toast_style_fallback">%1$d frames couldn\'t be developed in the selected style (engine rejected its parameters) — fell back to optical print</string>
 
     <!-- ===== Film rolls (film) ===== -->
 

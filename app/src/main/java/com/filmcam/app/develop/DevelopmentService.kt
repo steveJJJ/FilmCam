@@ -202,21 +202,32 @@ class DevelopmentService : Service() {
                 ).show()
             }
             val effective = devSettings.copy(paperOverride = resolved.paperId)
+            // 交给引擎的参数：只包含引擎认识的键。
+            // （曾把 output_style 这个自定义标记塞进去，引擎报 unknown parameter，整卷 0 帧出图。）
             val paramsJson = FilmStockMapper.buildParamsJson(roll.filmStockId, mappedPrint, effective)
-            // 扫描档会下发一批引擎新参数，老引擎可能不认；兜底参数 = 同一卷走印相档，
-            // 保证再怎么不兼容也能出图，而不是整卷冲不出来。
-            val fallbackJson = if (effective.outputStyle.isScan) {
-                FilmStockMapper.buildParamsJson(
-                    roll.filmStockId, mappedPrint,
-                    effective.copy(outputStyle = FilmStockMapper.OutputStyle.PRINT)
-                )
-            } else null
+            // 写进 EXIF 的快照：引擎参数 + 风格标记，「拍摄同款」靠它还原档位
+            val exifParamsJson = FilmStockMapper.buildExifParamsJson(roll.filmStockId, mappedPrint, effective)
+            // 兜底链：扫描档下发了一批引擎新参数，机型/引擎版本认不全就整卷冲不出来。
+            // 逐级退到更保守的印相档（即上一版已验证能出图的参数集），至少保证出图。
+            // 一旦确认某档不被接受，后续帧直接从兜底档起跑，不再每帧白试一次。
+            var activeParamsJson = FilmStockMapper.buildParamsJson(roll.filmStockId, mappedPrint, effective)
+            var activeFallbackChain: List<String> = buildList {
+                if (effective.outputStyle.isScan) {
+                    add(
+                        FilmStockMapper.buildParamsJson(
+                            roll.filmStockId, mappedPrint,
+                            effective.copy(outputStyle = FilmStockMapper.OutputStyle.PRINT)
+                        )
+                    )
+                }
+            }
             val filmDisplayName = FilmStockMapper.stockDisplayName(roll.filmStockId)
             // 临时文件名带 rollId：即使并发（例如被系统重新拉起）也不会互相覆写同一个文件
             val tmpJpeg = File(cacheDir, "develop_${roll.rollId}.jpg")
 
             // 4) 逐帧
             var firstError: String? = null
+            var fallbackFrames = 0
             for (index in 1..roll.shotCount) {
                 if (Thread.currentThread().isInterrupted) {
                     Log.w(TAG, "冲洗被中断: $rollId")
@@ -231,7 +242,18 @@ class DevelopmentService : Service() {
 
                 val frameStart = android.os.SystemClock.elapsedRealtime()
                 try {
-                    processOneFrame(roll, index, paramsJson, filmDisplayName, tmpJpeg, framePixelLimit, fallbackJson)
+                    val usedFallback = processOneFrame(
+                        roll, index, activeParamsJson, exifParamsJson, filmDisplayName,
+                        tmpJpeg, framePixelLimit, activeFallbackChain,
+                    )
+                    if (usedFallback) {
+                        fallbackFrames++
+                        // 这一档引擎不认，后面 30 几帧就别再陪它失败一遍了
+                        activeFallbackChain.firstOrNull()?.let { accepted ->
+                            activeParamsJson = accepted
+                            activeFallbackChain = emptyList()
+                        }
+                    }
                     DevelopmentState.done = index
                     // 单帧耗时走 EMA（0.7/0.3）：首帧含引擎预热偏慢，直接整体平均会把
                     // 预估拉得很长，EMA 让它几帧之内收敛到稳态速度。
@@ -270,6 +292,17 @@ class DevelopmentService : Service() {
             } else {
                 UndevelopedFilmStore.finishRoll(rollId)
                 DevelopmentState.phase = DevelopmentState.PHASE_DONE
+                // 走了兜底必须让用户知道：成片是按印相档出的，不是他选的那档口味
+                if (fallbackFrames > 0) {
+                    Log.w(TAG, "$fallbackFrames 帧未用所选风格出图（引擎不接受该档参数）")
+                    mainHandler.post {
+                        android.widget.Toast.makeText(
+                            this@DevelopmentService,
+                            getString(R.string.dev_toast_style_fallback, fallbackFrames),
+                            android.widget.Toast.LENGTH_LONG
+                        ).show()
+                    }
+                }
                 nm.notify(NOTIF_ID, buildDoneNotification(roll))
             }
             // 整卷跑完：把这一次的分段耗时归档，供「关于 → 工程师模式」查看/复制
@@ -326,11 +359,12 @@ class DevelopmentService : Service() {
         roll: RollInfo,
         index: Int,
         paramsJson: String,
+        exifParamsJson: String,
         filmDisplayName: String,
         tmpJpeg: File,
         framePixelLimit: Int = 0,
-        fallbackParamsJson: String? = null,
-    ) {
+        fallbackParamsJsons: List<String> = emptyList(),
+    ): Boolean {
         val tTotal0 = android.os.SystemClock.elapsedRealtime()
 
         // 只看 bounds，算出解码缩放倍数（maxPx<=0 表示引擎不限，sample 保持 1）
@@ -375,6 +409,7 @@ class DevelopmentService : Service() {
         var outW = 0
         var outH = 0
         var wasDownscaled = false
+        var fellBack = false
         var tDecodeMs = 0L
         var tEngineMs = 0L
         var tIoMs = 0L
@@ -413,7 +448,7 @@ class DevelopmentService : Service() {
             val tEngine0 = android.os.SystemClock.elapsedRealtime()
             val result = SpektraProcessor.processFrame(
                 applicationContext, bmp, paramsJson, tmpJpeg.absolutePath,
-                recycleInput = true, fallbackParamsJson = fallbackParamsJson
+                recycleInput = true, fallbackParamsJsons = fallbackParamsJsons
             )
             tEngineMs = android.os.SystemClock.elapsedRealtime() - tEngine0
             outW = result.width
@@ -422,6 +457,7 @@ class DevelopmentService : Service() {
             if (!result.ok) {
                 throw IllegalStateException("processFrame 失败: ${result.message}")
             }
+            fellBack = result.fellBack
 
             // EXIF（用引擎实际输出尺寸；DateTimeOriginal 按帧拍摄时刻 + 胶卷元数据）
             ContaxExif.write(
@@ -430,7 +466,7 @@ class DevelopmentService : Service() {
                 filmStockId = roll.filmStockId,
                 printStockId = roll.printStockId,
                 rollId = roll.rollId,
-                paramsJson = paramsJson,
+                paramsJson = exifParamsJson,
                 shotJson = shotJson,
             )
 
@@ -464,6 +500,7 @@ class DevelopmentService : Service() {
                 tTotal, tDecodeMs, tEngineMs, tIoMs, inW, inH, outW, outH, wasDownscaled
             )
         }
+        return fellBack
     }
 
     /** 按 90° 整数倍旋转位图。整数倍旋转无插值，旋转后立即回收原图。 */

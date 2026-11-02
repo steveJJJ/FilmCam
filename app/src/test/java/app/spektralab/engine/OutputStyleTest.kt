@@ -9,9 +9,11 @@ import org.json.JSONObject
 /**
  * 成片「输出风格」三档（印相 / Frontier 扫描 / Noritsu 扫描）的参数生成。
  *
- * 这里只测两件事，其余交给真机：
+ * 这里只测三件事，其余交给真机：
  *  1) 通路切换字段对不对 —— scan_film 决定走扫描还是走放大机，写错了整卷味道就错了；
- *  2) 新下发的数值落在引擎硬校验区间内 —— 超出区间 setParams 会直接失败。
+ *  2) 新下发的数值落在引擎硬校验区间内 —— 超出区间 setParams 会直接失败；
+ *  3) **每个键都是引擎认识的** —— 引擎对未知键报 unknown parameter 并让整帧失败，
+ *     output_style 就曾经这样让整卷一帧都出不来（它只该进 EXIF）。
  */
 class OutputStyleTest {
 
@@ -24,10 +26,43 @@ class OutputStyleTest {
             )
         )
 
+    private fun exifJson(style: FilmStockMapper.OutputStyle): JSONObject =
+        JSONObject(
+            FilmStockMapper.buildExifParamsJson(
+                filmStockId = "kodak_portra_400",
+                printStockId = "kodak_portra_endura",
+                settings = FilmStockMapper.DevSettings(outputStyle = style),
+            )
+        )
+
+    @Test
+    fun engineParams_neverCarryOurOwnMarkers() {
+        // 引擎遇到不认识的键会报 unknown parameter 并让整帧失败。
+        // 风格标记只属于 EXIF 快照（拍摄同款要读），绝不能发给引擎。
+        for (style in FilmStockMapper.OutputStyle.values()) {
+            val o = json(style)
+            assertFalse("$style 不该把 output_style 发给引擎", o.has("output_style"))
+            assertEquals(style.wire, exifJson(style).getString("output_style"))
+        }
+    }
+
+    @Test
+    fun everyEngineKeyIsKnownToTheEngine() {
+        // 拿引擎二进制里核对过的键名集合逐个校验，杜绝下一个 output_style。
+        for (style in FilmStockMapper.OutputStyle.values()) {
+            val o = json(style)
+            for (k in o.keys()) {
+                assertTrue(
+                    "「$k」不是引擎参数（${style.wire} 档），引擎会报 unknown parameter",
+                    k in FilmStockMapper.ENGINE_KNOWN_KEYS
+                )
+            }
+        }
+    }
+
     @Test
     fun printStyle_isNotScanAndCarriesNoScannerParams() {
         val o = json(FilmStockMapper.OutputStyle.PRINT)
-        assertEquals("print", o.getString("output_style"))
         assertFalse("印相档不该加 scan_film", o.optBoolean("scan_film", false))
         assertFalse(o.has("scanner_lens_blur"))
         assertFalse(o.has("contrast_mask_active"))
@@ -39,7 +74,6 @@ class OutputStyleTest {
     @Test
     fun frontierStyle_enablesScanPathAndSoftScannerOptics() {
         val o = json(FilmStockMapper.OutputStyle.FRONTIER)
-        assertEquals("frontier", o.getString("output_style"))
         assertTrue("扫描档必须走 scan_film", o.getBoolean("scan_film"))
         assertTrue(o.getBoolean("contrast_mask_active"))
         assertEquals("gaussian", o.getString("contrast_mask_scheme"))
@@ -51,7 +85,6 @@ class OutputStyleTest {
     fun noritsuStyle_isFlatterAndSharperThanFrontier() {
         val f = json(FilmStockMapper.OutputStyle.FRONTIER)
         val n = json(FilmStockMapper.OutputStyle.NORITSU)
-        assertEquals("noritsu", n.getString("output_style"))
         assertTrue(n.getBoolean("scan_film"))
         assertFalse("Noritsu 更平，不加局部反差", n.getBoolean("contrast_mask_active"))
         assertTrue(
