@@ -47,6 +47,8 @@ object UndevelopedFilmStore {
     private const val PREFS_NAME = "filmcam_rolls"
     private const val KEY_REGISTRY = "roll_registry_v1"
     private const val DIR_UNDEVELOPED = ".FilmCamUndeveloped"
+    /** 成片目录（MediaStore 的 RELATIVE_PATH 写法，末尾要带斜杠） */
+    private const val DIR_DEVELOPED_RELATIVE = "DCIM/FilmCam/"
 
     // 状态常量与上限统一来自纯数据层 RollRegistry，避免两处定义漂移
     private const val MAX_SHOTS = RollRegistry.MAX_SHOTS
@@ -272,9 +274,13 @@ object UndevelopedFilmStore {
             ctx.contentResolver.openOutputStream(uri, "wt")?.use { out ->
                 out.write(bytes)
             } ?: throw java.io.IOException("openOutputStream(wt) 失败: $uri")
-            // 清 IS_PENDING → 对相册可见；update 返回行数必须 >0，否则行已失效/未应用清除
+            // 清 IS_PENDING → 对相册可见；update 返回行数必须 >0，否则行已失效/未应用清除。
+            // 同时显式写 DATE_TAKEN = 冲洗完成时刻：MediaStore 会拿文件 EXIF 的拍摄时间去填
+            // 这一列，导入的旧照片 EXIF 里是几个月前（甚至填不出值 → datetaken=NULL），
+            // 相册按时间倒序时成片就跑到历史位置去了，用户以为没冲出来。
             val values = ContentValues().apply {
                 put(MediaStore.Images.Media.IS_PENDING, 0)
+                put(MediaStore.Images.Media.DATE_TAKEN, System.currentTimeMillis())
             }
             val updated = ctx.contentResolver.update(uri, values, null, null)
             if (updated <= 0) {
@@ -308,6 +314,53 @@ object UndevelopedFilmStore {
             runCatching { File(frame.handle).delete() }
             uri
         }
+    }
+
+    /**
+     * 补救已经冲出来、却因为没有拍摄时间而在相册里找不到的成片。
+     *
+     * 成因：成片列的 datetaken 由 MediaStore 从文件 EXIF 提取，导入的旧照片 EXIF 里是
+     * 几个月前，个别机型直接填不出值 → `datetaken=NULL`，系统相册按时间排序时
+     * 这张图就掉到历史深处（甚至不显示），用户以为冲洗失败了。
+     * 这里给它们补一个时间：优先用入库时间（date_added），实在没有就用现在。
+     *
+     * 返回修好的张数。只在 API29+ 有意义（低版本分支本来就是显式写 DATE_TAKEN）。
+     */
+    fun repairMissingDateTaken(): Int = synchronized(this) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return 0
+        val ctx = requireContext()
+        val collection = MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+        var fixed = 0
+        runCatching {
+            val projection = arrayOf(
+                MediaStore.Images.Media._ID,
+                MediaStore.Images.Media.DATE_ADDED,
+                MediaStore.Images.Media.DATE_TAKEN,
+            )
+            val selection = "${MediaStore.Images.Media.RELATIVE_PATH} = ? AND " +
+                "${MediaStore.Images.Media.IS_PENDING} = 0"
+            ctx.contentResolver.query(
+                collection, projection, selection, arrayOf(DIR_DEVELOPED_RELATIVE), null
+            )?.use { c ->
+                val idC = c.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
+                val addC = c.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_ADDED)
+                val takeC = c.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_TAKEN)
+                while (c.moveToNext()) {
+                    if (c.getLong(takeC) > 0) continue
+                    val added = c.getLong(addC) * 1000L
+                    val uri = Uri.withAppendedPath(collection, c.getLong(idC).toString())
+                    val values = ContentValues().apply {
+                        put(
+                            MediaStore.Images.Media.DATE_TAKEN,
+                            if (added > 0) added else System.currentTimeMillis()
+                        )
+                    }
+                    if (ctx.contentResolver.update(uri, values, null, null) > 0) fixed++
+                }
+            }
+        }.onFailure { Log.w(TAG, "补救成片拍摄时间失败", it) }
+        if (fixed > 0) Log.i(TAG, "补救了 $fixed 张缺少拍摄时间的成片")
+        fixed
     }
 
     /** 整卷冲洗完成：状态 → developed，清残留。 */

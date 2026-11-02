@@ -265,6 +265,13 @@ class GalleryActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        // 顺手把"因为没填拍摄时间而沉在相册历史里"的成片捞回来（导入旧照片时踩过）
+        lifecycleScope.launch(Dispatchers.IO) {
+            val fixed = UndevelopedFilmStore.repairMissingDateTaken()
+            if (fixed > 0) {
+                withContext(Dispatchers.Main) { loadPhotos() }
+            }
+        }
         loadUndevelopedRolls()
         loadPhotos()
         renderDevProgress()

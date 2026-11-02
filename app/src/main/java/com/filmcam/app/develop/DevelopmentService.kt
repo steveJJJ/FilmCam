@@ -511,9 +511,14 @@ class DevelopmentService : Service() {
             }
             fellBack = result.fellBack
 
-            // EXIF（用引擎实际输出尺寸；DateTimeOriginal 按帧拍摄时刻 + 胶卷元数据）
+            // EXIF（用引擎实际输出尺寸；镜头/胶卷元数据）
+            // DateTimeOriginal 记**冲洗完成时刻**而不是拍摄时刻：成片是刚从暗房拿出来的，
+            // 拿旧照片的拍摄时间去当文件时间，系统相册会把它排到几个月前，等于冲了个看不见。
+            // 真正的拍摄日期刻在画面日期戳上（上面 drawOnBitmap 用的 takenAt），并留一份
+            // orig_taken_at 进 EXIF 快照。
             ContaxExif.write(
                 tmpJpeg, iso, result.width, result.height, takenAt,
+                metadataAtMs = System.currentTimeMillis(),
                 filmDisplayName = filmDisplayName,
                 filmStockId = roll.filmStockId,
                 printStockId = roll.printStockId,

@@ -32,7 +32,13 @@ object ContaxExif {
     /**
      * 给 [file] 写 CONTAX T3 模拟 EXIF + 胶卷元数据。
      * [width]/[height] 为冲洗后 JPEG 的实际像素尺寸。
-     * [takenAtMs] 为该帧拍摄时刻。
+     * [takenAtMs] 为该帧拍摄时刻（原照片真正被拍下的那一刻）。
+     * [metadataAtMs] 为成片的产生时刻（冲洗完成那一刻），写进 DateTimeOriginal。
+     *   两者刻意分开：导入的旧照片拍摄时刻可能是几个月前，若拿它当文件时间，
+     *   系统相册会按拍摄时间排序，成片直接跑到历史位置去，用户以为没冲出来
+     *   （真机实测：datetaken 被填成 2025-12-28，相册里根本翻不到）。
+     *   真正的拍摄日期刻在画面日期戳上（DateStampRenderer 用的是 [takenAtMs]），
+     *   同时也写进 UserComment 快照的 `orig_taken_at` 留档。
      * [filmDisplayName] 胶卷显示名（如 "Kodak Portra 400"），写入 LensModel。
      * [filmStockId] 引擎 film stock id（如 "kodak_portra_400"），写入 ImageDescription。
      * [printStockId] 引擎 print stock id（如 "kodak_portra_endura"），写入 ImageDescription。
@@ -45,6 +51,7 @@ object ContaxExif {
         width: Int,
         height: Int,
         takenAtMs: Long,
+        metadataAtMs: Long = takenAtMs,
         filmDisplayName: String,
         filmStockId: String,
         printStockId: String,
@@ -63,7 +70,7 @@ object ContaxExif {
             exif.setAttribute(ExifInterface.TAG_PIXEL_Y_DIMENSION, height.toString())
 
             // 时间
-            val ts = SimpleDateFormat("yyyy:MM:dd HH:mm:ss", Locale.US).format(Date(takenAtMs))
+            val ts = SimpleDateFormat("yyyy:MM:dd HH:mm:ss", Locale.US).format(Date(metadataAtMs))
             exif.setAttribute(ExifInterface.TAG_DATETIME_ORIGINAL, ts)
             exif.setAttribute(ExifInterface.TAG_DATETIME, ts)
 
@@ -89,7 +96,7 @@ object ContaxExif {
             // shot 作为嵌套对象并入同一份 JSON：一个 UserComment 装完，旧解析器读不到的键会忽略。
             exif.setAttribute(
                 ExifInterface.TAG_USER_COMMENT,
-                "ASCII\n" + mergeShot(paramsJson, shotJson)
+                "ASCII\n" + mergeShot(paramsJson, shotJson, takenAtMs, metadataAtMs)
             )
 
             exif.saveAttributes()
@@ -127,12 +134,25 @@ object ContaxExif {
 
     /**
      * 把拍摄参数并进冲洗参数 JSON 的 `shot` 键。
+     * 成片时间不等于原拍摄时刻时（导入的旧照片），额外记一份 `orig_taken_at` ——
+     * 文件时间虽改成冲洗时刻，照片真正是哪天拍的不能丢。
      * 解析失败时原样返回冲洗参数 —— EXIF 是附加信息，不能因为它写坏了整卷冲洗。
      */
-    private fun mergeShot(paramsJson: String, shotJson: String): String {
-        if (shotJson.isBlank()) return paramsJson
+    private fun mergeShot(
+        paramsJson: String,
+        shotJson: String,
+        takenAtMs: Long,
+        metadataAtMs: Long,
+    ): String {
         return runCatching {
-            org.json.JSONObject(paramsJson).put("shot", org.json.JSONObject(shotJson)).toString()
+            var json = org.json.JSONObject(paramsJson)
+            if (shotJson.isNotBlank()) {
+                json = json.put("shot", org.json.JSONObject(shotJson))
+            }
+            if (metadataAtMs != takenAtMs) {
+                json = json.put("orig_taken_at", takenAtMs)
+            }
+            json.toString()
         }.getOrDefault(paramsJson)
     }
 }
