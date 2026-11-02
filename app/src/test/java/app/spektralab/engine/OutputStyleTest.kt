@@ -192,11 +192,17 @@ class OutputStyleTest {
 
     @Test
     fun frontierAndNoritsuPushColourTemperatureOppositeWays() {
-        // y_filter_shift 是放大机黄滤片（CC）：加黄 = 到相纸的蓝光变少 = 成片偏冷
+        // 黄滤片的符号是**真机标定**出来的（正 = 出图偏暖、负 = 偏冷），
+        // 与「放大机加黄 → 减蓝 → 成片偏冷」的暗房直觉相反，别按直觉改回去。
+        // 目标味道：Frontier 冷（青绿）、Noritsu 暖（洋红）。
         val f = fullJson(FilmStockMapper.OutputStyle.FRONTIER, FilmStockMapper.SCAN_LEVEL_FULL)
         val n = fullJson(FilmStockMapper.OutputStyle.NORITSU, FilmStockMapper.SCAN_LEVEL_FULL)
-        assertTrue("Frontier 偏冷 → 加黄", f.getDouble("y_filter_shift") > 0)
-        assertTrue("Noritsu 偏暖 → 减黄", n.getDouble("y_filter_shift") < 0)
+        assertTrue("Frontier 偏冷 → 黄滤片给负", f.getDouble("y_filter_shift") < 0)
+        assertTrue("Noritsu 偏暖 → 黄滤片给正", n.getDouble("y_filter_shift") > 0)
+        assertTrue(
+            "Frontier 偏青绿 → 品红滤片给负",
+            f.getDouble("m_filter_shift") < n.getDouble("m_filter_shift")
+        )
         assertTrue(
             "Frontier 对比更强 → gamma 更大",
             f.getDouble("density_curve_gamma") > n.getDouble("density_curve_gamma")
@@ -224,6 +230,8 @@ class OutputStyleTest {
             val shift = o.getDouble("y_filter_shift")
             assertTrue("$style y_filter_shift=$shift 越界（引擎区间 [-1,1]）", shift >= -1.0 && shift <= 1.0)
             assertTrue("$style 滤色片不该是 0（那样就没色温差了）", shift != 0.0)
+            val magenta = o.getDouble("m_filter_shift")
+            assertTrue("$style m_filter_shift=$magenta 越界（引擎区间 [-1,1]）", magenta >= -1.0 && magenta <= 1.0)
             val couplers = o.getDouble("dir_couplers_amount")
             assertTrue("$style dir_couplers_amount=$couplers 越界（上限 1.0）", couplers in 0.0..1.0)
         }

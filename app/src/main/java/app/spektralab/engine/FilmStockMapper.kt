@@ -479,10 +479,14 @@ object FilmStockMapper {
      *    （Frontier 的 Highlight Soft）；max_lift 控制暗部能被抬多少。
      *
      * [SCAN_LEVEL_FULL] 再加三味（用来把两档真正拉开）：
-     *  - `y_filter_shift`：放大机黄滤片（加黄 = 到相纸的蓝光变少 = 成片偏冷，减黄偏暖）。
+     *  - `y_filter_shift`：放大机黄滤片，决定**冷暖**。
      *    darktable 文档写的是 Kodak CC 单位，但**引擎实际收的是归一化值，硬区间 [-1,1]**
      *    （真机报错原文：`'y_filter_shift'=12.000000 is outside [-1.000000, 1.000000]`）。
-     *    给 ±0.35 已经在区间内偏大的一侧，够看出冷暖差别又不至于整片偏色。
+     *    符号是**真机标定**出来的，不要按暗房直觉改：给 +0.35 出图偏暖、-0.35 偏冷
+     *    （2026-11-02 用户实测 Frontier(+0.35) 偏暖、Noritsu(-0.35) 偏冷，与预期相反）。
+     *    所以想要 Frontier 冷 → 给负值；Noritsu 暖 → 给正值。
+     *  - `m_filter_shift`：放大机品红滤片，决定**洋红 / 青绿**的偏向，和黄滤片一起才像
+     *    两家店的颜色签名（Noritsu 偏洋红、Frontier 偏青绿）。同样归一化、同样待标定方向。
      *  - `density_curve_gamma`：密度曲线反差，>1 收紧（Frontier 的"对比强"），<1 放宽（Noritsu 的平）。
      *  - `dir_couplers_amount`：层间效应强度，直接关系负片的色彩浓度。
      *    **上限就是 1.0**（文档：滑杆止于 1.0，因为超过胶片本身的强度后反解曲线就无解了）。
@@ -508,13 +512,16 @@ object FilmStockMapper {
      * （见 [SpektraProcessor.probeRejectedKeys]），被拒的剔掉，剩下的才下发。
      */
     fun fullExtraEntries(style: OutputStyle): List<Pair<String, String>> = when (style) {
+        // 黄滤片符号按真机标定：正 = 暖、负 = 冷。品红给得比黄小一半，只做微调。
         OutputStyle.FRONTIER -> listOf(
-            "y_filter_shift" to "0.35",
+            "y_filter_shift" to "-0.35",
+            "m_filter_shift" to "-0.15",
             "density_curve_gamma" to "1.06",
             "dir_couplers_amount" to "1.0",
         )
         OutputStyle.NORITSU -> listOf(
-            "y_filter_shift" to "-0.35",
+            "y_filter_shift" to "0.35",
+            "m_filter_shift" to "0.15",
             "density_curve_gamma" to "0.94",
             "dir_couplers_amount" to "0.6",
         )
