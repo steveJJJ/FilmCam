@@ -192,29 +192,50 @@ class OutputStyleTest {
 
     @Test
     fun frontierAndNoritsuPushColourTemperatureOppositeWays() {
-        // 黄滤片的符号是**真机标定**出来的（正 = 出图偏暖、负 = 偏冷），
-        // 与「放大机加黄 → 减蓝 → 成片偏冷」的暗房直觉相反，别按直觉改回去。
+        // 方向全部来自真机对照实验的像素统计（matrix_out），别按暗房直觉改：
+        //   y_filter_shift 正 = 冷、负 = 暖（效果弱，给到边界 ±1.0）；
+        //   m_filter_shift 正 = 青绿、负 = 洋红。
         // 目标味道：Frontier 冷（青绿）、Noritsu 暖（洋红）。
         val f = fullJson(FilmStockMapper.OutputStyle.FRONTIER, FilmStockMapper.SCAN_LEVEL_FULL)
         val n = fullJson(FilmStockMapper.OutputStyle.NORITSU, FilmStockMapper.SCAN_LEVEL_FULL)
-        assertTrue("Frontier 偏冷 → 黄滤片给负", f.getDouble("y_filter_shift") < 0)
-        assertTrue("Noritsu 偏暖 → 黄滤片给正", n.getDouble("y_filter_shift") > 0)
+        assertTrue("Frontier 偏冷 → 黄滤片给正", f.getDouble("y_filter_shift") > 0)
+        assertTrue("Noritsu 偏暖 → 黄滤片给负", n.getDouble("y_filter_shift") < 0)
         assertTrue(
-            "Frontier 偏青绿 → 品红滤片给负",
-            f.getDouble("m_filter_shift") < n.getDouble("m_filter_shift")
+            "Frontier 偏青绿 → 品红滤片给正",
+            f.getDouble("m_filter_shift") > n.getDouble("m_filter_shift")
         )
         assertTrue(
             "Frontier 对比更强 → gamma 更大",
             f.getDouble("density_curve_gamma") > n.getDouble("density_curve_gamma")
         )
         assertTrue(
-            "Frontier 色彩更浓 → 层间效应更强",
-            f.getDouble("dir_couplers_amount") > n.getDouble("dir_couplers_amount")
+            "Frontier 对比更强 → gamma 更大",
+            f.getDouble("density_curve_gamma") > n.getDouble("density_curve_gamma")
         )
+    }
+
+    @Test
+    fun frontierPrintsBrighterThanNoritsu() {
+        // print_exposure 是 EV 偏移：正 = 放大机照更久 = 成片更暗
+        val f = json(FilmStockMapper.OutputStyle.FRONTIER)
+        val n = json(FilmStockMapper.OutputStyle.NORITSU)
         assertTrue(
-            "Frontier 曝光更亮 → EV 更小（正 EV = 放大机照更久 = 更暗）",
+            "Frontier 偏亮 → EV 更小",
             f.getDouble("print_exposure") < n.getDouble("print_exposure")
         )
+    }
+
+    @Test
+    fun bothScanStylesKeepFullCouplerStrength() {
+        // dir_couplers_amount 是**色彩浓度**，1.0 = 胶片自身强度（也是引擎默认值）。
+        // 往下调会让画面褪色发冷：实测 0.2 时 R−B 掉 8 个色阶，Noritsu 曾经给 0.6
+        // 就被褪冷了，肉眼误判成"色温不对"。浓度属于胶片特性，不用来区分两家扫描仪。
+        for (style in listOf(
+            FilmStockMapper.OutputStyle.FRONTIER,
+            FilmStockMapper.OutputStyle.NORITSU,
+        )) {
+            assertEquals("$style 必须保持满浓度 1.0", 1.0, json(style).getDouble("dir_couplers_amount"), 1e-9)
+        }
     }
 
     @Test

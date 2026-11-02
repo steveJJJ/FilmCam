@@ -479,12 +479,12 @@ object FilmStockMapper {
      *    （Frontier 的 Highlight Soft）；max_lift 控制暗部能被抬多少。
      *
      * [SCAN_LEVEL_FULL] 再加三味（用来把两档真正拉开）：
-     *  - `y_filter_shift`：放大机黄滤片，决定**冷暖**。
-     *    darktable 文档写的是 Kodak CC 单位，但**引擎实际收的是归一化值，硬区间 [-1,1]**
+     *  - `y_filter_shift`：放大机黄滤片，决定**冷暖**，但效果很弱。
+     *    darktable 文档写的是 Kodak CC 单位，可**引擎实际收的是归一化值，硬区间 [-1,1]**
      *    （真机报错原文：`'y_filter_shift'=12.000000 is outside [-1.000000, 1.000000]`）。
-     *    符号是**真机标定**出来的，不要按暗房直觉改：给 +0.35 出图偏暖、-0.35 偏冷
-     *    （2026-11-02 用户实测 Frontier(+0.35) 偏暖、Noritsu(-0.35) 偏冷，与预期相反）。
-     *    所以想要 Frontier 冷 → 给负值；Noritsu 暖 → 给正值。
+     *    像素统计标定：正 = 冷、负 = 暖，且**拉到边界 ±1.0 也只挪 ~1.6 个 R−B 色阶**
+     *    （±0.35 那档实测看不出来）。所以要做冷暖差就得给满，别舍不得。
+     *    注意：曾在真机上把「偏暖」误判成这个键造成的，其实是 dir_couplers 掉饱和。
      *  - `m_filter_shift`：放大机品红滤片，决定**洋红 / 青绿**的偏向，和黄滤片一起才像
      *    两家店的颜色签名（Noritsu 偏洋红、Frontier 偏青绿）。同样归一化、同样待标定方向。
      *  - `density_curve_gamma`：密度曲线反差，>1 收紧（Frontier 的"对比强"），<1 放宽（Noritsu 的平）。
@@ -512,18 +512,25 @@ object FilmStockMapper {
      * （见 [SpektraProcessor.probeRejectedKeys]），被拒的剔掉，剩下的才下发。
      */
     fun fullExtraEntries(style: OutputStyle): List<Pair<String, String>> = when (style) {
-        // 黄滤片符号按真机标定：正 = 暖、负 = 冷。品红给得比黄小一半，只做微调。
+        // 三个方向都是**真机对照实验**（matrix_out 像素统计）标定的，别按暗房直觉改：
+        //   y_filter_shift：正 = 冷、负 = 暖（±1.0 才挪得动 ~1.6 个 R−B 色阶，量级很小，
+        //     所以直接给到区间边界；±0.35 那档实测等于没给）
+        //   m_filter_shift：正 = 偏青绿、负 = 偏洋红
+        //   dir_couplers_amount：**两档都必须保持 1.0**。它是色彩浓度，1.0 = 胶片自身强度
+        //     （引擎默认值），往下调会让画面褪色发冷 —— 实测 0.2 时 R−B 掉 8 个色阶，
+        //     之前 Noritsu 给 0.6 就是这个把画面褪冷的，看起来像"色温不对"，其实是掉饱和。
+        //     浓度属于胶片特性，不该拿来区分两家扫描仪。
         OutputStyle.FRONTIER -> listOf(
-            "y_filter_shift" to "-0.35",
-            "m_filter_shift" to "-0.15",
+            "y_filter_shift" to "1.0",
+            "m_filter_shift" to "0.8",
             "density_curve_gamma" to "1.06",
             "dir_couplers_amount" to "1.0",
         )
         OutputStyle.NORITSU -> listOf(
-            "y_filter_shift" to "0.35",
-            "m_filter_shift" to "0.15",
+            "y_filter_shift" to "-1.0",
+            "m_filter_shift" to "-0.8",
             "density_curve_gamma" to "0.94",
-            "dir_couplers_amount" to "0.6",
+            "dir_couplers_amount" to "1.0",
         )
         else -> emptyList()
     }

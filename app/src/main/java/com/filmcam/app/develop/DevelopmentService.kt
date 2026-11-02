@@ -589,10 +589,19 @@ class DevelopmentService : Service() {
         val report = StringBuilder()
         try {
             for ((name, extra) in cases) {
-                val json = buildString {
-                    append(body)
-                    extra.forEach { (k, v) -> append(",\"").append(k).append("\":").append(v) }
-                    append('}')
+                // 覆盖语义：基线里已有的同名键必须被替换。直接追加会写出重复键，
+                // 引擎取第一个 → 那组实验等于没跑（上一轮 max_lift / print_exposure
+                // 就是这么白测的，出图和 base 字节级相同）。
+                val json = runCatching {
+                    val o = org.json.JSONObject(baseJson)
+                    extra.forEach { (k, v) -> o.put(k, org.json.JSONTokener(v).nextValue()) }
+                    o.toString()
+                }.getOrElse {
+                    buildString {
+                        append(body)
+                        extra.forEach { (k, v) -> append(",\"").append(k).append("\":").append(v) }
+                        append('}')
+                    }
                 }
                 val out = java.io.File(outDir, "$name.jpg")
                 val r = runCatching {
