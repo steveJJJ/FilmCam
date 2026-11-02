@@ -179,6 +179,10 @@ class GalleryActivity : AppCompatActivity() {
             )
             count++
         }
+        if (count == 0) {
+            // 一张都没读出来就别留个空卷占位：它会挡住下次导入，也会出现在暗房列表里
+            UndevelopedFilmStore.deleteRoll(roll.rollId)
+        }
         return roll.rollId to count
     }
 
@@ -192,18 +196,28 @@ class GalleryActivity : AppCompatActivity() {
      */
     private fun readPhotoAsFrame(uri: Uri): ImportedFrame? {
         val cr = contentResolver
-        val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        cr.openInputStream(uri)?.use { android.graphics.BitmapFactory.decodeStream(it, null, bounds) }
-            ?: return null
-        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
-        var sample = 1
-        while ((bounds.outWidth / sample) * (bounds.outHeight / sample) > MAX_IMPORT_PIXELS) sample *= 2
-        val bmp = cr.openInputStream(uri)?.use {
-            android.graphics.BitmapFactory.decodeStream(
-                it, null,
-                android.graphics.BitmapFactory.Options().apply { inSampleSize = sample }
-            )
-        } ?: return null
+        val bmp = com.filmcam.app.develop.PhotoImportDecoder.decodeSampled(
+            openStream = { runCatching { cr.openInputStream(uri) }.getOrNull() },
+            probe = { s ->
+                val o = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                // 注意：探测模式下 decodeStream 必定返回 null，不能用它的返回值判成败，
+                // 成败只看尺寸有没有被填出来（早先就是这里写成 ?: return null，导致导入永远 0 张）
+                android.graphics.BitmapFactory.decodeStream(s, null, o)
+                if (o.outWidth <= 0 || o.outHeight <= 0) null
+                else com.filmcam.app.develop.PhotoImportDecoder.Size(o.outWidth, o.outHeight)
+            },
+            decode = { s, sample ->
+                android.graphics.BitmapFactory.decodeStream(
+                    s, null,
+                    android.graphics.BitmapFactory.Options().apply { inSampleSize = sample }
+                )
+            },
+            maxPixels = MAX_IMPORT_PIXELS.toLong(),
+        )
+        if (bmp == null) {
+            Log.w(TAG, "导入解码失败，跳过：$uri")
+            return null
+        }
         val bytes = java.io.ByteArrayOutputStream().use { out ->
             bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 95, out)
             out.toByteArray()
