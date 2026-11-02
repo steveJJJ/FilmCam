@@ -8,6 +8,7 @@ import android.graphics.SurfaceTexture
 import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
+import android.util.Log
 import android.view.KeyEvent
 import android.view.LayoutInflater
 import android.widget.Toast
@@ -17,6 +18,7 @@ import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import app.spektralab.engine.FilmStockMapper
+import app.spektralab.engine.SpektraProcessor
 import com.filmcam.app.camera.Camera2Controller
 import com.filmcam.app.camera.FilmExposure
 import com.filmcam.app.databinding.ActivityMainBinding
@@ -706,11 +708,22 @@ class MainActivity : AppCompatActivity() {
             refreshValues()
         }
         row(R.id.rowSetFrame).hapticClick {
-            // 胶片相框：把片基、齿孔、暗边帧号一起扫进成片。就地翻转，只影响下次冲洗。
-            FilmStockMapper.saveFrameBorder(
-                this@MainActivity, !FilmStockMapper.readFrameBorder(this@MainActivity)
-            )
+            // 胶片相框：关 → 半格（4:3，画面不裁）→ 全画幅（3:2，按片门裁）→ 关。
+            // 就地翻转，只影响下次冲洗。
+            val next = FilmStockMapper.cycleFrameFormat(this@MainActivity)
             refreshValues()
+            // 全画幅要把 4:3 取景裁成 3:2（真机也只取镜头成像圈中间那块），当场说清楚
+            if (next == FilmStockMapper.FrameFormat.FULL) {
+                Toast.makeText(
+                    this@MainActivity, getString(R.string.set_frame_full_hint), Toast.LENGTH_LONG
+                ).show()
+            }
+            // 当场问一次引擎：片门形状是渲染期才校验的（setParams 会收下、solve 才拒绝），
+            // 与其等冲完一卷才发现退回半格，不如现在就知道这机器认不认这一格。
+            // 正在冲洗时不插队：两边共用同一个引擎实例，抢着开 session 只会互相打断。
+            if (next.isOn && com.filmcam.app.develop.DevelopmentState.phase !=
+                com.filmcam.app.develop.DevelopmentState.PHASE_DEVELOPING
+            ) probeFrameGate(next)
         }
         row(R.id.rowSetDev).hapticClick {
             dialog.dismiss()
@@ -760,10 +773,61 @@ class MainActivity : AppCompatActivity() {
         else -> getString(R.string.style_print)
     }
 
-    /** 设置面板「胶片相框」当前档位：开 / 关 */
-    private fun frameBorderName(): String =
-        if (FilmStockMapper.readFrameBorder(this)) getString(R.string.common_on)
-        else getString(R.string.common_off)
+    /** 设置面板「胶片相框」当前档位：关 / 半格 4:3 / 全画幅 3:2 */
+    private fun frameBorderName(): String = when (FilmStockMapper.readFrameFormat(this)) {
+        FilmStockMapper.FrameFormat.HALF -> getString(R.string.frame_half)
+        FilmStockMapper.FrameFormat.FULL -> getString(R.string.frame_full)
+        else -> getString(R.string.common_off)
+    }
+
+    @Volatile
+    private var frameGateProbing = false
+
+    /**
+     * 切到某个片框档位时，拿该档位片门比例的小图**真跑一遍**引擎，问清楚这机器认不认。
+     *
+     * 片门匹配是渲染期校验：参数会被爽快收下，冲到 solve 才抛
+     * `overscan: a 1440 x 1080 frame is not the 135 gate's shape (36 x 24)`。
+     * 冲洗前还有一次同样的自检（会退回另一格），这里只是让用户当场就知道结果。
+     * 引擎初始化偏慢，放后台线程，结果落盘（spektra_frame_probe.txt）便于拉回来查。
+     */
+    private fun probeFrameGate(format: FilmStockMapper.FrameFormat) {
+        if (frameGateProbing) return
+        frameGateProbing = true
+        Thread {
+            try {
+                val aspect = format.gateAspect
+                val w = 96
+                val h = (w / aspect.coerceAtLeast(0.1f)).toInt().coerceAtLeast(1)
+                val overscanFormat = format.overscanFormat ?: return@Thread
+                val json = FilmStockMapper.buildParamsJson(
+                    "kodak_portra_400", FilmStockMapper.DEFAULT_PRINT_FALLBACK,
+                    FilmStockMapper.DevSettings(frameFormat = format),
+                    includeStyleMark = false,
+                    extraEntries = FilmStockMapper.frameBorderEntries(
+                        "kodak_portra_400", 1, overscanFormat
+                    ),
+                )
+                val err = SpektraProcessor.probeRenderOk(applicationContext, json, w, h)
+                runCatching {
+                    val dir = getExternalFilesDir(null) ?: filesDir
+                    java.io.File(dir, "spektra_frame_probe.txt").writeText(
+                        "gate=${format.key} ${w}x$h -> " + (err ?: "OK")
+                    )
+                }
+                Log.d("MainActivity", "片框自检 ${format.key}: ${err ?: "OK"}")
+                if (err != null) {
+                    runOnUiThread {
+                        Toast.makeText(
+                            this, getString(R.string.set_frame_probe_failed), Toast.LENGTH_LONG
+                        ).show()
+                    }
+                }
+            } finally {
+                frameGateProbing = false
+            }
+        }.start()
+    }
 
     /** 语言当前档位名：跟随系统 / 简体中文 / English */
     private fun languageName(): String = when (com.filmcam.app.ui.AppLocale.mode) {

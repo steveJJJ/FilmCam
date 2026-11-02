@@ -83,6 +83,10 @@ Memory available: %10$d MB / %11$d MB total
     <string name="style_frontier">Frontier scan</string>
     <string name="style_noritsu">Noritsu scan</string>
     <string name="set_frame">Film border</string>
+    <string name="frame_half">Half 4:3</string>
+    <string name="frame_full">Full 3:2</string>
+    <string name="set_frame_full_hint">Full frame exposes the 36×24 gate: the 4:3 view is trimmed top and bottom, just like a real camera that only takes the middle of the lens circle</string>
+    <string name="set_frame_probe_failed">The engine rejects this gate (developing falls back to the other one) — details in spektra_frame_probe.txt on external storage</string>
     <string name="set_slow">Slow shutter</string>
     <string name="set_wb">White balance</string>
     <string name="slow_off">Off</string>
@@ -124,7 +128,7 @@ Memory available: %10$d MB / %11$d MB total
         <item>Follow system / 简体中文 / English</item>
         <item>Full = original resolution, slower; Standard ≈ 12 MP, ~3x faster</item>
         <item>Enlarged onto paper, or the lab scanning the negative</item>
-        <item>Scan the film base, sprocket holes and edge markings into the frame</item>
+        <item>Scan the film base, sprocket holes and edge markings in: Half 4:3 keeps the view, Full 3:2 crops to the 36×24 gate</item>
         <item>Grain, halation and glare strength</item>
         <item>Nameplate and licenses</item>
     </string-array>

@@ -60,6 +60,52 @@ object FilmStockMapper {
     }
 
     /**
+     * 片框档位：成片要不要把片基一起扫进来，扫哪一格。
+     *
+     * 真机那卷胶卷是"一整条"——画面之外还有齿孔、片基边缘印的胶卷型号和帧号。
+     * 店里扫描扫的就是这一整条，所以成片带片框才是"这是一卷胶卷"最直白的证据。
+     *
+     * 档位差别全在**片门（gate）的形状**，也就是底片上真正曝光的那一格有多大：
+     *  - 半格 `135_half`：18×24mm，横过来正好是我们取景的 4:3，画面一格不裁。
+     *  - 全画幅 `135`：36×24mm，就是康泰时 T3 那一格，3:2。我们的取景是 4:3，
+     *    要套这一格，就得先按片门裁一下——真机也是这么回事：镜头成像圈是圆的，
+     *    机身只取中间那块 36×24 的矩形，画面外的部分从来就没落在底片上。
+     *
+     * 引擎是照着片门形状校验输入尺寸的，比例不对它会在渲染期直接拒绝
+     * （`overscan: a W x H frame is not the 135 gate's shape (36 x 24)`），
+     * 所以 [gateAspect] 同时用于冲洗前的裁切和自检小图的尺寸。
+     */
+    enum class FrameFormat(val key: String, val overscanFormat: String?, val gateAspect: Float) {
+        /** 不扫片基：成片就只是画面 */
+        OFF("off", null, 0f),
+
+        /** 半格机（18×24mm，横构图 4:3，Olympus Pen 那类）：画面不裁 */
+        HALF("135_half", OVERSCAN_FORMAT_HALF, 24f / 18f),
+
+        /** 135 全画幅（36×24mm，3:2，T3 这一格）：4:3 取景上下各裁掉约 5.6% */
+        FULL("135", OVERSCAN_FORMAT_FULL, 36f / 24f),
+        ;
+
+        val isOn: Boolean get() = this != OFF
+
+        companion object {
+            fun fromKey(s: String?): FrameFormat =
+                values().firstOrNull { it.key == s } ?: OFF
+
+            /** 按引擎版式串反查档位（自检/日志里拿到的就是这种串）。 */
+            fun fromOverscanFormat(s: String?): FrameFormat =
+                values().firstOrNull { it.overscanFormat == s } ?: OFF
+
+            /** 档位循环：关 → 半格 → 全画幅 → 关 */
+            fun next(current: FrameFormat): FrameFormat = when (current) {
+                OFF -> HALF
+                HALF -> FULL
+                FULL -> OFF
+            }
+        }
+    }
+
+    /**
      * 引擎已知参数名白名单（逐条对照 libspektrafilm_engine.so 字符串表核过）。
      *
      * 引擎对不认识的键直接报 `unknown parameter 'xxx'` 并让 setParams 失败——
@@ -106,8 +152,11 @@ object FilmStockMapper {
         val printExposure: Float = 1.0f,   // 预留：放大机曝光（本轮不暴露 UI，只留读取位）
         val paperOverride: String? = null, // 预留：相纸 id 覆盖（null/空白 = 用胶卷映射的 print_stock）
         val outputStyle: OutputStyle = OutputStyle.PRINT, // 成片出口：印相 / Frontier / Noritsu
-        /** 片框：把片基、齿孔、暗边文字一起扫进来，成片像一张底片扫描件（引擎 overscan）。 */
-        val frameBorder: Boolean = false,
+        /**
+         * 片框档位：把片基、齿孔、暗边文字一起扫进来，成片像一张底片扫描件（引擎 overscan）。
+         * 半格不动画面，全画幅按 36×24 片门裁成 3:2。
+         */
+        val frameFormat: FrameFormat = FrameFormat.OFF,
     )
 
     /** 相纸下拉项（保序，来自 stock_catalog.json prints[] 顺序）。 */
@@ -336,21 +385,67 @@ object FilmStockMapper {
             paperOverride = paper,
             // 出口是整卷统一的口味，不按胶卷存；脏值回退印相
             // 片框是整卷统一的输出样式（跟出口档位一样），不按胶卷存
-            frameBorder = sp.getBoolean(PREF_FRAME_BORDER, false),
+            frameFormat = readFrameFormat(context),
             outputStyle = OutputStyle.fromPrefs(sp.getInt("filmcam_output_style", OutputStyle.PRINT.prefs)),
         )
     }
 
-    private const val PREF_FRAME_BORDER = "filmcam_frame_border"
+    private const val PREF_FRAME_BORDER = "filmcam_frame_border"   // 旧版开关（布尔），仅用于迁移
+    private const val PREF_FRAME_FORMAT = "filmcam_frame_format"
 
-    /** 片框开关（整卷统一）。 */
-    fun readFrameBorder(context: Context): Boolean =
-        context.getSharedPreferences("filmcam", Context.MODE_PRIVATE)
-            .getBoolean(PREF_FRAME_BORDER, false)
+    /** 片框档位（整卷统一）。旧版只有"开/关"，开过的按半格迁移。 */
+    fun readFrameFormat(context: Context): FrameFormat {
+        val sp = context.getSharedPreferences("filmcam", Context.MODE_PRIVATE)
+        val saved = sp.getString(PREF_FRAME_FORMAT, null)
+        if (saved != null) return FrameFormat.fromKey(saved)
+        // 旧包升级：以前开着片框的用户，档位就是当时唯一可用的半格
+        return if (sp.getBoolean(PREF_FRAME_BORDER, false)) FrameFormat.HALF else FrameFormat.OFF
+    }
 
-    fun saveFrameBorder(context: Context, on: Boolean) {
+    fun saveFrameFormat(context: Context, format: FrameFormat) {
         context.getSharedPreferences("filmcam", Context.MODE_PRIVATE)
-            .edit().putBoolean(PREF_FRAME_BORDER, on).apply()
+            .edit().putString(PREF_FRAME_FORMAT, format.key).apply()
+    }
+
+    /** 档位循环：关 → 半格 → 全画幅 → 关，返回新档位 */
+    fun cycleFrameFormat(context: Context): FrameFormat {
+        val next = FrameFormat.next(readFrameFormat(context))
+        saveFrameFormat(context, next)
+        return next
+    }
+
+    /**
+     * 按片门形状裁画面：从 [srcW]×[srcH] 里居中外切出宽高比正好等于 [gateAspect] 的一块。
+     *
+     * 引擎照着片门校验输入尺寸（差一点就拒绝出图），所以这里取整后**反推**另一边，
+     * 保证出来的宽高比是精确的 3:2 / 4:3，而不是"四舍五入差不多"。
+     * 比例已经对的（或尺寸非法）就原样不动。
+     */
+    fun gateCrop(srcW: Int, srcH: Int, gateAspect: Float): GateCrop {
+        if (srcW <= 0 || srcH <= 0 || gateAspect <= 0f) return GateCrop(0, 0, srcW, srcH)
+        val src = srcW.toFloat() / srcH.toFloat()
+        // 差不到千分之五就算已经是片门形状（4:3 与 24/18 只在浮点末位有差别），别白裁一行
+        if (kotlin.math.abs(src - gateAspect) < gateAspect * 0.005f) {
+            return GateCrop(0, 0, srcW, srcH)
+        }
+        // 宽了裁宽、高了裁高；先按源边算，再取整反推另一边，比例才精确
+        val w: Int
+        val h: Int
+        if (src >= gateAspect) {
+            h = srcH
+            w = (h * gateAspect).toInt().coerceAtMost(srcW)
+        } else {
+            w = srcW
+            h = (w / gateAspect).toInt().coerceAtMost(srcH)
+        }
+        if (w <= 0 || h <= 0 || (w == srcW && h == srcH)) return GateCrop(0, 0, srcW, srcH)
+        return GateCrop((srcW - w) / 2, (srcH - h) / 2, w, h)
+    }
+
+    /** 裁切矩形（像素，相对源图左上角）。 */
+    data class GateCrop(val x: Int, val y: Int, val w: Int, val h: Int) {
+        /** true = 要动刀（比例与片门不符）；false = 原图就是片门形状，一格不裁 */
+        val cropped: Boolean get() = x != 0 || y != 0
     }
 
     /**
@@ -362,10 +457,12 @@ object FilmStockMapper {
      *   `mode=strip` 整条片基、`gate=auto`、`holes=white`（齿孔透光）、
      *   `fog=1`、`leaks=0`（不漏光）、`pair=false`（不双联）。
      *
-     * **format 必须是 `135_half`（半格）**：我们的取景画幅是 4:3，而 135 全画幅是 3:2，
-     * 拿 `135` 去配 4:3 的底片，参数会被收下、冲到渲染才炸 ——
-     *   `overscan: the negative does not match this pipeline's overscan layout`
-     * 半格机（18×24mm，横构图正好 4:3，Olympus Pen 那类）才对得上。
+     * **format 决定片门（gate）的形状**，而引擎是拿输入尺寸对着片门校验的：
+     * 拿 `135`（36×24，3:2）去配 4:3 的底片，参数会被收下、冲到渲染才炸 ——
+     *   `overscan: a 1440 x 1080 frame is not the 135 gate's shape (36 x 24)`
+     * 所以选 135 时，冲洗侧要先用 [gateCrop] 把画面裁成 3:2 再送进引擎
+     * （真机也是这么回事：机身只取镜头成像圈中间那块 36×24）。
+     * `135_half`（18×24mm 半格，横过来正好 4:3）则一格不用裁。
      *
      * 帧号**逐帧不同**，由冲洗侧用 [withFrameNumber] 覆盖，这里只占位。
      */
@@ -519,10 +616,10 @@ object FilmStockMapper {
             val entries = scanExtraOverride ?: scanFinishEntries(style, scanFinishLevel)
             entries.forEach { (k, v) -> sb.append(",\"").append(k).append("\":").append(v) }
         }
-        // 片框（整卷统一开关；帧号由冲洗侧逐帧覆盖）
+        // 片框（整卷统一档位；帧号由冲洗侧逐帧覆盖）
         // extraEntries 优先：冲洗前的小图自检会挑出真正能出图的版式传进来
         val frameEntries = extraEntries
-            ?: if (settings.frameBorder) frameBorderEntries(filmStockId) else null
+            ?: settings.frameFormat.overscanFormat?.let { frameBorderEntries(filmStockId, 1, it) }
         frameEntries?.forEach { (k, v) ->
             sb.append(",\"").append(k).append("\":").append(v)
         }
@@ -540,10 +637,17 @@ object FilmStockMapper {
 
     /** 片框版式：半格（18×24mm，横构图 4:3）—— 与我们 4:3 的画幅对得上 */
     const val OVERSCAN_FORMAT_HALF = "135_half"
-    /** 片框版式：135 全画幅（3:2）。4:3 的底片配它会在渲染期报版式不匹配，仅作兜底候选 */
+    /** 片框版式：135 全画幅（36×24mm，3:2，T3 这一格）—— 画面要先按片门裁成 3:2 */
     const val OVERSCAN_FORMAT_FULL = "135"
-    /** 片框版式候选顺序：先试能对上的，再退而求其次（由冲洗前的小图自检挑） */
-    val OVERSCAN_FORMAT_CANDIDATES = listOf(OVERSCAN_FORMAT_HALF, OVERSCAN_FORMAT_FULL)
+    /**
+     * 片框版式自检顺序：先试用户选的那一格，再退到另一格。
+     * 由冲洗前的小图真跑一遍挑（引擎的片门校验发生在渲染期，问参数是问不出来的）。
+     */
+    fun overscanCandidates(preferred: FrameFormat): List<String> {
+        val all = FrameFormat.values().mapNotNull { it.overscanFormat }
+        val first = preferred.overscanFormat ?: return all
+        return listOf(first) + all.filter { it != first }
+    }
 
     /**
      * 店扫档追加的参数。都作用在成片链末端，不碰印相反相本身：
