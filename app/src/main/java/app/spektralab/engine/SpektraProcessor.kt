@@ -237,7 +237,9 @@ object SpektraProcessor {
             if (paramsDumped) return
             paramsDumped = true
             runCatching {
-                val f = java.io.File(context.applicationContext.filesDir, "spektra_params.json")
+                // 优先外部私有目录：release 包不能 run-as，放这里才能直接 adb pull 出来
+                val dir = context.getExternalFilesDir(null) ?: context.applicationContext.filesDir
+                val f = java.io.File(dir, "spektra_params.json")
                 f.writeText(session.getParams())
                 Log.i(TAG, "引擎参数快照: ${f.absolutePath} (${f.length()}B)")
             }.onFailure { Log.w(TAG, "写引擎参数快照失败", it) }
