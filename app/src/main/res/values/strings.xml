@@ -206,7 +206,6 @@ App 版本：%1$s (%2$d)
     <string name="main_darkroom">暗房</string>
     <string name="gallery_import">导入照片冲洗</string>
     <string name="gallery_import_pick_film">装哪卷胶卷？</string>
-    <string name="gallery_import_loaded">已装卷 %1$d 张，开始冲洗</string>
     <string name="gallery_import_too_many">一卷最多 36 张，只取了前 36 张</string>
     <string name="gallery_import_busy">当前还有没冲洗的胶卷，先冲完再导入</string>
     <string name="gallery_import_none">没读到这些照片</string>

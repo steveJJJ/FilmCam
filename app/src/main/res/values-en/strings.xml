@@ -198,7 +198,6 @@ Memory available: %10$d MB / %11$d MB total
     <string name="main_darkroom">Darkroom</string>
     <string name="gallery_import">Import photos</string>
     <string name="gallery_import_pick_film">Load which film?</string>
-    <string name="gallery_import_loaded">Loaded %1$d frames — developing now</string>
     <string name="gallery_import_too_many">A roll holds 36 frames; only the first 36 were taken</string>
     <string name="gallery_import_busy">Develop the current roll before importing</string>
     <string name="gallery_import_none">Could not read those photos</string>

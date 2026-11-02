@@ -147,10 +147,7 @@ class GalleryActivity : AppCompatActivity() {
                     if (count <= 0) {
                         Toast.makeText(this@GalleryActivity, getString(R.string.gallery_import_none), Toast.LENGTH_SHORT).show()
                     } else {
-                        Toast.makeText(
-                            this@GalleryActivity,
-                            getString(R.string.gallery_import_loaded, count), Toast.LENGTH_SHORT
-                        ).show()
+                        // 直接进冲洗界面：那上面本来就有张数和进度，中间再弹一次是重复播报
                         loadUndevelopedRolls()
                         openDevelopmentScreen(rollId)
                     }
