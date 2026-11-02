@@ -211,8 +211,18 @@ class DevelopmentService : Service() {
             // 逐级退到更保守的印相档（即上一版已验证能出图的参数集），至少保证出图。
             // 一旦确认某档不被接受，后续帧直接从兜底档起跑，不再每帧白试一次。
             var activeParamsJson = FilmStockMapper.buildParamsJson(roll.filmStockId, mappedPrint, effective)
+            // 兜底链：店扫档的完整味道里有一批引擎还没验过的键（滤色片/gamma/层间效应），
+            // 机型或引擎版本不认就整卷冲不出来。逐级退：
+            //   完整店扫 → 保守店扫（真机已验证的那几个键，仍保留店扫的基本差别）→ 印相档
             var activeFallbackChain: List<String> = buildList {
                 if (effective.outputStyle.isScan) {
+                    add(
+                        FilmStockMapper.buildParamsJson(
+                            roll.filmStockId, mappedPrint, effective,
+                            includeStyleMark = false,
+                            scanFinishLevel = FilmStockMapper.SCAN_LEVEL_SAFE
+                        )
+                    )
                     add(
                         FilmStockMapper.buildParamsJson(
                             roll.filmStockId, mappedPrint,

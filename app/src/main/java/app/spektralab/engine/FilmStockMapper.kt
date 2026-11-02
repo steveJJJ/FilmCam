@@ -77,6 +77,10 @@ object FilmStockMapper {
         "auto_exposure_method", "lens_blur_um",
         // 胶片质感
         "grain_amount", "halation_amount", "glare_amount", "glare_active",
+        // 放大机（滤色片 / 预闪）：店扫档用滤色片表达扫描仪校色的冷暖
+        "m_filter_shift", "y_filter_shift", "filter_shift_scale", "preflash_exposure",
+        // 密度曲线 gamma（整体反差）、层间效应（负片饱和度）
+        "density_curve_gamma", "dir_couplers_active", "dir_couplers_amount",
         // 扫描仪
         "scanner_lens_blur", "scanner_black_correction", "scanner_white_correction",
         // 局部反差（print_render.contrast_mask.*）
@@ -384,7 +388,10 @@ object FilmStockMapper {
         filmStockId: String,
         printStockId: String,
         settings: DevSettings,
-    ): String = buildParamsJson(filmStockId, printStockId, settings, includeStyleMark = false)
+    ): String = buildParamsJson(
+        filmStockId, printStockId, settings,
+        includeStyleMark = false, scanFinishLevel = SCAN_LEVEL_FULL
+    )
 
     /**
      * 写进成片 EXIF 的参数快照 = 引擎参数 + [MARK_OUTPUT_STYLE]。
@@ -394,13 +401,21 @@ object FilmStockMapper {
         filmStockId: String,
         printStockId: String,
         settings: DevSettings,
-    ): String = buildParamsJson(filmStockId, printStockId, settings, includeStyleMark = true)
+    ): String = buildParamsJson(
+        filmStockId, printStockId, settings,
+        includeStyleMark = true, scanFinishLevel = SCAN_LEVEL_FULL
+    )
 
+    /**
+     * @param scanFinishLevel 店扫档的味道强度：[SCAN_LEVEL_FULL] 全上，
+     *   [SCAN_LEVEL_SAFE] 只保留真机已验证的那几个键（兜底用）。
+     */
     fun buildParamsJson(
         filmStockId: String,
         printStockId: String,
         settings: DevSettings,
         includeStyleMark: Boolean,
+        scanFinishLevel: Int = SCAN_LEVEL_FULL,
     ): String {
         val effectivePrintStock = settings.paperOverride?.takeIf { it.isNotBlank() } ?: printStockId
         // scan_film 只对反转片成立：正片本身就是可直接观看的正像。
@@ -408,6 +423,12 @@ object FilmStockMapper {
         // 负→正的反相是放大机把底片投到相纸上那一步物理完成的，跳过印相就没有正像。
         // 所以「店扫」档也必须走印相通路，再用扫描仪/宽容度参数塑造店扫味。
         val scan = isPositive(filmStockId)
+        val style = settings.outputStyle
+        // 店扫档的曝光倾向只在完整档生效：保守档要和可出图的基线完全一致
+        val effectiveExposure =
+            if (style.isScan && scanFinishLevel == SCAN_LEVEL_FULL)
+                settings.printExposure * styleExposureFactor(style)
+            else settings.printExposure
         val sb = StringBuilder(256)
         sb.append('{')
           .append("\"film_stock\":\"").append(esc(filmStockId)).append("\",")
@@ -415,7 +436,7 @@ object FilmStockMapper {
           .append("\"input_color_space\":\"sRGB\",")
           .append("\"input_cctf_decoding\":true,")
           .append("\"output_color_space\":\"sRGB\",")
-          .append("\"print_exposure\":").append(jsonNum(settings.printExposure)).append(',')
+          .append("\"print_exposure\":").append(jsonNum(effectiveExposure)).append(',')
           .append("\"preview_long_edge\":2048,")
           .append("\"grain_amount\":").append(jsonNum(settings.grainAmount)).append(',')
           .append("\"halation_amount\":").append(jsonNum(settings.halationAmount)).append(',')
@@ -427,10 +448,18 @@ object FilmStockMapper {
             sb.append(",\"").append(MARK_OUTPUT_STYLE).append("\":\"").append(settings.outputStyle.wire).append('"')
         }
         // 店扫味（走印相通路，靠末端参数拉开与光学印相的差别）
-        if (settings.outputStyle.isScan) sb.append(scanFinishParams(settings.outputStyle))
+        if (style.isScan) sb.append(scanFinishParams(style, scanFinishLevel))
         sb.append('}')
         return sb.toString()
     }
+
+    /**
+     * 店扫档的"味道强度"分级。引擎对不认识或越界的键是硬失败，
+     * 所以新加的味道参数一律放在 [SCAN_LEVEL_FULL]，一旦被拒就退到
+     * [SCAN_LEVEL_SAFE]（真机已验证能出图的那一套），保住店扫的基本差别。
+     */
+    const val SCAN_LEVEL_FULL = 0
+    const val SCAN_LEVEL_SAFE = 1
 
     /**
      * 店扫档追加的参数。都作用在成片链末端，不碰印相反相本身：
@@ -440,28 +469,54 @@ object FilmStockMapper {
      *  - `glare_active:false`：glare 是「纸面反射的室内光」，店扫拿到的是屏幕上的数字图，
      *    没有印相表面可反光 —— 关掉它，扫描档的黑位更实。
      *  - `scene_latitude_*`：宽容度模型，高光走肩部压过去而不是硬切。rolloff 越大肩越长
-     *    （Frontier 的 Highlight Soft）；max_lift 控制暗部能被抬多少（Frontier 抬暗部，
-     *    Noritsu 暗部留给后期）。区间 rolloff∈[1,4]、max_lift∈[0.25,12]。
+     *    （Frontier 的 Highlight Soft）；max_lift 控制暗部能被抬多少。
+     *
+     * [SCAN_LEVEL_FULL] 再加三味（用来把两档真正拉开，都是真机上还没验过的）：
+     *  - `y_filter_shift`：放大机滤色片，单位是 CC。**加黄 = 到相纸的蓝光变少 = 成片偏冷**，
+     *    减黄则偏暖。Frontier 暗部冷、Noritsu 整体暖，就靠它反向给。
+     *  - `density_curve_gamma`：密度曲线反差，>1 收紧（Frontier 的"对比强"），<1 放宽（Noritsu 的平）。
+     *  - `dir_couplers_amount`：层间效应强度，直接关系负片的色彩浓度。
+     *  - `print_exposure`：店员曝光判断的差别（Frontier 偏亮、Noritsu 略收），倍率乘在用户设置上。
      *
      * 注意：这里**没有** contrast_mask —— 引擎 capabilities 明确列了
-     * `unsupported_features:["contrast_mask"]`，下发只会白担一次失败风险。
+     * `unsupported_features:["contrast_mask"]`，且 scale 合法区间只有 [0.002,0.120]。
      */
-    private fun scanFinishParams(style: OutputStyle): String = when (style) {
-        OutputStyle.FRONTIER ->
-            ",\"scanner_lens_blur\":1.6" +
+    private fun scanFinishParams(style: OutputStyle, level: Int): String {
+        val safe = ",\"scanner_lens_blur\":" + when (style) {
+            OutputStyle.FRONTIER -> "2.2"
+            OutputStyle.NORITSU -> "0.3"
+            else -> "0"
+        } +
             ",\"glare_active\":false" +
             ",\"scene_latitude_active\":true" +
-            ",\"scene_latitude_rolloff\":2.6" +
-            ",\"scene_latitude_max_lift\":3.0" +
+            ",\"scene_latitude_rolloff\":" + when (style) {
+                OutputStyle.FRONTIER -> "2.6"
+                else -> "1.8"
+            } +
+            ",\"scene_latitude_max_lift\":" + when (style) {
+                OutputStyle.FRONTIER -> "3.0"
+                else -> "1.5"
+            } +
             ",\"scene_latitude_norm\":\"power\""
-        OutputStyle.NORITSU ->
-            ",\"scanner_lens_blur\":0.4" +
-            ",\"glare_active\":false" +
-            ",\"scene_latitude_active\":true" +
-            ",\"scene_latitude_rolloff\":1.8" +
-            ",\"scene_latitude_max_lift\":1.5" +
-            ",\"scene_latitude_norm\":\"power\""
-        else -> ""
+        if (level != SCAN_LEVEL_FULL) return safe
+        return when (style) {
+            OutputStyle.FRONTIER -> safe +
+                ",\"y_filter_shift\":12" +
+                ",\"density_curve_gamma\":1.06" +
+                ",\"dir_couplers_amount\":1.2"
+            OutputStyle.NORITSU -> safe +
+                ",\"y_filter_shift\":-12" +
+                ",\"density_curve_gamma\":0.94" +
+                ",\"dir_couplers_amount\":0.85"
+            else -> safe
+        }
+    }
+
+    /** 店扫档的曝光倾向（倍率）：店员判断不同，Frontier 偏亮、Noritsu 略收。 */
+    private fun styleExposureFactor(style: OutputStyle): Float = when (style) {
+        OutputStyle.FRONTIER -> 1.08f
+        OutputStyle.NORITSU -> 0.95f
+        else -> 1.0f
     }
 
     // ---------- 内部 ----------

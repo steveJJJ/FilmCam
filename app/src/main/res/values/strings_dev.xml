@@ -37,7 +37,7 @@
     <string name="dev_error_engine_init">引擎初始化失败: %1$s</string>
     <string name="dev_error_frames_detail">%1$d/%2$d 帧未完成：%3$s</string>
     <string name="dev_toast_slide_no_paper">反转片直接在显影液里出正像，不经过相纸，已忽略所选相纸</string>
-    <string name="dev_toast_style_fallback">有 %1$d 帧没能按所选风格冲洗（引擎不接受该档参数），已退回印相档出图</string>
+    <string name="dev_toast_style_fallback">有 %1$d 帧没能按所选风格的完整参数冲洗（引擎不接受其中一部分），已用降级参数出图</string>
 
     <!-- ===== 胶卷（film） ===== -->
 

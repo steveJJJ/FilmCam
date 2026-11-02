@@ -30,11 +30,16 @@ class OutputStyleTest {
     }
 
     private fun json(style: FilmStockMapper.OutputStyle): JSONObject =
+        fullJson(style, FilmStockMapper.SCAN_LEVEL_FULL)
+
+    private fun fullJson(style: FilmStockMapper.OutputStyle, level: Int): JSONObject =
         JSONObject(
             FilmStockMapper.buildParamsJson(
                 filmStockId = "kodak_portra_400",
                 printStockId = "kodak_portra_endura",
                 settings = FilmStockMapper.DevSettings(outputStyle = style),
+                includeStyleMark = false,
+                scanFinishLevel = level,
             )
         )
 
@@ -163,6 +168,47 @@ class OutputStyleTest {
             )
         )
         assertTrue("反转片必须直扫", slide.getBoolean("scan_film"))
+    }
+
+    @Test
+    fun fullLevelAddsTasteParamsAndSafeLevelIsExactlyTheVerifiedSet() {
+        // 完整档比保守档多出滤色片 / gamma / 层间效应；保守档必须只有真机验过的那几个键
+        for (style in listOf(
+            FilmStockMapper.OutputStyle.FRONTIER,
+            FilmStockMapper.OutputStyle.NORITSU,
+        )) {
+            val full = fullJson(style, FilmStockMapper.SCAN_LEVEL_FULL)
+            val safe = fullJson(style, FilmStockMapper.SCAN_LEVEL_SAFE)
+            assertTrue("$style 完整档应带滤色片", full.has("y_filter_shift"))
+            assertTrue("$style 完整档应带 gamma", full.has("density_curve_gamma"))
+            assertTrue("$style 完整档应带层间效应", full.has("dir_couplers_amount"))
+            assertFalse("$style 保守档不带滤色片", safe.has("y_filter_shift"))
+            assertFalse("$style 保守档不带 gamma", safe.has("density_curve_gamma"))
+            // 保守档的键 = 印相档 + 扫描仪模糊 / glare / 宽容度
+            assertTrue(safe.has("scanner_lens_blur"))
+            assertTrue(safe.has("scene_latitude_active"))
+        }
+    }
+
+    @Test
+    fun frontierAndNoritsuPushColourTemperatureOppositeWays() {
+        // y_filter_shift 是放大机黄滤片（CC）：加黄 = 到相纸的蓝光变少 = 成片偏冷
+        val f = fullJson(FilmStockMapper.OutputStyle.FRONTIER, FilmStockMapper.SCAN_LEVEL_FULL)
+        val n = fullJson(FilmStockMapper.OutputStyle.NORITSU, FilmStockMapper.SCAN_LEVEL_FULL)
+        assertTrue("Frontier 偏冷 → 加黄", f.getDouble("y_filter_shift") > 0)
+        assertTrue("Noritsu 偏暖 → 减黄", n.getDouble("y_filter_shift") < 0)
+        assertTrue(
+            "Frontier 对比更强 → gamma 更大",
+            f.getDouble("density_curve_gamma") > n.getDouble("density_curve_gamma")
+        )
+        assertTrue(
+            "Frontier 色彩更浓 → 层间效应更强",
+            f.getDouble("dir_couplers_amount") > n.getDouble("dir_couplers_amount")
+        )
+        assertTrue(
+            "Frontier 曝光更亮",
+            f.getDouble("print_exposure") > n.getDouble("print_exposure")
+        )
     }
 
     @Test
