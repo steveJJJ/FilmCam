@@ -12,6 +12,13 @@ AGP 不会替我们 strip —— 实测 libc++_shared.so 带符号 8.81MB，stri
     凡是带 SHF_ALLOC 的、或者落在任何 PT_* 段文件范围里的，一律不动；
   · 删掉字节区间后，把后面所有 section 的 sh_offset 与 program header 的 p_offset
     整体前移（不搬动任何保留内容，段内字节一字不动）；
+  · **总删除量必须凑成 8 的倍数**：Android linker 的 ReadSectionHeaders() 会用
+    CheckFileRange(e_shoff, shdr_size, alignof(Elf64_Shdr)) 校验节表位置，
+    要求 `e_shoff % 8 == 0`。debug 段大小任意，直接前移会把 e_shoff 变成奇数，
+    linker 直接拒绝 dlopen：
+      "has invalid shdr offset/size: <off>/<size>" → UnsatisfiedLinkError
+    （LIEF 解析宽松、看不出来，只有真机 linker 会报）。
+    所以在最后一个待删区间末尾留 0~7 个填充字节，把前移量对齐到 8；
   · 被删的 section header 保留条目、置成 SHT_NULL（改 e_shnum 会牵动 sh_link 等引用，不值得）。
 
 用法：
@@ -82,6 +89,25 @@ class Elf:
             return self.data
         ranges = [(self.shdrs[i]['offset'], self.shdrs[i]['offset'] + self.shdrs[i]['size']) for i in idx]
 
+        # 前移量必须是 8 的倍数，否则 e_shoff 会失去 8 字节对齐，
+        # 被 Android linker 的 CheckFileRange(..., alignof(Elf64_Shdr)) 判为非法节表。
+        # 注意：决定 e_shoff 的只有「位于它之前的删除区间」，不是总删除量。
+        # 所以在最后一个 hi <= e_shoff 的区间末尾留 0~7 字节填充（它们已不属于
+        # 任何 section，留在文件里无害），把前移量调到使新 e_shoff 为 8 的倍数。
+        shift_at = sum(hi - lo for lo, hi in ranges if hi <= self.e_shoff)
+        r = (self.e_shoff - shift_at) % 8
+        if r:
+            keep = 8 - r
+            for j in range(len(ranges) - 1, -1, -1):
+                lo, hi = ranges[j]
+                if hi <= self.e_shoff:
+                    if hi - lo <= keep:
+                        raise ValueError('最后一个待删区间太短，无法留出对齐填充')
+                    ranges[j] = (lo, hi - keep)
+                    break
+            else:
+                raise ValueError('e_shoff 之前没有可调的待删区间')
+
         def new_off(x: int) -> int:
             shift = 0
             for lo, hi in ranges:
@@ -148,6 +174,30 @@ def verify(orig: bytes, out: bytes) -> None:
                     out[sb['offset']:sb['offset'] + sb['size']], '%s 内容变了' % name
 
 
+def verify_linker_layout(data: bytes) -> None:
+    """按 Android bionic linker 的实际校验规则自检（LIEF / readelf 都太宽松）。
+
+    ElfReader::ReadSectionHeaders():
+        CheckFileRange(e_shoff, e_shnum * sizeof(Shdr), alignof(Elf64_Shdr))
+    CheckFileRange(): offset > 0 && 范围在文件内 && (offset % alignment) == 0
+    装载期 .dynsym / .dynamic 也会走同一套校验。
+    """
+    e = Elf(data)
+    shdr_size = e.e_shnum * e.e_shentsize
+    assert e.e_shoff > 0, 'e_shoff 为 0'
+    assert e.e_shoff % 8 == 0, 'e_shoff=%d 未按 8 对齐，linker 会拒绝 dlopen' % e.e_shoff
+    assert e.e_shoff + shdr_size <= len(data), 'section header 表越界'
+    for name in ('.dynsym', '.dynstr', '.dynamic'):
+        if name in e.names:
+            sh = e.shdrs[e.names.index(name)]
+            align = sh['align'] or 1
+            assert sh['offset'] % align == 0, '%s 未按 %d 对齐' % (name, align)
+            assert sh['offset'] + sh['size'] <= len(data), '%s 越界' % name
+    for p in e.phdrs:
+        if p['type'] == 1 and p['filesz']:  # PT_LOAD
+            assert p['offset'] % 4096 == p['vaddr'] % 4096, 'PT_LOAD 未页对齐'
+
+
 def main(argv):
     check_only = '--check' in argv
     paths = [a for a in argv[1:] if not a.startswith('--')]
@@ -166,6 +216,7 @@ def main(argv):
             continue
         out = e.strip()
         verify(data, out)
+        verify_linker_layout(out)
         if not path.endswith('.orig'):
             open(path + '.orig', 'wb').write(data)
         open(path, 'wb').write(out)
