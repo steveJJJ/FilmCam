@@ -32,6 +32,11 @@ import kotlin.math.min
  * 预览 shader（LutGLSurfaceView）按 contentAspect 3:4 满宽 letterbox，
  * 并以 offsetY = PREVIEW_OFFSET_Y 上移画面，此处用同一公式反推内容矩形。
  * 两处常量必须保持一致。
+ *
+ * **亮框画的是「成片那一格」而不是整块预览内容**：成片按 135 全画幅 36×24（3:2）
+ * 出片，预览内容却是传感器原生的 4:3，两者差一条边（冲洗时会裁掉）。所以亮框
+ * 取内容矩形里居中的那块片门矩形（[gateRectFor]），框内即是最终画面 —— 所见即所得，
+ * 框外那两条是底片上不会有的部分，就像真机亮框之外还能看到一点画面一样。
  */
 class ViewfinderFrameView @JvmOverloads constructor(
     context: Context, attrs: AttributeSet? = null, defStyleAttr: Int = 0
@@ -158,24 +163,30 @@ class ViewfinderFrameView @JvmOverloads constructor(
         val cw = cr - cl
         val ch = cb - ct
 
-        // ---- ① 四角大亮框角标 ----
-        // 内收量由占内容宽的 3.5% 提到 6%：原先角标贴着画面边缘，
-        // 与手机屏幕黑边只隔几十像素，看起来像屏幕 UI 而不是光学取景框。
-        // 真机 T3 的亮框是有明显余量的——取景范围本来就略小于实际成像，
-        // 框线离开边缘正是那个「视感想」的来源。
-        val bInset = cw * 0.060f
-        val bLen = cw * 0.075f
-        drawBrackets(canvas, cl + bInset, ct + bInset, cr - bInset, cb - bInset, bLen, brightPaint)
+        // 成片范围（片门）：135 全画幅 36×24 —— 横 3:2、竖 2:3，居中落在预览内容里。
+        // 取景亮框画在这一格上，框内即成片（比 4:3 的预览内容上下各少约 5.6%），
+        // 框外那两条是底片上不会有的部分 —— 真机光学取景器也是「亮框内才是这一格」。
+        val gate = gateRectFor(w, h)
+        val gl = gate.left
+        val gt = gate.top
+        val gr = gate.right
+        val gb = gate.bottom
+        val gw = gr - gl
+        val gh = gb - gt
 
-        // ---- ② 内侧视差补偿小角标（随大框同步内收） ----
-        val pInset = cw * 0.135f
-        val pLen = cw * 0.035f
-        drawBrackets(canvas, cl + pInset, ct + pInset, cr - pInset, cb - pInset, pLen, parallaxPaint)
+        // ---- ① 四角大亮框角标：贴在片门边缘，框内就是成片，所见即所得 ----
+        val bLen = gw * 0.075f
+        drawBrackets(canvas, gl, gt, gr, gb, bLen, brightPaint)
+
+        // ---- ② 内侧视差补偿小角标（从片门边框再内收一点，示意取景视差）----
+        val pInset = gw * 0.075f
+        val pLen = gw * 0.035f
+        drawBrackets(canvas, gl + pInset, gt + pInset, gr - pInset, gb - pInset, pLen, parallaxPaint)
 
         // ---- ④ 中央 AF 标记：左右两段弧括号（上下留缺口、中间不相连、无竖线）----
-        val cx = (cl + cr) / 2f
-        val cy = (ct + cb) / 2f
-        val r = minOf(cw, ch) * 0.055f
+        val cx = (gl + gr) / 2f
+        val cy = (gt + gb) / 2f
+        val r = minOf(gw, gh) * 0.055f
         val oval = RectF(cx - r, cy - r, cx + r, cy + r)
         // Android 角度：0°为 3 点方向、顺时针；左右各 140°，上下各留 40° 缺口
         canvas.drawArc(oval, 110f, 140f, false, centerPaint)
@@ -540,6 +551,11 @@ class ViewfinderFrameView @JvmOverloads constructor(
         return contentRectFor(width.toFloat(), height.toFloat())
     }
 
+    /** 成片范围（片门矩形）—— 取景亮框画的就是这一块，与冲洗时的裁切一致。 */
+    fun gateRect(): RectF {
+        return gateRectFor(width.toFloat(), height.toFloat())
+    }
+
     companion object {
         /** 竖屏预览内容宽高比 3:4（1440x1920，与 LutGLSurfaceView.renderTo 一致） */
         const val CONTENT_ASPECT_PORTRAIT = 1440f / 1920f
@@ -565,6 +581,46 @@ class ViewfinderFrameView @JvmOverloads constructor(
         /** 按屏幕朝向取内容比例：横屏 4:3、竖屏 3:4 */
         fun contentAspectFor(w: Float, h: Float): Float =
             if (w >= h) CONTENT_ASPECT_LANDSCAPE else CONTENT_ASPECT_PORTRAIT
+
+        /**
+         * 成片片门比例：135 全画幅 36×24 = 3:2（横置）/ 2:3（竖置）。
+         * 与 `FilmStockMapper.FrameFormat.FULL.gateAspect` 是同一件事的那一格 ——
+         * 冲洗时按这个比例裁画面，取景亮框也按它画，两边必须一致。
+         */
+        const val GATE_ASPECT = 3f / 2f
+
+        /**
+         * 取景框该用横置还是竖置片门：跟屏幕朝向走（竖持手机 → 竖置片门）。
+         * 真机同理：底片只有一种宽度，竖拍时画面在底片上就是竖着的。
+         */
+        fun gateAspectFor(w: Float, h: Float): Float =
+            if (w >= h) GATE_ASPECT else 1f / GATE_ASPECT
+
+        /**
+         * 成片范围矩形：在预览内容里居中取一块片门比例的矩形。
+         *
+         * 取景内容是 4:3（传感器原生），成片是 3:2（36×24 片门），
+         * 差的那一条就是冲洗时会裁掉的部分。亮框画在这块上，框内即成片。
+         */
+        fun gateRectFor(w: Float, h: Float): RectF {
+            val content = contentRectFor(w, h)
+            if (content.isEmpty) return content
+            val ca = gateAspectFor(w, h)
+            val cw = content.width()
+            val ch = content.height()
+            val gw: Float
+            val gh: Float
+            if (cw / ch >= ca) {
+                gh = ch
+                gw = ch * ca
+            } else {
+                gw = cw
+                gh = cw / ca
+            }
+            val cx = content.centerX()
+            val cy = content.centerY()
+            return RectF(cx - gw / 2f, cy - gh / 2f, cx + gw / 2f, cy + gh / 2f)
+        }
 
         /**
          * 预览内容矩形——即实际有画面的区域（letterbox 黑边之外）。
