@@ -1,119 +1,194 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 工程师模式：从关于页版本号连点 10 次进入 -->
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<!--
+  工程师模式控制台（关于页版本号连点 10 次解锁；解锁后点一下即可进入）。
+
+  这里是"会影响出片"的开发旋钮：慢门档位、输出风格、冲洗参数，加上原来就在的几个调试项。
+  普通使用不该碰到这些，所以从设置面板整块搬过来 —— 设置面板只留日常会改的东西。
+
+  排版沿用设置面板的铭牌写法（item_setting_row：名称 + 说明 + 当前读数），
+  切换类控件（开关 / 推子 / 单选）留在下面，因为它们本来就是"调一下看效果"的形态。
+-->
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="wrap_content"
-    android:orientation="vertical"
-    android:paddingStart="24dp"
-    android:paddingEnd="24dp"
-    android:paddingTop="16dp">
-
-    <Switch
-        android:id="@+id/swSkipDevelop"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="@string/main_debug_skip_develop"
-        android:textSize="15sp" />
-
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="20dp"
-        android:text="@string/main_debug_softfocus_prob"
-        android:textSize="15sp" />
+    android:layout_height="wrap_content">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
-        android:layout_marginTop="8dp">
+        android:orientation="vertical"
+        android:paddingTop="8dp">
 
-        <SeekBar
-            android:id="@+id/sbSoftFocusProb"
-            android:layout_width="0dp"
+        <!-- 工程师模式开关：关掉之后这些旋钮重新藏起来，入口回到"连点 10 次" -->
+        <Switch
+            android:id="@+id/swEngineerMode"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1" />
+            android:paddingStart="24dp"
+            android:paddingTop="6dp"
+            android:paddingEnd="24dp"
+            android:paddingBottom="2dp"
+            android:text="@string/eng_mode_title"
+            android:textSize="15sp" />
 
         <TextView
-            android:id="@+id/tvSoftFocusProb"
-            android:layout_width="44dp"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:gravity="end"
-            android:text="40%"
-            android:textSize="14sp"
-            android:textStyle="bold" />
+            android:paddingStart="24dp"
+            android:paddingEnd="24dp"
+            android:paddingBottom="10dp"
+            android:text="@string/eng_mode_note"
+            android:textColor="#888"
+            android:textSize="11.5sp" />
+
+        <!-- 会影响出片的三项：与设置面板同一套行样式，读数就在右边 -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="#26262A" />
+
+        <include
+            android:id="@+id/rowEngSlow"
+            layout="@layout/item_setting_row" />
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="#26262A" />
+
+        <include
+            android:id="@+id/rowEngStyle"
+            layout="@layout/item_setting_row" />
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="#26262A" />
+
+        <include
+            android:id="@+id/rowEngDev"
+            layout="@layout/item_setting_row" />
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="#26262A" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingStart="24dp"
+            android:paddingTop="10dp"
+            android:paddingEnd="24dp">
+
+            <Switch
+                android:id="@+id/swSkipDevelop"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/main_debug_skip_develop"
+                android:textSize="15sp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="@string/main_debug_softfocus_prob"
+                android:textSize="15sp" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <SeekBar
+                    android:id="@+id/sbSoftFocusProb"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1" />
+
+                <TextView
+                    android:id="@+id/tvSoftFocusProb"
+                    android:layout_width="44dp"
+                    android:layout_height="wrap_content"
+                    android:gravity="end"
+                    android:text="40%"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="@string/hidden_slow_trigger"
+                android:textSize="15sp" />
+
+            <!-- 慢门三种触发机制：真机没有随机，这里让用户自己决定要多「真」 -->
+            <RadioGroup
+                android:id="@+id/rgSlowTrigger"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:orientation="vertical">
+
+                <RadioButton
+                    android:id="@+id/rbSlowProb"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/hidden_slow_prob"
+                    android:textSize="14sp" />
+
+                <RadioButton
+                    android:id="@+id/rbSlowReal"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/hidden_slow_real"
+                    android:textSize="14sp" />
+
+                <RadioButton
+                    android:id="@+id/rbSlowMix"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/hidden_slow_mix"
+                    android:textSize="14sp" />
+            </RadioGroup>
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:text="@string/hidden_slow_note"
+                android:textColor="#888"
+                android:textSize="12sp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:text="@string/main_debug_note"
+                android:textColor="#888"
+                android:textSize="12sp" />
+
+            <!-- 冲洗耗时诊断：慢机上要看一眼才知道时间花在哪（解码 / 引擎 / 落盘），点一下复制 -->
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:layout_marginBottom="4dp"
+                android:text="@string/hidden_diag_title"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/tvDiag"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="10dp"
+                android:fontFamily="monospace"
+                android:text="@string/hidden_diag_none"
+                android:textSize="10.5sp" />
+        </LinearLayout>
     </LinearLayout>
-
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="20dp"
-        android:text="@string/hidden_slow_trigger"
-        android:textSize="15sp" />
-
-    <!-- 慢门三种触发机制：真机没有随机，这里让用户自己决定要多「真」 -->
-    <RadioGroup
-        android:id="@+id/rgSlowTrigger"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="4dp"
-        android:orientation="vertical">
-
-        <RadioButton
-            android:id="@+id/rbSlowProb"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/hidden_slow_prob"
-            android:textSize="14sp" />
-
-        <RadioButton
-            android:id="@+id/rbSlowReal"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/hidden_slow_real"
-            android:textSize="14sp" />
-
-        <RadioButton
-            android:id="@+id/rbSlowMix"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/hidden_slow_mix"
-            android:textSize="14sp" />
-    </RadioGroup>
-
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="4dp"
-        android:text="@string/hidden_slow_note"
-        android:textColor="#888"
-        android:textSize="12sp" />
-
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
-        android:layout_marginBottom="8dp"
-        android:text="@string/main_debug_note"
-        android:textColor="#888"
-        android:textSize="12sp" />
-
-    <!-- 冲洗耗时诊断：慢机上要看一眼才知道时间花在哪（解码 / 引擎 / 落盘），点一下复制 -->
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginBottom="4dp"
-        android:text="@string/hidden_diag_title"
-        android:textStyle="bold"
-        android:textSize="13sp" />
-
-    <TextView
-        android:id="@+id/tvDiag"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginBottom="10dp"
-        android:fontFamily="monospace"
-        android:text="@string/hidden_diag_none"
-        android:textSize="10.5sp" />
-</LinearLayout>
+</ScrollView>

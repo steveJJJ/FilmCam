@@ -127,12 +127,6 @@
             <View style="@style/AboutSpecDivider" />
 
             <include
-                android:id="@+id/rowSetSlow"
-                layout="@layout/item_setting_row" />
-
-            <View style="@style/AboutSpecDivider" />
-
-            <include
                 android:id="@+id/rowSetWb"
                 layout="@layout/item_setting_row" />
 
@@ -155,19 +149,7 @@
             <View style="@style/AboutSpecDivider" />
 
             <include
-                android:id="@+id/rowSetStyle"
-                layout="@layout/item_setting_row" />
-
-            <View style="@style/AboutSpecDivider" />
-
-            <include
                 android:id="@+id/rowSetFrame"
-                layout="@layout/item_setting_row" />
-
-            <View style="@style/AboutSpecDivider" />
-
-            <include
-                android:id="@+id/rowSetDev"
                 layout="@layout/item_setting_row" />
 
             <View style="@style/AboutSpecDivider" />

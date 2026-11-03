@@ -15,8 +15,9 @@ import androidx.appcompat.app.AppCompatActivity
 
 /**
  * 关于页：产品介绍 + 赞赏码 + 版本号。
- * 版本号连点 10 次进入「工程师模式」（调试跳过冲洗 / 模拟失焦概率）——
- * 与主流 App 的彩蛋入口一致，把开发调试项从普通设置里藏起来。
+ * 版本号连点 10 次解锁「工程师模式」（慢门档位 / 输出风格 / 冲洗参数 / 调试开关），
+ * 与主流 App 的彩蛋入口一致，把开发旋钮从普通设置里藏起来。解锁状态会记住 ——
+ * 之后点一下就能进，想重新藏起来在控制台里关掉开关。
  */
 class AboutActivity : AppCompatActivity() {
 
@@ -48,23 +49,33 @@ class AboutActivity : AppCompatActivity() {
         root.background = com.filmcam.app.ui.BodyTheme.bodyBackground()
         com.filmcam.app.ui.BodyTheme.applySystemBars(window)
 
-        // 铭牌规格表里的版本号（等宽刻字）：连点 10 次进工程师模式。
-        // 底部不再单独摆一行版本号 —— 版本就该刻在铭牌上，重复两次反而是噪声。
+        // 铭牌规格表里的版本号（等宽刻字）：进工程师模式。
+        // 第一次要连点 10 次（彩蛋入口，普通用户不会误触）；解锁过之后点一下就能进，
+        // 开发期一天要进好几次，每次都连点 10 次是纯折磨。想重新藏起来就在控制台里关掉开关。
         val tvVersion = findViewById<TextView>(R.id.tvSpecVersion)
         tvVersion.text = versionText
         tvVersion.setOnClickListener {
+            if (EngineerMode.isOn(this)) {
+                tapCount = 0
+                showEngineerConsole()
+                return@setOnClickListener
+            }
             tapCount++
             when {
                 tapCount in 4..9 -> {
-                    tvVersion.text = getString(R.string.about_tap_more, versionText, 10 - tapCount)
+                    tvVersion.text = getString(
+                        R.string.about_tap_more, versionText, EngineerMode.UNLOCK_TAPS - tapCount
+                    )
                     // 提示是临时的：几秒后恢复成版本刻字，不让铭牌一直挂着"再点 N 次"
                     tvVersion.removeCallbacks(restoreVersionText)
                     tvVersion.postDelayed(restoreVersionText, 1500L)
                 }
-                tapCount >= 10 -> {
+                tapCount >= EngineerMode.UNLOCK_TAPS -> {
                     tapCount = 0
                     tvVersion.text = versionText
-                    showHiddenSettings()
+                    EngineerMode.setOn(this, true)
+                    Toast.makeText(this, R.string.eng_mode_on_toast, Toast.LENGTH_SHORT).show()
+                    showEngineerConsole()
                 }
             }
         }
@@ -376,17 +387,133 @@ class AboutActivity : AppCompatActivity() {
         })
     }
 
-    private fun showHiddenSettings() {
+    /**
+     * 工程师控制台：慢门档位、输出风格、冲洗参数，加上原来的调试项（跳过冲洗 / 模拟失焦 /
+     * 慢门触发机制 / 冲洗耗时诊断）。
+     *
+     * 全部即时生效：这里调的是"看一眼效果"的旋钮，再让用户点一次「保存」只会让人怀疑
+     * 刚才那下到底算不算数。顶部那个开关才是唯一的持久化语义 —— 关掉就重新藏起来。
+     */
+    private fun showEngineerConsole() {
         val prefs = getSharedPreferences("filmcam", MODE_PRIVATE)
         val view = layoutInflater.inflate(R.layout.dialog_hidden_settings, null)
         com.filmcam.app.ui.BodyTheme.applyToViewTree(view)
 
+        val theme = com.filmcam.app.ui.BodyTheme
+        val swEngineer = view.findViewById<android.widget.Switch>(R.id.swEngineerMode)
         val swSkip = view.findViewById<android.widget.Switch>(R.id.swSkipDevelop)
         val sbProb = view.findViewById<SeekBar>(R.id.sbSoftFocusProb)
         val tvProb = view.findViewById<TextView>(R.id.tvSoftFocusProb)
         val rgTrigger = view.findViewById<android.widget.RadioGroup>(R.id.rgSlowTrigger)
 
-        // 慢门触发机制：三选一（默认纯概率派，与设置面板现有行为一致）
+        val rowSlow = view.findViewById<View>(R.id.rowEngSlow)
+        val rowStyle = view.findViewById<View>(R.id.rowEngStyle)
+        val rowDev = view.findViewById<View>(R.id.rowEngDev)
+
+        /** 绑定一行「名称 + 说明」，返回右侧读数 TextView */
+        fun bindRow(row: View, labelRes: Int, hintRes: Int): TextView {
+            row.findViewById<TextView>(R.id.tvSetLabel).text = getString(labelRes)
+            row.findViewById<TextView>(R.id.tvSetHint).text = getString(hintRes)
+            row.findViewById<android.widget.ImageView>(R.id.ivSetChevron)
+                .setColorFilter(theme.onBodyTextSecondary)
+            return row.findViewById(R.id.tvSetValue)
+        }
+
+        val tvSlow = bindRow(rowSlow, R.string.set_slow, R.string.eng_slow_hint)
+        val tvStyle = bindRow(rowStyle, R.string.set_style, R.string.eng_style_hint)
+        bindRow(rowDev, R.string.set_dev, R.string.eng_dev_hint)
+
+        fun slowMode(): com.filmcam.app.camera.FilmExposure.Mode =
+            com.filmcam.app.camera.FilmExposure.Mode.fromPrefs(prefs.getInt("slowShutter", 0))
+
+        fun saveSlow(mode: com.filmcam.app.camera.FilmExposure.Mode) {
+            prefs.edit().putInt("slowShutter", mode.prefs).apply()
+            tvSlow.text = when (mode) {
+                com.filmcam.app.camera.FilmExposure.Mode.NATURAL -> getString(R.string.slow_natural)
+                com.filmcam.app.camera.FilmExposure.Mode.SLOW -> getString(R.string.slow_frequent)
+                else -> getString(R.string.slow_off)
+            }
+        }
+
+        fun saveStyleName() {
+            tvStyle.text = when (app.spektralab.engine.FilmStockMapper.readOutputStyle(this)) {
+                app.spektralab.engine.FilmStockMapper.OutputStyle.FRONTIER -> getString(R.string.style_frontier)
+                app.spektralab.engine.FilmStockMapper.OutputStyle.NORITSU -> getString(R.string.style_noritsu)
+                else -> getString(R.string.style_print)
+            }
+        }
+        saveSlow(slowMode())
+        saveStyleName()
+
+        // 当前装在机身上的是哪支胶卷：冲洗参数是按胶卷分开存的，默认就该停在这支
+        val rollIdx = prefs.getInt("rollIndex", 0)
+        val currentRoll = com.filmcam.app.filter.FilmRollRepository.rolls
+            .getOrNull(rollIdx)
+            ?: com.filmcam.app.filter.FilmRollRepository.rolls.firstOrNull()
+        val currentStockId = currentRoll?.let {
+            runCatching { app.spektralab.engine.FilmStockMapper.filmStockIdFor(it.name) }.getOrNull()
+        }
+
+        // 慢门：关 → 自然 → 偏慢，点上就地翻档
+        rowSlow.setOnClickListener {
+            saveSlow(
+                when (slowMode()) {
+                    com.filmcam.app.camera.FilmExposure.Mode.OFF -> com.filmcam.app.camera.FilmExposure.Mode.NATURAL
+                    com.filmcam.app.camera.FilmExposure.Mode.NATURAL -> com.filmcam.app.camera.FilmExposure.Mode.SLOW
+                    com.filmcam.app.camera.FilmExposure.Mode.SLOW -> com.filmcam.app.camera.FilmExposure.Mode.OFF
+                }
+            )
+        }
+        // 输出风格：印相 → Frontier → Noritsu，只影响下一次冲洗
+        rowStyle.setOnClickListener {
+            app.spektralab.engine.FilmStockMapper.cycleOutputStyle(this)
+            saveStyleName()
+        }
+        // 冲洗参数：另开一层（颗粒/辉光/眩光/印相曝光/相纸），关掉后回到本控制台
+        rowDev.setOnClickListener {
+            consoleRef?.dismiss()
+            com.filmcam.app.develop.DevParamsDialog.show(
+                this, currentStockId, onClose = { showEngineerConsole() }
+            )
+        }
+
+        // 工程师模式开关：关掉 = 这些旋钮重新藏起来，入口回到"连点 10 次"
+        swEngineer.isChecked = EngineerMode.isOn(this)
+        swEngineer.setOnCheckedChangeListener { _, checked ->
+            if (!checked) {
+                EngineerMode.setOn(this, false)
+                Toast.makeText(this, R.string.eng_mode_off_toast, Toast.LENGTH_LONG).show()
+                consoleRef?.dismiss()
+            }
+        }
+
+        swSkip.isChecked = prefs.getBoolean("debug_instant_develop", false)
+        swSkip.setOnCheckedChangeListener { _, checked ->
+            prefs.edit().putBoolean("debug_instant_develop", checked).apply()
+        }
+
+        // 概率缺省：老用户开过模拟失焦 → 40%（旧版硬编码值）；否则 0（关）
+        val prob = prefs.getInt(
+            "softFocus_prob",
+            if (prefs.getBoolean("softFocus", false)) 40 else 0
+        )
+        sbProb.progress = prob
+        tvProb.text = getString(R.string.percent_fmt, prob)
+        sbProb.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(sb: SeekBar?, value: Int, fromUser: Boolean) {
+                tvProb.text = getString(R.string.percent_fmt, value)
+                if (fromUser) {
+                    prefs.edit()
+                        .putInt("softFocus_prob", value)
+                        .putBoolean("softFocus", value > 0)
+                        .apply()
+                }
+            }
+            override fun onStartTrackingTouch(sb: SeekBar?) {}
+            override fun onStopTrackingTouch(sb: SeekBar?) {}
+        })
+
+        // 慢门触发机制：三选一（默认纯概率派）
         rgTrigger.check(
             when (com.filmcam.app.camera.FilmExposure.Trigger.fromPrefs(
                 prefs.getInt(
@@ -399,22 +526,14 @@ class AboutActivity : AppCompatActivity() {
                 com.filmcam.app.camera.FilmExposure.Trigger.REAL_MIX -> R.id.rbSlowMix
             }
         )
-
-        swSkip.isChecked = prefs.getBoolean("debug_instant_develop", false)
-        // 概率缺省：老用户开过模拟失焦 → 40%（旧版硬编码值）；否则 0（关）
-        val prob = prefs.getInt(
-            "softFocus_prob",
-            if (prefs.getBoolean("softFocus", false)) 40 else 0
-        )
-        sbProb.progress = prob
-        tvProb.text = getString(R.string.percent_fmt, prob)
-        sbProb.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-            override fun onProgressChanged(sb: SeekBar?, value: Int, fromUser: Boolean) {
-                tvProb.text = getString(R.string.percent_fmt, value)
+        rgTrigger.setOnCheckedChangeListener { _, checkedId ->
+            val trigger = when (checkedId) {
+                R.id.rbSlowReal -> com.filmcam.app.camera.FilmExposure.Trigger.REAL
+                R.id.rbSlowMix -> com.filmcam.app.camera.FilmExposure.Trigger.REAL_MIX
+                else -> com.filmcam.app.camera.FilmExposure.Trigger.PROBABILITY
             }
-            override fun onStartTrackingTouch(sb: SeekBar?) {}
-            override fun onStopTrackingTouch(sb: SeekBar?) {}
-        })
+            prefs.edit().putInt("slowTrigger", trigger.prefs).apply()
+        }
 
         // 冲洗耗时诊断：换机器后第一件事是看看时间花在哪一段，点一下复制走
         val tvDiag = view.findViewById<TextView>(R.id.tvDiag)
@@ -430,24 +549,16 @@ class AboutActivity : AppCompatActivity() {
             }
         }
 
-        androidx.appcompat.app.AlertDialog.Builder(this, com.filmcam.app.ui.BodyTheme.dialogTheme)
+        val dialog = androidx.appcompat.app.AlertDialog.Builder(this, com.filmcam.app.ui.BodyTheme.dialogTheme)
             .setTitle(R.string.hidden_title)
             .setView(view)
-            .setPositiveButton(R.string.hidden_save) { _, _ ->
-                val trigger = when (rgTrigger.checkedRadioButtonId) {
-                    R.id.rbSlowReal -> com.filmcam.app.camera.FilmExposure.Trigger.REAL
-                    R.id.rbSlowMix -> com.filmcam.app.camera.FilmExposure.Trigger.REAL_MIX
-                    else -> com.filmcam.app.camera.FilmExposure.Trigger.PROBABILITY
-                }
-                prefs.edit()
-                    .putBoolean("debug_instant_develop", swSkip.isChecked)
-                    .putInt("softFocus_prob", sbProb.progress)
-                    .putBoolean("softFocus", sbProb.progress > 0)
-                    .putInt("slowTrigger", trigger.prefs)
-                    .apply()
-                Toast.makeText(this, R.string.hidden_saved, Toast.LENGTH_SHORT).show()
-            }
-            .setNegativeButton(R.string.main_cancel, null)
-            .show()
+            .setPositiveButton(R.string.set_close) { d, _ -> d.dismiss() }
+            .create()
+        consoleRef = dialog
+        dialog.show()
     }
+
+    /** 当前开着的工程师控制台（"冲洗参数"要临时关掉它再回来） */
+    private var consoleRef: androidx.appcompat.app.AlertDialog? = null
+
 }

@@ -555,9 +555,9 @@ class MainActivity : AppCompatActivity() {
         val labels = resources.getStringArray(R.array.set_labels)
         val hints = resources.getStringArray(R.array.set_hints)
         val rows = intArrayOf(
-            R.id.rowSetBody, R.id.rowSetDatestamp, R.id.rowSetHaptic, R.id.rowSetSlow,
-            R.id.rowSetWb, R.id.rowSetLanguage, R.id.rowSetQuality, R.id.rowSetStyle,
-            R.id.rowSetFrame, R.id.rowSetDev, R.id.rowSetAbout
+            R.id.rowSetBody, R.id.rowSetDatestamp, R.id.rowSetHaptic,
+            R.id.rowSetWb, R.id.rowSetLanguage, R.id.rowSetQuality,
+            R.id.rowSetFrame, R.id.rowSetAbout
         )
         val theme = com.filmcam.app.ui.BodyTheme
         fun row(id: Int): android.view.View = view.findViewById(id)
@@ -616,13 +616,10 @@ class MainActivity : AppCompatActivity() {
             value(R.id.rowSetDatestamp).text =
                 if (dateStampEnabled) getString(R.string.common_on) else getString(R.string.common_off)
             value(R.id.rowSetHaptic).text = hapticLevelName()
-            value(R.id.rowSetSlow).text = slowShutterName()
             value(R.id.rowSetWb).text = wbName()
             value(R.id.rowSetLanguage).text = languageName()
             value(R.id.rowSetQuality).text = qualityName()
-            value(R.id.rowSetStyle).text = outputStyleName()
             value(R.id.rowSetFrame).text = frameBorderName()
-            value(R.id.rowSetDev).text = ""          // 动作项没有"当前读数"
             value(R.id.rowSetAbout).text = versionLabel()
             paintPanel()
         }
@@ -661,26 +658,6 @@ class MainActivity : AppCompatActivity() {
             // 按键感之后隔一下，再按「新档位」实震一回，让用户当场比出差别
             row(R.id.rowSetHaptic).postDelayed({ vibrate(30, 200) }, 180)
         }
-        row(R.id.rowSetSlow).hapticClick {
-            // 慢门：关 → 自然 → 偏慢，就地翻转，面板不关
-            slowShutterMode = when (slowShutterMode) {
-                FilmExposure.Mode.OFF -> FilmExposure.Mode.NATURAL
-                FilmExposure.Mode.NATURAL -> FilmExposure.Mode.SLOW
-                FilmExposure.Mode.SLOW -> FilmExposure.Mode.OFF
-            }
-            saveSettings()
-            refreshValues()
-            // 慢门靠相机的手动曝光能力，机型不支持就没有意义 —— 当场说清楚，别让用户干等
-            if (slowShutterMode != FilmExposure.Mode.OFF &&
-                cameraController?.supportsSlowShutter() == false
-            ) {
-                Toast.makeText(
-                    this@MainActivity, getString(R.string.set_slow_unsupported), Toast.LENGTH_LONG
-                ).show()
-            }
-            lastIndicatorKey = ""   // 档位变了，取景器警告灯要立刻重画
-            updateViewfinderIndicators(null, lastExposureSec, lastAeIso)
-        }
         row(R.id.rowSetWb).hapticClick {
             // 白平衡：相当于换一片校色滤镜，AUTO → 钨丝灯 → 荧光灯 → 日光 → 阴天 → 阴影 → 黄昏。
             // 选好就一直是这一片，拍完不回弹（之前只在闪光下的横滑手势里能改，一松手就看不见了）
@@ -702,12 +679,6 @@ class MainActivity : AppCompatActivity() {
             com.filmcam.app.develop.DevQuality.cycle(this@MainActivity)
             refreshValues()
         }
-        row(R.id.rowSetStyle).hapticClick {
-            // 输出风格：印相 → Frontier 扫描 → Noritsu 扫描，就地翻转。
-            // 只影响下一次冲洗的成片，已经在相册里的成片不会重扫。
-            FilmStockMapper.cycleOutputStyle(this@MainActivity)
-            refreshValues()
-        }
         row(R.id.rowSetFrame).hapticClick {
             // 胶片相框：关 → 半格（4:3，画面不裁）→ 全画幅（3:2，按片门裁）→ 关。
             // 就地翻转，只影响下次冲洗。
@@ -717,10 +688,6 @@ class MainActivity : AppCompatActivity() {
             // 与其等冲完一卷才发现退回半格，不如现在就知道这机器认不认这一格。
             // 正在冲洗时不插队：两边共用同一个引擎实例，抢着开 session 只会互相打断
             if (next.isOn && !developingNow()) probeFrameGate(next)
-        }
-        row(R.id.rowSetDev).hapticClick {
-            dialog.dismiss()
-            showDevParamsDialog()
         }
         row(R.id.rowSetAbout).hapticClick {
             dialog.dismiss()
@@ -743,13 +710,6 @@ class MainActivity : AppCompatActivity() {
         else -> getString(R.string.haptic_strong)
     }
 
-    /** 慢门档位读数：关 / 自然 / 偏慢 */
-    private fun slowShutterName(): String = when (slowShutterMode) {
-        FilmExposure.Mode.NATURAL -> getString(R.string.slow_natural)
-        FilmExposure.Mode.SLOW -> getString(R.string.slow_frequent)
-        else -> getString(R.string.slow_off)
-    }
-
     /** 白平衡档位读数：AUTO / 钨丝灯 / 荧光灯 / 日光 / 阴天 / 阴影 / 黄昏 */
     private fun wbName(): String = wbPresets.getOrNull(wbIndex)?.label ?: "AUTO"
 
@@ -757,13 +717,6 @@ class MainActivity : AppCompatActivity() {
     private fun qualityName(): String = when (com.filmcam.app.develop.DevQuality.load(this)) {
         com.filmcam.app.develop.DevQuality.STANDARD -> getString(R.string.quality_standard)
         else -> getString(R.string.quality_full)
-    }
-
-    /** 输出风格当前档位：印相（放大机→相纸）/ Frontier 扫描 / Noritsu 扫描 */
-    private fun outputStyleName(): String = when (FilmStockMapper.readOutputStyle(this)) {
-        FilmStockMapper.OutputStyle.FRONTIER -> getString(R.string.style_frontier)
-        FilmStockMapper.OutputStyle.NORITSU -> getString(R.string.style_noritsu)
-        else -> getString(R.string.style_print)
     }
 
     /** 设置面板「胶片相框」当前档位：关 / 半格 4:3 / 全画幅 3:2 */
@@ -917,175 +870,6 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
-    /** 冲洗参数弹窗：颗粒/辉光/眩光强度（键量纲与 FilmStockMapper 冻结契约一致） */
-    private fun showDevParamsDialog() {
-        suppressTouchUntil = SystemClock.uptimeMillis() + DIALOG_TOUCH_GUARD_MS
-        val prefs = getSharedPreferences("filmcam", MODE_PRIVATE)
-        val view = LayoutInflater.from(this).inflate(R.layout.dialog_dev_params, null)
-        // 弹层内部的文字/面板也跟随机身配色（XML 里是深底浅字的写法）
-        com.filmcam.app.ui.BodyTheme.applyToViewTree(view)
-
-        val sbGrain = view.findViewById<android.widget.SeekBar>(R.id.sbDevGrain)
-        val sbHalation = view.findViewById<android.widget.SeekBar>(R.id.sbDevHalation)
-        val sbGlare = view.findViewById<android.widget.SeekBar>(R.id.sbDevGlare)
-        val tvGrain = view.findViewById<android.widget.TextView>(R.id.tvDevGrainValue)
-        val tvHalation = view.findViewById<android.widget.TextView>(R.id.tvDevHalationValue)
-        val tvGlare = view.findViewById<android.widget.TextView>(R.id.tvDevGlareValue)
-        val sbExposure = view.findViewById<android.widget.SeekBar>(R.id.sbDevExposure)
-        val tvExposure = view.findViewById<android.widget.TextView>(R.id.tvDevExposureValue)
-        val rowPaper = view.findViewById<android.view.View>(R.id.rowDevPaper)
-        val tvPaper = view.findViewById<android.widget.TextView>(R.id.tvDevPaperValue)
-        val rowRoll = view.findViewById<android.view.View>(R.id.rowDevRoll)
-        val tvRoll = view.findViewById<android.widget.TextView>(R.id.tvDevRollValue)
-        val btnReset = view.findViewById<android.widget.Button>(R.id.btnDevReset)
-        btnReset.text = getString(R.string.main_dev_reset)
-
-        // 相纸选项：第一项自动（""），其后 9 款 catalog prints
-        val paperOptions = try {
-            FilmStockMapper.printStockOptions(this)
-        } catch (_: Throwable) {
-            emptyList()
-        }
-        fun paperDisplayName(id: String): String =
-            if (id.isEmpty()) getString(R.string.main_dev_paper_auto)
-            else paperOptions.firstOrNull { it.id == id }?.name ?: id
-
-        // 当前选中的胶卷 stock id（默认 = 当前胶卷；不在 9 款映射时回退第一款）
-        fun stockIdOf(roll: FilmRoll): String? =
-            try { FilmStockMapper.filmStockIdFor(roll.name) } catch (_: Throwable) { null }
-        var selRollId: String = stockIdOf(currentRoll)
-            ?: stockIdOf(FilmRollRepository.rolls.firstOrNull() ?: currentRoll)
-            ?: ""
-        // 后缀键：filmcam_dev_<param>_<stockId>
-        fun devKey(param: String) = "filmcam_dev_${param}_$selRollId"
-
-        // SeekBar progress = 值*100；grain/halation 0..2.00，glare 0..6.00；exposure 0.50..2.00（progress=(v-0.5)*100）
-        fun syncUi() {
-            tvRoll.text = try { FilmStockMapper.stockDisplayName(selRollId) } catch (_: Throwable) { selRollId }
-            sbGrain.progress = (prefs.getFloat(devKey("grain"), 1.0f) * 100).toInt()
-            sbHalation.progress = (prefs.getFloat(devKey("halation"), 1.0f) * 100).toInt()
-            sbGlare.progress = (prefs.getFloat(devKey("glare"), 3.0f) * 100).toInt()
-            tvGrain.text = String.format("%.2f", sbGrain.progress / 100f)
-            tvHalation.text = String.format("%.2f", sbHalation.progress / 100f)
-            tvGlare.text = String.format("%.2f", sbGlare.progress / 100f)
-            val exp = prefs.getFloat(devKey("print_exposure"), 1.0f)
-            sbExposure.progress = ((exp - 0.5f) * 100f).roundToInt()
-            tvExposure.text = String.format("%.2f", exp)
-            tvPaper.text = paperDisplayName(prefs.getString(devKey("paper"), "") ?: "")
-            // 反转片没有印相纸环节（引擎 scan_film 直扫正片）：相纸行置灰
-            val positiveStock = FilmStockMapper.isPositive(selRollId)
-            rowPaper.isEnabled = !positiveStock
-            rowPaper.alpha = if (positiveStock) 0.45f else 1f
-            if (positiveStock) tvPaper.text = getString(R.string.main_dev_slide_no_paper)
-        }
-        syncUi()
-
-        // 切胶卷：单选 9 款 FilmRoll
-        rowRoll.setOnClickListener {
-            val rolls = FilmRollRepository.rolls
-            val items = arrayOfNulls<String>(rolls.size)
-            val ids = arrayOfNulls<String>(rolls.size)
-            rolls.forEachIndexed { i, r ->
-                val id = stockIdOf(r) ?: ""
-                ids[i] = id
-                val disp = try { FilmStockMapper.stockDisplayName(id) } catch (_: Throwable) { id }
-                items[i] = "$disp ($id)"
-            }
-            val checked = ids.indexOf(selRollId).coerceAtLeast(0)
-            androidx.appcompat.app.AlertDialog.Builder(this, com.filmcam.app.ui.BodyTheme.dialogTheme)
-                .setTitle(getString(R.string.main_pick_film_title))
-                .setSingleChoiceItems(items, checked) { d, which ->
-                    selRollId = ids[which] ?: ""
-                    d.dismiss()
-                    syncUi()
-                }
-                .setNegativeButton(getString(R.string.main_cancel), null)
-                .create()
-                .also { it.guardDialog() }
-                .show()
-        }
-
-        sbGrain.setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
-            override fun onProgressChanged(sb: android.widget.SeekBar?, progress: Int, fromUser: Boolean) {
-                val v = progress / 100f
-                prefs.edit().putFloat(devKey("grain"), v).apply()
-                tvGrain.text = String.format("%.2f", v)
-            }
-            override fun onStartTrackingTouch(sb: android.widget.SeekBar?) {}
-            override fun onStopTrackingTouch(sb: android.widget.SeekBar?) {}
-        })
-        sbHalation.setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
-            override fun onProgressChanged(sb: android.widget.SeekBar?, progress: Int, fromUser: Boolean) {
-                val v = progress / 100f
-                prefs.edit().putFloat(devKey("halation"), v).apply()
-                tvHalation.text = String.format("%.2f", v)
-            }
-            override fun onStartTrackingTouch(sb: android.widget.SeekBar?) {}
-            override fun onStopTrackingTouch(sb: android.widget.SeekBar?) {}
-        })
-        sbGlare.setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
-            override fun onProgressChanged(sb: android.widget.SeekBar?, progress: Int, fromUser: Boolean) {
-                val v = progress / 100f
-                prefs.edit().putFloat(devKey("glare"), v).apply()
-                tvGlare.text = String.format("%.2f", v)
-            }
-            override fun onStartTrackingTouch(sb: android.widget.SeekBar?) {}
-            override fun onStopTrackingTouch(sb: android.widget.SeekBar?) {}
-        })
-        sbExposure.setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
-            override fun onProgressChanged(sb: android.widget.SeekBar?, progress: Int, fromUser: Boolean) {
-                val v = 0.5f + progress / 100f
-                prefs.edit().putFloat(devKey("print_exposure"), v).apply()
-                tvExposure.text = String.format("%.2f", v)
-            }
-            override fun onStartTrackingTouch(sb: android.widget.SeekBar?) {}
-            override fun onStopTrackingTouch(sb: android.widget.SeekBar?) {}
-        })
-
-        // 相纸选择：单选弹窗（自动 + 9 款）
-        rowPaper.hapticClick {
-            val current = prefs.getString(devKey("paper"), "") ?: ""
-            val items = arrayOfNulls<String>(paperOptions.size + 1)
-            items[0] = getString(R.string.main_dev_paper_auto)
-            paperOptions.forEachIndexed { i, opt -> items[i + 1] = opt.name }
-            val checked = if (current.isEmpty()) 0 else (paperOptions.indexOfFirst { it.id == current } + 1).coerceAtLeast(0)
-            androidx.appcompat.app.AlertDialog.Builder(this, com.filmcam.app.ui.BodyTheme.dialogTheme)
-                .setTitle(getString(R.string.main_pick_paper_title))
-                .setSingleChoiceItems(items, checked) { d, which ->
-                    val id = if (which == 0) "" else paperOptions[which - 1].id
-                    prefs.edit().putString(devKey("paper"), id).apply()
-                    tvPaper.text = paperDisplayName(id)
-                    d.dismiss()
-                }
-                .setNegativeButton(getString(R.string.main_cancel), null)
-                .create()
-                .also { it.guardDialog() }
-                .show()
-        }
-
-        // 恢复该款默认：移除当前 stockId 对应的 5 个后缀键（=回落冻结默认）
-        btnReset.hapticClick {
-            prefs.edit()
-                .remove(devKey("grain"))
-                .remove(devKey("halation"))
-                .remove(devKey("glare"))
-                .remove(devKey("print_exposure"))
-                .remove(devKey("paper"))
-                .apply()
-            syncUi()
-        }
-
-        androidx.appcompat.app.AlertDialog.Builder(this, com.filmcam.app.ui.BodyTheme.dialogTheme)
-            .setTitle(getString(R.string.set_dev))
-            .setView(view)
-            .setPositiveButton(getString(R.string.main_ok)) { d, _ ->
-                d.dismiss()
-                showSettings()
-            }
-            .create()
-            .also { it.guardDialog() }
-            .show()
-    }
 
     /** 打开胶卷选择器（底部弹层） */
     private fun showFilmRollPicker() {
@@ -1239,7 +1023,7 @@ class MainActivity : AppCompatActivity() {
     private var suppressTouchUntil = 0L
 
     /** 当前在场弹窗层数（>0 时取景器一律不响应触摸）。用计数不用布尔：
-     *  冲洗参数弹窗里还会再开子选择弹窗，子窗关闭不该撤掉父窗的防护。 */
+     *  工程师控制台里还会再开「冲洗参数」这种子窗，子窗关闭不该撤掉父窗的防护。 */
     private var dialogDepth = 0
 
     /** 取景器手势状态（提为字段，弹窗关闭时可强制复位，避免残余状态被新事件续上） */
