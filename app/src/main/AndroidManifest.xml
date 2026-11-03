@@ -50,24 +50,27 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <!-- 取景器之外一律跟随传感器：折叠屏（Mate X5）展开后本来就是横向视界，
+             锁死竖屏会让人横着拿手机、看一个竖着的页面。相册的网格列数按宽度算，
+             横屏会自动排得更宽（见 GalleryActivity 的 spanCount）。 -->
         <activity
             android:name=".GalleryActivity"
             android:exported="false"
-            android:screenOrientation="portrait" />
+            android:screenOrientation="fullSensor" />
         <activity
             android:name=".AboutActivity"
             android:exported="false"
-            android:screenOrientation="portrait" />
+            android:screenOrientation="fullSensor" />
         <activity
             android:name=".PhotoViewerActivity"
             android:exported="false"
-            android:screenOrientation="portrait" />
+            android:screenOrientation="fullSensor" />
 
         <!-- 暗房冲洗 -->
         <activity
             android:name=".develop.DevelopmentActivity"
             android:exported="false"
-            android:screenOrientation="portrait" />
+            android:screenOrientation="fullSensor" />
         <service
             android:name=".develop.DevelopmentService"
             android:exported="false"
