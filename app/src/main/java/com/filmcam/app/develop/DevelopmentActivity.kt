@@ -61,6 +61,8 @@ class DevelopmentActivity : AppCompatActivity(), SensorEventListener {
         private const val TICK_MS = 66L              // 推进节奏 ≈15fps，足够顺滑
         private const val REVEAL_CAP = 0.86f         // 引擎未冲出本帧时进度上限
         private const val STRIP_CELLS = 36
+        /** 整卷超过这么久才提示「可以切标准画质」：几分钟的等待是冲洗该有的样子，十几分钟不是 */
+        private const val SLOW_ROLL_MS = 6 * 60_000L
         private const val HAPTIC_MIN_IMPULSE = 0.22f  // 摇到这个力度才给震动，轻碰不震
         private const val HAPTIC_GAP_MS = 170L        // 两记震动的最小间隔
         /** 显影液水声：起振阈值，搅动强度低于此值完全静音（静置不吵） */
@@ -219,6 +221,30 @@ class DevelopmentActivity : AppCompatActivity(), SensorEventListener {
         if (seconds < 60) getString(R.string.dev_eta_sec, seconds)
         else getString(R.string.dev_eta_min, seconds / 60, seconds % 60)
 
+    /**
+     * 准备阶段的文案：有上一卷的速度样本就把「整卷约需多久」一起写上。
+     *
+     * 准备（拷引擎资源 + 建引擎）往往要十几秒，而这段恰恰是最像卡死的时候 ——
+     * 「正在准备…」让人不知道要等到什么时候，给个总数心里就有底了。
+     */
+    private fun preparingText(st: com.filmcam.app.develop.DevelopmentState, plain: Int, withEta: Int): String {
+        val eta = st.etaSeconds()
+        return if (eta > 0) getString(withEta, formatEta(eta)) else getString(plain)
+    }
+
+    /**
+     * 慢到让人不耐烦时才提示一句：还有「标准」画质这档。
+     *
+     * 默认仍是完整画质（画质优先，不该为了快偷偷降），只是让用户知道有得选 ——
+     * 整卷十几分钟如果什么都不说，用户只会以为这 App 慢。
+     */
+    private fun slowQualityHint(): String? {
+        val totalMs = com.filmcam.app.develop.DevDiagnostics.totalMs
+        if (totalMs < SLOW_ROLL_MS) return null
+        if (com.filmcam.app.develop.DevQuality.load(this) != com.filmcam.app.develop.DevQuality.FULL) return null
+        return getString(R.string.dev_done_slow_hint, formatEta((totalMs / 1000).toInt()))
+    }
+
     private fun renderState() {
         val st = DevelopmentState
         val info = rollInfo ?: UndevelopedFilmStore.undevelopedRolls().firstOrNull { it.rollId == st.rollId }
@@ -239,8 +265,9 @@ class DevelopmentActivity : AppCompatActivity(), SensorEventListener {
         // 否则 UI 会停在「显影中 0/36」像卡死。
         tvProgress.text = when {
             st.phase == DevelopmentState.PHASE_PREPARING && st.preparingFirstTime ->
-                getString(R.string.dev_preparing_first)
-            st.phase == DevelopmentState.PHASE_PREPARING -> getString(R.string.dev_preparing)
+                preparingText(st, R.string.dev_preparing_first, R.string.dev_preparing_first_eta)
+            st.phase == DevelopmentState.PHASE_PREPARING ->
+                preparingText(st, R.string.dev_preparing, R.string.dev_preparing_eta)
             else -> {
                 // 有速度样本后给预估剩余时间，跟通知栏、暗房进度条同一套措辞
                 val eta = st.etaSeconds()
@@ -263,7 +290,10 @@ class DevelopmentActivity : AppCompatActivity(), SensorEventListener {
         if (st.phase == DevelopmentState.PHASE_DONE) {
             layoutDone.visibility = View.VISIBLE
             tvDoneTitle.text = getString(R.string.dev_done_title)
-            tvDoneSub.text = getString(R.string.dev_done_sub, done)
+            tvDoneSub.text = buildString {
+                append(getString(R.string.dev_done_sub, done))
+                slowQualityHint()?.let { append(' ').append(it) }
+            }
             btnViewGallery.text = getString(R.string.dev_view_gallery)
             tvProgress.text = getString(R.string.dev_progress_done, done, total)
             return
