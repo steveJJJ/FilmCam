@@ -1,0 +1,6 @@
+# P2 参照素材库：图片与抓取的网页不入库（体积大 / 无长期价值）
+# 保留：校准文档、分析工具、datasheet JSON（带溯源）、统计 CSV
+images/
+*.html
+redlamp_data/build/
+*.class
