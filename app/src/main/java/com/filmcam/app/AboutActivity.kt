@@ -549,6 +549,16 @@ class AboutActivity : AppCompatActivity() {
             }
         }
 
+        // 崩溃日志：闪退之后唯一的现场（logcat 经常抓不到），点开可以复制或清空
+        val tvCrash = view.findViewById<TextView>(R.id.tvCrash)
+        val crashText = CrashLog.text(this)
+        if (crashText.isBlank()) {
+            tvCrash.text = getString(R.string.hidden_crash_none)
+        } else {
+            tvCrash.text = crashText.takeLast(600)
+            tvCrash.setOnClickListener { showCrashLog(crashText) }
+        }
+
         val dialog = androidx.appcompat.app.AlertDialog.Builder(this, com.filmcam.app.ui.BodyTheme.dialogTheme)
             .setTitle(R.string.hidden_title)
             .setView(view)
@@ -556,6 +566,32 @@ class AboutActivity : AppCompatActivity() {
             .create()
         consoleRef = dialog
         dialog.show()
+    }
+
+    /**
+     * 崩溃日志全文（正文 + 复制 / 清空）。
+     *
+     * 只放最近一段：日志本身限长 64KB，但一屏塞不下几万字，取末尾才有意义
+     * （最后一次崩溃在最后面）。
+     */
+    private fun showCrashLog(text: String) {
+        val body = text.takeLast(20_000)
+        androidx.appcompat.app.AlertDialog.Builder(this, com.filmcam.app.ui.BodyTheme.dialogTheme)
+            .setTitle(R.string.hidden_crash_title)
+            .setMessage(body)
+            .setPositiveButton(R.string.hidden_crash_copy) { _, _ ->
+                (getSystemService(android.content.Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager)
+                    ?.setPrimaryClip(android.content.ClipData.newPlainText("crash-log", body))
+                Toast.makeText(this, R.string.hidden_diag_copied, Toast.LENGTH_SHORT).show()
+                showEngineerConsole()
+            }
+            .setNegativeButton(R.string.hidden_crash_clear) { _, _ ->
+                CrashLog.clear(this)
+                Toast.makeText(this, R.string.hidden_crash_cleared, Toast.LENGTH_SHORT).show()
+                showEngineerConsole()
+            }
+            .setNeutralButton(R.string.set_close, null)
+            .show()
     }
 
     /** 当前开着的工程师控制台（"冲洗参数"要临时关掉它再回来） */

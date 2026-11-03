@@ -775,7 +775,8 @@ class MainActivity : AppCompatActivity() {
                         .append(" -> ").append(err ?: "OK").append('\n')
                     if (err == null) anyOk = true
                 }
-                runCatching {
+                // 同样是「给开发看的东西」：工程师模式关着就不落盘，日志照常
+                if (DevDump.enabled(this)) runCatching {
                     val dir = getExternalFilesDir(null) ?: filesDir
                     java.io.File(dir, "spektra_frame_probe.txt").writeText(
                         "gate=${format.key}\n$report"

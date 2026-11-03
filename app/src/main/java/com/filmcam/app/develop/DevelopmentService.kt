@@ -759,8 +759,9 @@ class DevelopmentService : Service() {
             }
             Log.w(TAG, "片框版式 $format 不可用: 横=$lErr | 竖=$pErr")
         }
-        // 落盘：logcat 不一定抓得到（无线调试经常断），留个文件随时能 pull
-        runCatching {
+        // 落盘：logcat 不一定抓得到（无线调试经常断），留个文件随时能 pull；
+        // 工程师模式关着就不写（那不是给用户看的东西），日志照常
+        if (com.filmcam.app.DevDump.enabled(this)) runCatching {
             val dir = getExternalFilesDir(null) ?: filesDir
             java.io.File(dir, "spektra_frame_probe.txt").writeText(
                 notes.joinToString("\n") + "\nchosen=" + (chosen ?: "none")

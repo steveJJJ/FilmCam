@@ -286,6 +286,13 @@ App 版本：%1$s (%2$d)
     <string name="hidden_diag_none">还没有冲洗记录</string>
     <string name="hidden_diag_copied">诊断信息已复制</string>
 
+    <!-- 崩溃日志：native 层崩下来是整进程闪退，logcat 常常抓不到，只能落盘看 -->
+    <string name="hidden_crash_title">崩溃日志 CRASH LOG</string>
+    <string name="hidden_crash_none">还没有崩溃记录</string>
+    <string name="hidden_crash_copy">复制</string>
+    <string name="hidden_crash_clear">清空</string>
+    <string name="hidden_crash_cleared">崩溃日志已清空</string>
+
     <!-- 胶卷列表：反转片不支持印相 -->
     <string name="film_slide_no_print">反转片（幻灯）不能印到相纸上——本版暂只支持负片</string>
 </resources>

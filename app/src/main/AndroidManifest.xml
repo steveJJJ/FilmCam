@@ -33,6 +33,7 @@
          largeHeap：冲洗一帧需要 12MP ARGB 位图（48MB）+ 引擎 float 缓冲（143MB），
          标准堆上限在多数机型为 192-256MB，必 OOM。图像处理类 App 的标准做法。 -->
     <application
+        android:name=".FilmCamApp"
         android:allowBackup="false"
         android:largeHeap="true"
         android:resizeableActivity="true"

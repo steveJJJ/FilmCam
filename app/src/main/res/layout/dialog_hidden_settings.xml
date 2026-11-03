@@ -189,6 +189,25 @@
                 android:fontFamily="monospace"
                 android:text="@string/hidden_diag_none"
                 android:textSize="10.5sp" />
+
+            <!-- 崩溃日志：相机 HAL / Vulkan 引擎 / LibRaw 都在 native 层，崩了就是整进程闪退，
+                 logcat 经常抓不到，只能落盘看。点开可复制或清空。 -->
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="4dp"
+                android:text="@string/hidden_crash_title"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/tvCrash"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="10dp"
+                android:fontFamily="monospace"
+                android:text="@string/hidden_crash_none"
+                android:textSize="10.5sp" />
         </LinearLayout>
     </LinearLayout>
 </ScrollView>

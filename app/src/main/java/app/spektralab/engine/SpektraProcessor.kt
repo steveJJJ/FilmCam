@@ -347,12 +347,14 @@ object SpektraProcessor {
         }.getOrElse { t -> t.message ?: t.toString() }
     }
 
-    /** 预检结果落盘（外部私有目录，release 包也能 adb pull 出来）。 */
+    /** 预检结果落盘（外部私有目录，release 包也能 adb pull 出来）；工程师模式关着就不写。 */
     private fun writeProbeReport(
         context: Context,
         entries: List<Pair<String, String>>,
         rejected: Set<String>,
     ) {
+        // 只给翻出开发旋钮的人落盘：普通用户看不懂，还白占机身存储（logcat 里照样有）
+        if (!com.filmcam.app.DevDump.enabled(context)) return
         runCatching {
             val dir = context.getExternalFilesDir(null) ?: context.filesDir
             val f = java.io.File(dir, "spektra_probe.txt")
@@ -370,9 +372,10 @@ object SpektraProcessor {
      * 我们 setParams 只传 11 个扁平字段，引擎内部还有一整棵参数树
      * （扫描仪模糊、黑白校正、片基边框、场景宽容度、对比遮罩……）。
      * 摸清这棵树才能做「印相 / Frontier / Noritsu」三种输出，否则只能靠猜。
-     * 每个进程只写一次，不影响冲洗耗时。
+     * 每个进程只写一次，不影响冲洗耗时；工程师模式关着就一次都不写。
      */
     private fun dumpParamsOnce(context: Context, session: SpektraLabEngine.Session) {
+        if (!com.filmcam.app.DevDump.enabled(context)) return
         if (paramsDumped) return
         synchronized(this) {
             if (paramsDumped) return
