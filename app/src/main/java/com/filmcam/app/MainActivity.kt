@@ -1798,8 +1798,13 @@ class MainActivity : AppCompatActivity() {
             binding.tvDevelopingText.text = "PROCESSING..."
         }
 
-        // 看门狗：相机回调迟迟不来（>20s）时兜底复位，避免卡死在过卷界面
+        // 看门狗：相机回调迟迟不来（>20s）时兜底复位，避免卡死在过卷界面。
+        // isCapturing 只在 finishCapture 里落回 false —— 这一张已经收过尾就别再弹「拍照超时」，
+        // 否则每拍一张、20 秒后都会冒出一条凭空的超时提示（照片其实早就存好了）。
         postAt(seq, AdvanceRitual.WATCHDOG_MS) {
+            if (!isCapturing) return@postAt
+            // 真超时才走到这里：留一条日志，方便区分「相机回调真没回来」和旧版的凭空提示
+            Log.w("Capture", "拍照超时：${AdvanceRitual.WATCHDOG_MS}ms 内没等到相机回调")
             finishCapture(seq)
             Toast.makeText(this, getString(R.string.main_toast_capture_timeout), Toast.LENGTH_SHORT).show()
         }

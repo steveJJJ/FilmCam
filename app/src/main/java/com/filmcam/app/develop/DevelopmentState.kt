@@ -37,15 +37,26 @@ object DevelopmentState {
     @Volatile var frameMsEma: Float = 0f
 
     /**
+     * 还没样本时用来给预估的「上一卷实测单帧耗时」（毫秒），见 DevDiagnostics 归档的 diag_avg_ms。
+     *
+     * 第一帧要等引擎预热、解码与落盘，往往要十几秒，这段时间 EMA 还没有样本、预估给不出来，
+     * 用户盯着「显影中 1/36」干等。拿上一卷的速度当种子，第 0 秒就能给个数；
+     * 第一帧一完成，[frameMsEma] 立刻把它顶掉（EMA 首帧直接取实测值），不会一直沿用旧速度。
+     * 0 = 没有历史记录（首次冲洗），此时仍不给预估。
+     */
+    @Volatile var frameMsSeed: Float = 0f
+
+    /**
      * 预估剩余秒数；给不出（还没样本、已经冲完、不在冲洗阶段）时为 -1。
      * UI 与服务通知都用它，保证两处显示的是同一个数。
      */
     fun etaSeconds(): Int {
         if (phase != PHASE_DEVELOPING) return -1
         val remaining = total - done
-        val ema = frameMsEma
-        if (remaining <= 0 || ema <= 0f) return -1
-        return (ema * remaining / 1000f).toInt().coerceAtLeast(1)
+        // 有本次实测样本就用它；没有就先借上一卷的速度，让第一帧就有数可看
+        val perFrameMs = if (frameMsEma > 0f) frameMsEma else frameMsSeed
+        if (remaining <= 0 || perFrameMs <= 0f) return -1
+        return (perFrameMs * remaining / 1000f).toInt().coerceAtLeast(1)
     }
 
     /** 主线程回调列表：服务每次更新进度后逐个 invoke。 */
@@ -64,6 +75,7 @@ object DevelopmentState {
         lastError = null
         preparingFirstTime = false
         frameMsEma = 0f
+        frameMsSeed = 0f
     }
 
     fun addListener(l: () -> Unit) {

@@ -154,6 +154,9 @@ class DevelopmentService : Service() {
             DevelopmentState.done = 0
             DevelopmentState.currentIndex = 0
             DevelopmentState.errorCount = 0
+            // 第一帧出图前 EMA 还没有样本，先用上一次冲洗的实测速度当种子，
+            // 「约剩多少」从第 0 秒就有；第一帧一完成，EMA 直接用实测值把它顶掉。
+            DevelopmentState.frameMsSeed = lastRunFrameMs()
             // 先进入「准备」阶段：首次冲洗要把 30MB 引擎资源从 assets 拷到 filesDir
             // 并创建引擎（约 10s），此前这段静默进行，UI 停在「显影中 0/36」，
             // 用户会以为 App 卡死。
@@ -421,6 +424,17 @@ class DevelopmentService : Service() {
     private fun formatEta(seconds: Int): String =
         if (seconds < 60) getString(R.string.dev_eta_sec, seconds)
         else getString(R.string.dev_eta_min, seconds / 60, seconds % 60)
+
+    /**
+     * 上一次冲洗的单帧平均耗时（[DevDiagnostics] 归档进 prefs 的 diag_avg_ms）。
+     *
+     * 只当"种子"用：第一帧（含引擎预热）通常比稳态慢，所以这里**不参与 EMA**，
+     * 第一帧一完成就被实测值替换。离谱的旧记录（0 或者几十分钟）一律当没有。
+     */
+    private fun lastRunFrameMs(): Float {
+        val ms = getSharedPreferences("filmcam", MODE_PRIVATE).getLong("diag_avg_ms", 0L)
+        return if (ms in 200..600_000) ms.toFloat() else 0f
+    }
 
     /**
      * 解码前算一下 inSampleSize。
