@@ -871,114 +871,14 @@ class MainActivity : AppCompatActivity() {
 
 
     /** 打开胶卷选择器（底部弹层） */
+    /** 换卷弹层只负责「选哪支、排序、触感」，实现已挪到 ui/FilmRollPicker。 */
     private fun showFilmRollPicker() {
-        val dialog = BottomSheetDialog(this)
-        val view = LayoutInflater.from(this).inflate(R.layout.bottom_sheet_film_roll, null)
-        com.filmcam.app.ui.BodyTheme.applyToViewTree(view)
-        dialog.setContentView(view)
-
-        val rv = view.findViewById<RecyclerView>(R.id.rvFilmRolls)
-        // RecyclerView 是 wrap_content，25 支胶卷的内容高度远超一屏时弹层会被
-        // 容器裁掉底部——最后一两项永远被导航区/屏幕底边盖住。这里给列表
-        // 设定明确高度上限（屏高 72%），让它在弹层内部滚动，底部 padding 生效。
-        rv.layoutParams?.height = (resources.displayMetrics.heightPixels * 0.72f).toInt()
-        dialog.behavior.skipCollapsed = true   // 直接全展开，避免半开状态看不到底部
-        rv.layoutManager = LinearLayoutManager(this)
-        val adapter = FilmRollAdapter(FilmRollRepository.rolls) { roll ->
-            vibrate(22, 175)         // 选中一支胶卷也有一记触感，和滑动/长按拖拽保持一致
-            selectFilmRoll(roll)
-            dialog.dismiss()
-        }
-        rv.adapter = adapter
-
-        // 长按拖拽排序：把常用的胶卷拖到列表顶部，方便下次切换。
-        // 只开上下方向（拖拽标记 dragFlags=UP|DOWN，swipeFlags=0 即不支持滑动删除），
-        // 松手时统一落盘一次，避免拖动过程中反复写 SharedPreferences。
-        val touchHelper = androidx.recyclerview.widget.ItemTouchHelper(
-            object : androidx.recyclerview.widget.ItemTouchHelper.SimpleCallback(
-                androidx.recyclerview.widget.ItemTouchHelper.UP or
-                    androidx.recyclerview.widget.ItemTouchHelper.DOWN, 0
-            ) {
-                // 长按抓起：给一记稍重的触感，等价于「这一项被拿起来了」
-                override fun onSelectedChanged(
-                    viewHolder: RecyclerView.ViewHolder?,
-                    actionState: Int
-                ) {
-                    super.onSelectedChanged(viewHolder, actionState)
-                    if (actionState == androidx.recyclerview.widget.ItemTouchHelper.ACTION_STATE_DRAG) {
-                        vibrate(34, 200)
-                    }
-                }
-
-                // 每越过一个相邻位置给一记极轻触感，让「调位置」这件事在手上能被数出来
-                override fun onMove(
-                    recyclerView: RecyclerView,
-                    viewHolder: RecyclerView.ViewHolder,
-                    target: RecyclerView.ViewHolder
-                ): Boolean {
-                    adapter.moveItem(
-                        viewHolder.bindingAdapterPosition,
-                        target.bindingAdapterPosition
-                    )
-                    vibrate(18, 130)
-                    return true
-                }
-
-                override fun onSwiped(   viewHolder: RecyclerView.ViewHolder, direction: Int) {
-                    // 不支持滑动
-                }
-
-                override fun clearView(
-                    recyclerView: RecyclerView,
-                    viewHolder: RecyclerView.ViewHolder
-                ) {
-                    super.clearView(recyclerView, viewHolder)
-                    FilmRollRepository.persist(this@MainActivity)
-                }
-            }
+        com.filmcam.app.ui.FilmRollPicker.show(
+            activity = this,
+            onPick = { roll -> selectFilmRoll(roll) },
+            onVibrate = { ms, amp -> vibrate(ms, amp) },
+            guard = { d -> d.guardDialog() },
         )
-        touchHelper.attachToRecyclerView(rv)
-
-        // 滑动选胶卷时的"齿轮感"：列表每滚过一格（约 1/4 个条目高）给一记极轻触感，
-        // 像拨动过片齿轮的齿——让"往上滑换卷"这件事在手上能被数出来。
-        // 只用 dy 的绝对值累加，方向无关的连续刻度感；惯性滑行时也会持续给到，
-        // 但太密的震动会变成嗡嗡声，故阈值取条目高的约 1/4 并做 40ms 节流。
-        var tickAccum = 0
-        var lastTickMs = 0L
-        rv.addOnScrollListener(object : RecyclerView.OnScrollListener() {
-            override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
-                tickAccum += kotlin.math.abs(dy)
-                val threshold = (recyclerView.height / 8).coerceAtLeast(40)
-                val now = android.os.SystemClock.elapsedRealtime()
-                if (tickAccum >= threshold && now - lastTickMs > 40) {
-                    tickAccum = 0
-                    lastTickMs = now
-                    vibrate(12, 95)
-                }
-            }
-        })
-
-        dialog.guardDialog().show()
-        // 横屏下 BottomSheet 默认只展开到 peek 高度，25 支胶卷的大半被压在屏幕外，
-        // 也看不出"往上还能滑"——直接强制全展开，让滚动发生在列表内部。
-        dialog.behavior.state =
-            com.google.android.material.bottomsheet.BottomSheetBehavior.STATE_EXPANDED
-
-        // 上面 72% 是按竖屏（屏高 2400 左右）定的，横屏屏高只有一半（1080），
-        // 列表 72% + 标题/说明 + 上下的 16dp/48dp padding 会整体顶出屏幕，
-        // 滑到最后一卷时底部那一项被切掉一半。这里按弹层真实可视高度反推：
-        // 列表最多吃满「可视高度 - 头部 - 底部 padding」，滑到底一定是完整的。
-        view.post {
-            val r = android.graphics.Rect()
-            dialog.window?.decorView?.getWindowVisibleDisplayFrame(r)
-            val maxRv = r.height() - rv.top - view.paddingBottom
-            val minRv = (120 * resources.displayMetrics.density).toInt()
-            val target = rv.height.coerceAtMost(maxRv).coerceAtLeast(minRv)
-            if (target != rv.height) {
-                rv.layoutParams.height = target
-                rv.requestLayout()
-            }
-        }
     }
 
     // ===== 机身提示 =====
