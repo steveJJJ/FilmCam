@@ -37,6 +37,8 @@ import kotlin.math.min
  * 出片，预览内容却是传感器原生的 4:3，两者差一条边（冲洗时会裁掉）。所以亮框
  * 取内容矩形里居中的那块片门矩形（[gateRectFor]），框内即是最终画面 —— 所见即所得，
  * 框外那两条是底片上不会有的部分，就像真机亮框之外还能看到一点画面一样。
+ * 角标本体再从片门边缘往里收一圈（[BRACKET_INSET]），避免框线贴着画面边界像 UI 裁切框；
+ * 内收量远小于片门与内容之差，所以"框内即成片"依然成立。
  */
 class ViewfinderFrameView @JvmOverloads constructor(
     context: Context, attrs: AttributeSet? = null, defStyleAttr: Int = 0
@@ -174,13 +176,19 @@ class ViewfinderFrameView @JvmOverloads constructor(
         val gw = gr - gl
         val gh = gb - gt
 
-        // ---- ① 四角大亮框角标：贴在片门边缘，框内就是成片，所见即所得 ----
-        val bLen = gw * 0.075f
-        drawBrackets(canvas, gl, gt, gr, gb, bLen, brightPaint)
+        // ---- ① 四角大亮框角标：画在片门范围内、再往里收一点 ----
+        // 不能贴着片门边缘画：贴着边缘时角标横臂会和画面边界重合，看起来像屏幕 UI 的裁切框，
+        // 而不是光学取景器里那块亮框。真机 T3 的亮框同样比实际成像略小一圈（取景框偏保守），
+        // 角标离开边缘正是"光学取景"的观感来源。
+        val bInset = gw * BRACKET_INSET
+        val bLen = gw * BRACKET_LEN
+        drawBrackets(
+            canvas, gl + bInset, gt + bInset, gr - bInset, gb - bInset, bLen, brightPaint
+        )
 
-        // ---- ② 内侧视差补偿小角标（从片门边框再内收一点，示意取景视差）----
-        val pInset = gw * 0.075f
-        val pLen = gw * 0.035f
+        // ---- ② 内侧视差补偿小角标（从大角标再内收，示意取景视差）----
+        val pInset = gw * PARALLAX_INSET
+        val pLen = gw * PARALLAX_LEN
         drawBrackets(canvas, gl + pInset, gt + pInset, gr - pInset, gb - pInset, pLen, parallaxPaint)
 
         // ---- ④ 中央 AF 标记：左右两段弧括号（上下留缺口、中间不相连、无竖线）----
@@ -595,6 +603,25 @@ class ViewfinderFrameView @JvmOverloads constructor(
          */
         fun gateAspectFor(w: Float, h: Float): Float =
             if (w >= h) GATE_ASPECT else 1f / GATE_ASPECT
+
+        /**
+         * 亮框角标的内收量与臂长（都按**片门宽度**取比例，横竖两边观感一致）。
+         *
+         * [BRACKET_INSET] 把角标从片门边缘往里挪一圈：贴边缘画时横臂和画面边界重合，
+         * 看起来像屏幕 UI 的裁切框，不像光学取景器里的亮框。真机 T3 的亮框同样比
+         * 实际成像略小——取景框本来就偏保守。内收 5.5% 相当于竖屏约 53px，
+         * 远小于片门与 4:3 预览内容之差（两侧各 5.6%），所以框内仍是成片。
+         */
+        private const val BRACKET_INSET = 0.055f
+
+        /** 角标臂长（片门宽的 7.5%）：够长才像取景器亮框，太短会读成四个点 */
+        private const val BRACKET_LEN = 0.075f
+
+        /** 内侧视差小角标的内收量：与 [BRACKET_INSET] 至少留 0.08 的净空，两层框线才不挤 */
+        private const val PARALLAX_INSET = 0.135f
+
+        /** 视差小角标的臂长，比大角标短一截以示主次 */
+        private const val PARALLAX_LEN = 0.035f
 
         /**
          * 成片范围矩形：在预览内容里居中取一块片门比例的矩形。
