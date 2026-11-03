@@ -38,8 +38,7 @@
     <string name="dev_error_frames_detail">%1$d/%2$d frames unfinished: %3$s</string>
     <string name="dev_toast_slide_no_paper">Slide film develops straight to a positive, no paper involved — paper selection ignored</string>
     <string name="dev_toast_style_fallback">%1$d frames couldn\'t use the full parameter set of the selected style (engine rejected part of it) — developed with reduced parameters</string>
-    <string name="dev_toast_frame_half">The engine rejected the full-frame 3:2 gate — developed as half frame 4:3 (view untrimmed)</string>
-    <string name="dev_toast_frame_full">The engine rejected the half-frame gate — developed as full frame 3:2 (view trimmed to the gate)</string>
+    <string name="dev_toast_frame_dropped">The engine rejected the 135 gate — this roll develops without a film border (see spektra_frame_probe.txt)</string>
 
     <!-- ===== Film rolls (film) ===== -->
 

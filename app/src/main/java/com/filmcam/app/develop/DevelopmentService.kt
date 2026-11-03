@@ -234,21 +234,14 @@ class DevelopmentService : Service() {
             } else FrameCheck(null, false, false)
             val frameFormat = frameCheck.format
             if (effective.frameFormat.isOn && frameFormat == null) {
-                // 所有版式都不可用：关掉片框照常出图，别让用户等半天得到一个降级档
+                // 这一格引擎不认：关掉片框照常出图，别让用户等半天得到一个降级档
                 Log.w(TAG, "片框不可用，本次冲洗不带片框")
                 effective = effective.copy(frameFormat = FilmStockMapper.FrameFormat.OFF)
-            }
-            // 用户点的那格引擎不认、退到了另一格：不说一声就是"我选了 135 怎么给我半格"
-            if (frameFormat != null && frameFormat != effective.frameFormat.overscanFormat) {
-                Log.w(TAG, "片框版式 $frameFormat 与所选 ${effective.frameFormat.key} 不一致（引擎退回）")
+                // 只剩一格可试，没有"退回另一格"这回事了，得说一声，否则用户只看到片框莫名消失
                 mainHandler.post {
                     android.widget.Toast.makeText(
                         this@DevelopmentService,
-                        getString(
-                            if (frameFormat == FilmStockMapper.OVERSCAN_FORMAT_HALF) {
-                                R.string.dev_toast_frame_half
-                            } else R.string.dev_toast_frame_full
-                        ),
+                        getString(R.string.dev_toast_frame_dropped),
                         android.widget.Toast.LENGTH_LONG
                     ).show()
                 }
@@ -726,7 +719,7 @@ class DevelopmentService : Service() {
      * 为什么横竖都要测：竖拍走的是竖置片门（画面在底片上本来就是竖的），引擎未必认。
      * 认横不认竖时，横帧照常带片框、竖帧只出画面，别为了一片片基把竖照片毁掉。
      *
-     * 用户选的那格优先；它不行再退另一格（135 全画幅 ↔ 半格），总好过整卷没有片框。
+     * 只剩 135 一格，没有可退的版式：这一格不认就本次不带片框，总好过整卷没有片框。
      */
     private fun pickFrameFormat(
         filmStockId: String,

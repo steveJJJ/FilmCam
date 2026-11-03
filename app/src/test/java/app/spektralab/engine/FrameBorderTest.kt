@@ -14,9 +14,10 @@ import java.io.File
  * 测试点：
  *  1) 片框关着时参数里一个 overscan 键都不许有（引擎不认的键会整卷失败，多一个都不行）；
  *  2) 开着时每个键都必须在引擎白名单里；
- *  3) 两格片门都能选：半格扫 135_half（4:3，不动画面），全画幅扫 135（3:2，按片门裁）；
+ *  3) 只有 135 一格片门（36×24，3:2），扫的是 `135` 版式，画面按片门裁；
  *  4) 帧号逐帧递增（底片暗边本来就印着 1…36，每帧一个数）；
- *  5) 片门裁切：4:3 取景套 36×24 片门要裁成精确 3:2，已经是片门形状的一格不许动。
+ *  5) 片门裁切：4:3 取景套 36×24 片门要裁成精确 3:2，已经是片门形状的一格不许动；
+ *  6) 旧包存的半格档位（135_half）升级后归到 135，不能把片框悄悄关掉。
  */
 class FrameBorderTest {
 
@@ -48,9 +49,7 @@ class FrameBorderTest {
 
     @Test
     fun frameOn_onlyUsesKeysTheEngineKnows() {
-        for (format in listOf(
-            FilmStockMapper.FrameFormat.HALF, FilmStockMapper.FrameFormat.FULL
-        )) {
+        for (format in FilmStockMapper.FrameFormat.values().filter { it.isOn }) {
             val o = json(format)
             val overscanKeys = o.keys().asSequence().filter { it.startsWith("overscan") }.toList()
             assertTrue("相框开着就该有 overscan 参数", overscanKeys.isNotEmpty())
@@ -65,11 +64,11 @@ class FrameBorderTest {
 
     @Test
     fun frameOn_scansTheWholeFilmBaseWithEdgeText() {
-        val o = json(FilmStockMapper.FrameFormat.HALF)
+        val o = json(FilmStockMapper.FrameFormat.FULL)
         assertTrue(o.getBoolean("overscan_active"))
         // 取值贴着引擎默认：整条片基 + 自动片门，别自己发明。
         assertEquals("strip", o.getString("overscan_mode"))
-        assertEquals(FilmStockMapper.OVERSCAN_FORMAT_HALF, o.getString("overscan_format"))
+        assertEquals(FilmStockMapper.OVERSCAN_FORMAT_FULL, o.getString("overscan_format"))
         assertEquals("auto", o.getString("overscan_gate"))
         assertFalse("不双联", o.getBoolean("overscan_pair"))
         assertEquals("不漏光", 0, o.getInt("overscan_leaks"))
@@ -82,11 +81,25 @@ class FrameBorderTest {
 
     @Test
     fun fullFrame_asksForThe135Gate() {
-        // 用户要的「135 边框」= 36×24 那一格：版式串必须是 135，
+        // 「135 边框」= 36×24 那一格：版式串必须是 135，
         // 但引擎会拿输入尺寸对着片门校验，所以画面要先裁到 3:2（见 gateCrop 用例）
         val o = json(FilmStockMapper.FrameFormat.FULL)
         assertEquals(FilmStockMapper.OVERSCAN_FORMAT_FULL, o.getString("overscan_format"))
         assertEquals("135", o.getString("overscan_format"))
+    }
+
+    @Test
+    fun legacyHalfFrameChoice_landsOnThe135Gate() {
+        // 旧包只给过半格这一档；升级后只剩 135，老用户不该被"悄悄关掉片框"
+        assertEquals(
+            FilmStockMapper.FrameFormat.FULL,
+            FilmStockMapper.FrameFormat.fromKey(FilmStockMapper.FrameFormat.LEGACY_KEY_HALF)
+        )
+        // 引擎版式串过来的老数据同理
+        assertEquals(
+            FilmStockMapper.FrameFormat.OFF,
+            FilmStockMapper.FrameFormat.fromOverscanFormat("135_half")
+        )
     }
 
     @Test
@@ -145,18 +158,16 @@ class FrameBorderTest {
             FilmStockMapper.DevSettings(frameFormat = FilmStockMapper.FrameFormat.OFF).outputGate
         )
         assertEquals(
-            FilmStockMapper.FrameFormat.HALF,
-            FilmStockMapper.DevSettings(frameFormat = FilmStockMapper.FrameFormat.HALF).outputGate
+            FilmStockMapper.FrameFormat.FULL,
+            FilmStockMapper.DevSettings(frameFormat = FilmStockMapper.FrameFormat.FULL).outputGate
         )
     }
 
     @Test
     fun gateCrop_leavesAFrameThatAlreadyMatchesAlone() {
-        // 已经是 3:2 的（或半格配 4:3 的）一格都不许动
+        // 已经是 3:2 的一格都不许动
         val full = FilmStockMapper.gateCrop(FilmStockMapper.FrameFormat.FULL, 1440, 960)
         assertFalse("3:2 不用裁", full.cropped)
-        val half = FilmStockMapper.gateCrop(FilmStockMapper.FrameFormat.HALF, 1440, 1080)
-        assertFalse("4:3 配半格不用裁", half.cropped)
         // 竖帧正好是竖置片门形状时同样不动
         val upright = FilmStockMapper.gateCrop(FilmStockMapper.FrameFormat.FULL, 960, 1440)
         assertFalse("2:3 竖帧不用裁", upright.cropped)
@@ -175,27 +186,25 @@ class FrameBorderTest {
     }
 
     @Test
-    fun cycleGoesOffThenHalfThenFullFrame() {
-        assertEquals(FilmStockMapper.FrameFormat.HALF, FilmStockMapper.FrameFormat.next(
-            FilmStockMapper.FrameFormat.OFF
-        ))
+    fun cycleGoesOffThenFullFrame() {
+        // 设置面板只剩两档：关 ↔ 全画幅
         assertEquals(FilmStockMapper.FrameFormat.FULL, FilmStockMapper.FrameFormat.next(
-            FilmStockMapper.FrameFormat.HALF
+            FilmStockMapper.FrameFormat.OFF
         ))
         assertEquals(FilmStockMapper.FrameFormat.OFF, FilmStockMapper.FrameFormat.next(
             FilmStockMapper.FrameFormat.FULL
         ))
+        assertEquals(2, FilmStockMapper.FrameFormat.values().size)
     }
 
     @Test
-    fun selfCheckTriesTheChosenGateFirst() {
-        // 用户选全画幅就先试 135，别先去试半格——否则"我选了 135 却给我半格"
+    fun selfCheckOnlyEverAsksForThe135Gate() {
+        // 只剩一格版式：自检不该再冒出 135_half 那种候选
         val c = FilmStockMapper.overscanCandidates(FilmStockMapper.FrameFormat.FULL)
-        assertEquals(FilmStockMapper.OVERSCAN_FORMAT_FULL, c.first())
-        assertEquals(2, c.size)
+        assertEquals(listOf(FilmStockMapper.OVERSCAN_FORMAT_FULL), c)
         assertEquals(
-            FilmStockMapper.OVERSCAN_FORMAT_HALF,
-            FilmStockMapper.overscanCandidates(FilmStockMapper.FrameFormat.HALF).first()
+            listOf(FilmStockMapper.OVERSCAN_FORMAT_FULL),
+            FilmStockMapper.overscanCandidates(FilmStockMapper.FrameFormat.OFF)
         )
     }
 }

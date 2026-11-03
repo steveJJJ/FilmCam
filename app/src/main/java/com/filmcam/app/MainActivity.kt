@@ -680,12 +680,11 @@ class MainActivity : AppCompatActivity() {
             refreshValues()
         }
         row(R.id.rowSetFrame).hapticClick {
-            // 胶片相框：关 → 半格（4:3，画面不裁）→ 全画幅（3:2，按片门裁）→ 关。
-            // 就地翻转，只影响下次冲洗。
+            // 胶片相框：关 ↔ 全画幅 135（3:2，按 36×24 片门裁）。就地翻转，只影响下次冲洗。
             val next = FilmStockMapper.cycleFrameFormat(this@MainActivity)
             refreshValues()
             // 当场问一次引擎：片门形状是渲染期才校验的（setParams 会收下、solve 才拒绝），
-            // 与其等冲完一卷才发现退回半格，不如现在就知道这机器认不认这一格。
+            // 与其等冲完一卷才发现这机器不认这一格，不如现在就知道。
             // 正在冲洗时不插队：两边共用同一个引擎实例，抢着开 session 只会互相打断
             if (next.isOn && !developingNow()) probeFrameGate(next)
         }
@@ -719,9 +718,8 @@ class MainActivity : AppCompatActivity() {
         else -> getString(R.string.quality_full)
     }
 
-    /** 设置面板「胶片相框」当前档位：关 / 半格 4:3 / 全画幅 3:2 */
+    /** 设置面板「胶片相框」当前档位：关 / 全画幅 3:2 */
     private fun frameBorderName(): String = when (FilmStockMapper.readFrameFormat(this)) {
-        FilmStockMapper.FrameFormat.HALF -> getString(R.string.frame_half)
         FilmStockMapper.FrameFormat.FULL -> getString(R.string.frame_full)
         else -> getString(R.string.common_off)
     }
