@@ -674,7 +674,11 @@ class DevelopmentService : Service() {
                         map[k] = extra.getString(k)
                     }
                 }
-                o.getString("name") to map
+                // 可选渲染长边：默认 640（看色彩方向够用）。
+                // lens_blur_um 这类**胶片尺度**的量纲参数必须渲大图才能显形：
+                // 36mm→640px 时 1px≈56μm，10μm 级的镜头柔度会被缩没；2048px 时 1px≈17.6μm。
+                val longEdge = o.optInt("long_edge", 640).coerceIn(320, 4096)
+                Triple(o.getString("name"), map, longEdge)
             }
         }.onFailure { Log.w(TAG, "矩阵配置解析失败", it) }.getOrNull()
         if (cases.isNullOrEmpty()) {
@@ -684,14 +688,13 @@ class DevelopmentService : Service() {
         val outDir = java.io.File(dir, "matrix_out")
         runCatching { outDir.deleteRecursively() }
         outDir.mkdirs()
-        // 小图渲染只为看色彩方向，640px 足够，跑一组不至于让冲洗慢到不能忍
-        val smallW = 640
-        val smallH = (smallW.toFloat() * bmp.height / bmp.width).toInt().coerceAtLeast(1)
-        val small = android.graphics.Bitmap.createScaledBitmap(bmp, smallW, smallH, true)
+        // 小图渲染只为看色彩方向，640px 足够，跑一组不至于让冲洗慢到不能忍；
+        // 个别**胶片尺度**量纲的参数（lens_blur_um）按 spec 里的 long_edge 放大渲
+        var small: android.graphics.Bitmap? = null
         val body = baseJson.trimEnd().removeSuffix("}")
         val report = StringBuilder()
         try {
-            for ((name, extra) in cases) {
+            for ((name, extra, longEdge) in cases) {
                 // 覆盖语义：基线里已有的同名键必须被替换。直接追加会写出重复键，
                 // 引擎取第一个 → 那组实验等于没跑（上一轮 max_lift / print_exposure
                 // 就是这么白测的，出图和 base 字节级相同）。
@@ -706,17 +709,22 @@ class DevelopmentService : Service() {
                         append('}')
                     }
                 }
+                if (small == null || small!!.width != longEdge) {
+                    small?.recycle()
+                    val h = (longEdge.toFloat() * bmp.height / bmp.width).toInt().coerceAtLeast(1)
+                    small = android.graphics.Bitmap.createScaledBitmap(bmp, longEdge, h, true)
+                }
                 val out = java.io.File(outDir, "$name.jpg")
                 val r = runCatching {
                     SpektraProcessor.processFrame(
-                        applicationContext, small, json, out.absolutePath, recycleInput = false
+                        applicationContext, small!!, json, out.absolutePath, recycleInput = false
                     )
                 }.getOrNull()
                 report.append(name).append(' ').append(r?.ok).append(' ').append(r?.message).append('\n')
                 Log.i(TAG, "矩阵 $name -> ok=${r?.ok} ${r?.message}")
             }
         } finally {
-            small.recycle()
+            small?.recycle()
             runCatching { java.io.File(dir, "spektra_matrix_report.txt").writeText(report.toString()) }
             runCatching { specFile.delete() }   // 跑一次就删，别每次冲洗都来一遍
         }

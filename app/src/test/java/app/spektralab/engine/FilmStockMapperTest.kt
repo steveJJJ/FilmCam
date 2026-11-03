@@ -128,7 +128,7 @@ class FilmStockMapperTest {
             "\"film_stock\"", "\"print_stock\"", "\"input_color_space\"",
             "\"input_cctf_decoding\"", "\"output_color_space\"", "\"print_exposure\"",
             "\"preview_long_edge\"", "\"grain_amount\"", "\"halation_amount\"",
-            "\"glare_amount\"", "\"film_format_mm\""
+            "\"glare_amount\"", "\"lens_blur_um\"", "\"film_format_mm\""
         )
         var cursor = -1
         order.forEach { key ->
@@ -137,6 +137,16 @@ class FilmStockMapperTest {
             assertTrue("字段顺序被打乱（$key）: $json", at > cursor)
             cursor = at
         }
+    }
+
+    @Test
+    fun `镜头层带标定过的 lens_blur_um`() {
+        // Sonnar 在底片上的柔度，真机 matrix 扫描标定（0~35μm 全收，12μm=f/5.6-8 观感）。
+        // 定值不进 UI：镜头是机身的一部分，不随胶卷换。
+        val obj = JSONObject(FilmStockMapper.buildParamsJson("kodak_portra_400", "kodak_portra_endura"))
+        assertEquals(12.0, obj.optDouble("lens_blur_um"), 1e-6)
+        // 常量与白名单自洽：这个键必须真的在引擎白名单里
+        assertTrue(FilmStockMapper.ENGINE_KNOWN_KEYS.contains("lens_blur_um"))
     }
 
     @Test

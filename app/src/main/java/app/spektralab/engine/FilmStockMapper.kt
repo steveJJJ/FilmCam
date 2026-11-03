@@ -630,6 +630,13 @@ object FilmStockMapper {
           .append("\"grain_amount\":").append(jsonNum(settings.grainAmount)).append(',')
           .append("\"halation_amount\":").append(jsonNum(settings.halationAmount)).append(',')
           .append("\"glare_amount\":").append(jsonNum(settings.glareAmount)).append(',')
+          // 镜头层：Sonnar T* 35/2.8 打在底片上的柔度（胶片尺度 μm，36mm 宽）。
+          // 手机 HAL 出的数据偏"数码级干净"，一点镜头柔度是胶片味的重要来源。
+          // 真机标定（S25U / GOLD 200 / 2048px 对照，1px≈17.6μm）：
+          //   4μm 无感（次像素）、8μm=0.93、12μm=0.86（细节在、锋利感钝掉，f/5.6-8 的观感）、
+          //   20μm=0.73（明显柔）、35μm=0.56（奶油）。全分辨率 3939px 下 12μm ≈ 1.3px。
+          // 引擎区间实测 0~35 都收，50000 被拒（越界由引擎硬校验兜底）。
+          .append("\"lens_blur_um\":").append(jsonNum(LENS_BLUR_UM)).append(',')
           .append("\"film_format_mm\":36.0")
         if (scan) sb.append(",\"scan_film\":true")
         // 风格标记只在 EXIF 快照里出现；发给引擎会触发 unknown parameter，整卷出不了图
@@ -659,6 +666,14 @@ object FilmStockMapper {
      */
     const val SCAN_LEVEL_FULL = 0
     const val SCAN_LEVEL_SAFE = 1
+
+    /**
+     * 镜头柔度：`lens_blur_um`，Sonnar T* 35/2.8 在 36mm 底片上的模糊斑尺度。
+     * 这是「镜头层」唯一的引擎参数（暗角在冲洗侧 [DevelopmentService.applySonnarVignette]），
+     * 定值不进 UI——镜头是机身的一部分，不随胶卷换、不该让用户调。
+     * 标定数据见 [buildParamsJson] 里 `lens_blur_um` 那行的注释。
+     */
+    const val LENS_BLUR_UM = 12.0f
 
     /** 片框版式：135 全画幅（36×24mm，3:2，T3 这一格）—— 画面要先按片门裁成 3:2 */
     const val OVERSCAN_FORMAT_FULL = "135"
