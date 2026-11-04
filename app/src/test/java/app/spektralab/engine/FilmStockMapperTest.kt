@@ -320,4 +320,63 @@ class FilmStockMapperTest {
     fun `未知胶卷名抛异常而不是静默返回空`() {
         FilmStockMapper.filmStockIdFor("NO SUCH FILM 999")
     }
+
+    // ---------- 色彩微调（放大机滤色片 + 滤色强度） ----------
+
+    @Test
+    fun `色彩微调默认不发滤色片键`() {
+        // 印相档基线就是「不发」，默认设置下参数集与旧版完全一致
+        val obj = JSONObject(
+            FilmStockMapper.buildParamsJson("kodak_gold_200", "kodak_endura_premier")
+        )
+        assertFalse("默认不该有 y_filter_shift: $obj", obj.has("y_filter_shift"))
+        assertFalse("默认不该有 m_filter_shift: $obj", obj.has("m_filter_shift"))
+        assertFalse("默认不该有 filter_shift_scale: $obj", obj.has("filter_shift_scale"))
+    }
+
+    @Test
+    fun `色彩微调印相档非零直发并钳制`() {
+        val s = FilmStockMapper.DevSettings(ccY = 0.6f, ccM = -0.3f, ccScale = 6f)
+        val obj = JSONObject(
+            FilmStockMapper.buildParamsJson("kodak_gold_200", "kodak_endura_premier", s)
+        )
+        assertEquals(0.6, obj.optDouble("y_filter_shift"), 1e-3)
+        assertEquals(-0.3, obj.optDouble("m_filter_shift"), 1e-3)
+        assertEquals(6.0, obj.optDouble("filter_shift_scale"), 1e-3)
+        // 越界值钳回引擎硬区间 [-1,1]（真机报错确认过的区间）
+        val over = FilmStockMapper.DevSettings(ccY = 5f, ccM = -5f)
+        val o2 = JSONObject(
+            FilmStockMapper.buildParamsJson("kodak_gold_200", "kodak_endura_premier", over)
+        )
+        assertEquals(1.0, o2.optDouble("y_filter_shift"), 1e-3)
+        assertEquals(-1.0, o2.optDouble("m_filter_shift"), 1e-3)
+    }
+
+    @Test
+    fun `色彩微调叠加店扫档签名值并钳制`() {
+        // FRONTIER 签名 y=+1.0（冷）：用户偏 -0.5 → 0.5
+        val front = FilmStockMapper.DevSettings(
+            outputStyle = FilmStockMapper.OutputStyle.FRONTIER, ccY = -0.5f
+        )
+        val fo = JSONObject(
+            FilmStockMapper.buildParamsJson("kodak_gold_200", "kodak_endura_premier", front)
+        )
+        assertEquals(0.5, fo.optDouble("y_filter_shift"), 1e-3)
+        // NORITSU 签名 y=-1.0（暖）：偏 -0.5 钳在 -1.0；m 签名 -0.8 偏 +0.45 → -0.35
+        val nori = FilmStockMapper.DevSettings(
+            outputStyle = FilmStockMapper.OutputStyle.NORITSU, ccY = -0.5f, ccM = 0.45f
+        )
+        val no = JSONObject(
+            FilmStockMapper.buildParamsJson("kodak_gold_200", "kodak_endura_premier", nori)
+        )
+        assertEquals(-1.0, no.optDouble("y_filter_shift"), 1e-3)
+        assertEquals(-0.35, no.optDouble("m_filter_shift"), 1e-2)
+    }
+
+    @Test
+    fun `色彩微调三键与白名单自洽`() {
+        assertTrue(FilmStockMapper.ENGINE_KNOWN_KEYS.contains("y_filter_shift"))
+        assertTrue(FilmStockMapper.ENGINE_KNOWN_KEYS.contains("m_filter_shift"))
+        assertTrue(FilmStockMapper.ENGINE_KNOWN_KEYS.contains("filter_shift_scale"))
+    }
 }

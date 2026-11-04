@@ -1,0 +1,188 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 色彩微调子面板：放大机滤色片（y 黄 / m 品红）+ 滤色强度增益。
+     对的是「这台手机 + 这套引擎」的整体成色（比如肤色偏黄不够白），
+     全局一个值、不按胶卷存，所以独立成一项，不进按胶卷分组的「冲洗参数」。 -->
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:overScrollMode="never">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingStart="20dp"
+        android:paddingEnd="20dp"
+        android:paddingTop="8dp"
+        android:paddingBottom="12dp">
+
+        <!-- 冷暖（y 滤色片）：正 = 冷/白，负 = 暖/黄 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingTop="10dp">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/eng_cc_y"
+                android:textColor="#E8E4DA"
+                android:textSize="14sp" />
+
+            <TextView
+                android:id="@+id/tvCcYValue"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:fontFamily="monospace"
+                android:text="+0.00"
+                android:textColor="#FFC100"
+                android:textSize="14sp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/eng_cc_y_warm"
+                android:textColor="#77777C"
+                android:textSize="10sp" />
+
+            <Space
+                android:layout_width="0dp"
+                android:layout_height="1dp"
+                android:layout_weight="1" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/eng_cc_y_cold"
+                android:textColor="#77777C"
+                android:textSize="10sp" />
+        </LinearLayout>
+
+        <SeekBar
+            android:id="@+id/sbCcY"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:max="40"
+            android:progressTint="#FFC100"
+            android:progressBackgroundTint="#3A3A40"
+            android:thumbTint="#F0F0F4" />
+
+        <!-- 绿洋红（m 滤色片）：正 = 青绿，负 = 洋红 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingTop="14dp">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/eng_cc_m"
+                android:textColor="#E8E4DA"
+                android:textSize="14sp" />
+
+            <TextView
+                android:id="@+id/tvCcMValue"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:fontFamily="monospace"
+                android:text="+0.00"
+                android:textColor="#FFC100"
+                android:textSize="14sp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/eng_cc_m_magenta"
+                android:textColor="#77777C"
+                android:textSize="10sp" />
+
+            <Space
+                android:layout_width="0dp"
+                android:layout_height="1dp"
+                android:layout_weight="1" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/eng_cc_m_green"
+                android:textColor="#77777C"
+                android:textSize="10sp" />
+        </LinearLayout>
+
+        <SeekBar
+            android:id="@+id/sbCcM"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:max="40"
+            android:progressTint="#FFC100"
+            android:progressBackgroundTint="#3A3A40"
+            android:thumbTint="#F0F0F4" />
+
+        <!-- 滤色强度：滤色片太弱（±1.0 只挪 ~1.6 个色阶），要真挪动肤色靠它放大 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingTop="14dp">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/eng_cc_scale"
+                android:textColor="#E8E4DA"
+                android:textSize="14sp" />
+
+            <TextView
+                android:id="@+id/tvCcScaleValue"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:fontFamily="monospace"
+                android:text="0"
+                android:textColor="#FFC100"
+                android:textSize="14sp" />
+        </LinearLayout>
+
+        <SeekBar
+            android:id="@+id/sbCcScale"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:max="30"
+            android:progressTint="#FFC100"
+            android:progressBackgroundTint="#3A3A40"
+            android:thumbTint="#F0F0F4" />
+
+        <!-- 用法说明 -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:text="@string/eng_cc_note"
+            android:textColor="#77777C"
+            android:textSize="10sp"
+            android:lineSpacingMultiplier="1.3" />
+
+    </LinearLayout>
+</ScrollView>

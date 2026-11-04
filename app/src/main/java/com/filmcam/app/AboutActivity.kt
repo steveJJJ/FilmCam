@@ -410,6 +410,7 @@ class AboutActivity : AppCompatActivity() {
         val rowStyle = view.findViewById<View>(R.id.rowEngStyle)
         val rowDev = view.findViewById<View>(R.id.rowEngDev)
         val rowLens = view.findViewById<View>(R.id.rowEngLens)
+        val rowColor = view.findViewById<View>(R.id.rowEngColor)
 
         /** 绑定一行「名称 + 说明」，返回右侧读数 TextView */
         fun bindRow(row: View, labelRes: Int, hintRes: Int): TextView {
@@ -424,6 +425,7 @@ class AboutActivity : AppCompatActivity() {
         val tvStyle = bindRow(rowStyle, R.string.set_style, R.string.eng_style_hint)
         bindRow(rowDev, R.string.set_dev, R.string.eng_dev_hint)
         val tvLens = bindRow(rowLens, R.string.eng_lens_blur, R.string.eng_lens_hint)
+        val tvColor = bindRow(rowColor, R.string.eng_cc, R.string.eng_cc_hint)
 
         fun slowMode(): com.filmcam.app.camera.FilmExposure.Mode =
             com.filmcam.app.camera.FilmExposure.Mode.fromPrefs(prefs.getInt("slowShutter", 0))
@@ -450,6 +452,14 @@ class AboutActivity : AppCompatActivity() {
         tvLens.text = "${prefs.getFloat(
             "filmcam_dev_lens_blur", app.spektralab.engine.FilmStockMapper.LENS_BLUR_UM
         ).roundToInt()}μm"
+        // 色彩微调：同样全局一个值；两轴都归零且未开强度 = 显示「默认」
+        run {
+            val y = prefs.getFloat("filmcam_dev_cc_y", 0f)
+            val m = prefs.getFloat("filmcam_dev_cc_m", 0f)
+            val s = prefs.getFloat("filmcam_dev_cc_scale", 0f)
+            tvColor.text = if (y == 0f && m == 0f && s <= 0f) getString(R.string.eng_cc_default)
+            else String.format(java.util.Locale.US, "%+.2f/%+.2f", y, m)
+        }
 
         // 当前装在机身上的是哪支胶卷：冲洗参数是按胶卷分开存的，默认就该停在这支
         val rollIdx = prefs.getInt("rollIndex", 0)
@@ -482,6 +492,11 @@ class AboutActivity : AppCompatActivity() {
         rowLens.setOnClickListener {
             consoleRef?.dismiss()
             showLensBlurDialog { showEngineerConsole() }
+        }
+        // 色彩微调：整体成色（肤色偏黄这类），同样全局存、单独一层
+        rowColor.setOnClickListener {
+            consoleRef?.dismiss()
+            showColorBalanceDialog { showEngineerConsole() }
         }
 
         // 工程师模式开关：关掉 = 这些旋钮重新藏起来，入口回到"连点 10 次"
@@ -656,6 +671,82 @@ class AboutActivity : AppCompatActivity() {
 
         androidx.appcompat.app.AlertDialog.Builder(this, com.filmcam.app.ui.BodyTheme.dialogTheme)
             .setTitle(R.string.eng_lens_blur)
+            .setView(view)
+            .setPositiveButton(R.string.set_close, null)
+            .create()
+            .apply { setOnDismissListener { onClose() } }
+            .show()
+    }
+
+    /**
+     * 色彩微调子面板（冷暖 / 绿洋红 / 滤色强度）。
+     *
+     * 对「这台手机 + 这套引擎」的整体成色（肤色偏黄不够白这类），全局一个值、
+     * 不按胶卷存。方向：y 正=冷/白、负=暖/黄；m 正=青绿、负=洋红。
+     * 两根滤色片引擎硬区间 [-1,1]，滑杆步进 0.05；滤色强度 0=不发键（引擎默认强度），
+     * 0.5 步进到 15（值域未标定，冲洗前预检兜底）。
+     */
+    private fun showColorBalanceDialog(onClose: () -> Unit) {
+        val prefs = getSharedPreferences("filmcam", MODE_PRIVATE)
+        val view = layoutInflater.inflate(R.layout.dialog_color_balance, null)
+        com.filmcam.app.ui.BodyTheme.applyToViewTree(view)
+        val sbY = view.findViewById<SeekBar>(R.id.sbCcY)
+        val tvY = view.findViewById<TextView>(R.id.tvCcYValue)
+        val sbM = view.findViewById<SeekBar>(R.id.sbCcM)
+        val tvM = view.findViewById<TextView>(R.id.tvCcMValue)
+        val sbS = view.findViewById<SeekBar>(R.id.sbCcScale)
+        val tvS = view.findViewById<TextView>(R.id.tvCcScaleValue)
+
+        val mapper = app.spektralab.engine.FilmStockMapper
+        // 滤色片：progress 0..40 ↔ 值 (p-20)*0.05 ∈ [-1,1]
+        fun shiftOf(progress: Int) = (progress - 20) * 0.05f
+        fun progressOf(value: Float) = (value / 0.05f).roundToInt() + 20
+        fun fmt(v: Float) = String.format(java.util.Locale.US, "%+.2f", v)
+
+        sbY.progress = progressOf(
+            prefs.getFloat("filmcam_dev_cc_y", 0f).coerceIn(-1f, 1f)
+        )
+        tvY.text = fmt(shiftOf(sbY.progress))
+        sbY.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(sb: SeekBar?, progress: Int, fromUser: Boolean) {
+                if (fromUser) prefs.edit().putFloat("filmcam_dev_cc_y", shiftOf(progress)).apply()
+                tvY.text = fmt(shiftOf(progress))
+            }
+            override fun onStartTrackingTouch(sb: SeekBar?) {}
+            override fun onStopTrackingTouch(sb: SeekBar?) {}
+        })
+
+        sbM.progress = progressOf(
+            prefs.getFloat("filmcam_dev_cc_m", 0f).coerceIn(-1f, 1f)
+        )
+        tvM.text = fmt(shiftOf(sbM.progress))
+        sbM.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(sb: SeekBar?, progress: Int, fromUser: Boolean) {
+                if (fromUser) prefs.edit().putFloat("filmcam_dev_cc_m", shiftOf(progress)).apply()
+                tvM.text = fmt(shiftOf(progress))
+            }
+            override fun onStartTrackingTouch(sb: SeekBar?) {}
+            override fun onStopTrackingTouch(sb: SeekBar?) {}
+        })
+
+        // 滤色强度：progress 0..30 ↔ 值 p*0.5 ∈ [0,15]；0 = 不发键
+        val scaleNow = prefs.getFloat("filmcam_dev_cc_scale", 0f)
+            .coerceIn(0f, mapper.CC_SCALE_MAX)
+        sbS.progress = (scaleNow / 0.5f).roundToInt()
+        tvS.text = if (sbS.progress == 0) getString(R.string.eng_cc_default)
+        else String.format(java.util.Locale.US, "%.1f", sbS.progress * 0.5f)
+        sbS.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(sb: SeekBar?, progress: Int, fromUser: Boolean) {
+                if (fromUser) prefs.edit().putFloat("filmcam_dev_cc_scale", progress * 0.5f).apply()
+                tvS.text = if (progress == 0) getString(R.string.eng_cc_default)
+                else String.format(java.util.Locale.US, "%.1f", progress * 0.5f)
+            }
+            override fun onStartTrackingTouch(sb: SeekBar?) {}
+            override fun onStopTrackingTouch(sb: SeekBar?) {}
+        })
+
+        androidx.appcompat.app.AlertDialog.Builder(this, com.filmcam.app.ui.BodyTheme.dialogTheme)
+            .setTitle(R.string.eng_cc)
             .setView(view)
             .setPositiveButton(R.string.set_close, null)
             .create()

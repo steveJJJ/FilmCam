@@ -205,6 +205,25 @@ class DevelopmentService : Service() {
                 ).show()
             }
             var effective = devSettings.copy(paperOverride = resolved.paperId)
+            // 滤色强度增益（色彩微调的 filter_shift_scale）：**值域未标定**，不能直接下发。
+            // 先拿「不带它」的保守档当基线单独问过引擎——被拒就从本场所有参数里撤掉；
+            // 它要是混进参数里，连兜底链的每一级都会带着它一起失败。
+            if (effective.ccScale != null) {
+                val cleanSafe = FilmStockMapper.buildParamsJson(
+                    roll.filmStockId, mappedPrint, effective.copy(ccScale = null),
+                    includeStyleMark = false,
+                    scanFinishLevel = FilmStockMapper.SCAN_LEVEL_SAFE,
+                )
+                val scaleEntry = "filter_shift_scale" to
+                    FilmStockMapper.ccScaleJsonLiteral(effective.ccScale!!)
+                val rejectedScale = runCatching {
+                    SpektraProcessor.probeRejectedKeys(this, cleanSafe, listOf(scaleEntry))
+                }.getOrDefault(setOf(scaleEntry.first))
+                if (scaleEntry.first in rejectedScale) {
+                    Log.w(TAG, "filter_shift_scale=${effective.ccScale} 被引擎拒，本场不带")
+                    effective = effective.copy(ccScale = null)
+                }
+            }
             // 交给引擎的参数：只包含引擎认识的键。
             // （曾把 output_style 这个自定义标记塞进去，引擎报 unknown parameter，整卷 0 帧出图。）
             val paramsJson = FilmStockMapper.buildParamsJson(roll.filmStockId, mappedPrint, effective)
