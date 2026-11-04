@@ -1,7 +1,9 @@
 package com.filmcam.app.develop
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -74,5 +76,35 @@ class PhotoImportDecoderTest {
         assertEquals(4, PhotoImportDecoder.sampleSizeFor(16000, 12000, 24_000_000))
         // 降到采样后仍在上限之上就继续翻倍，不会停在中途
         assertEquals(8, PhotoImportDecoder.sampleSizeFor(30000, 20000, 24_000_000))
+    }
+
+    // ---------- RAW 识别（导入 RAW 支持的第一道门） ----------
+
+    @Test
+    fun rawFileNamesAreRecognizedByExtension() {
+        assertTrue(PhotoImportDecoder.isRawFileName("IMG_1234.DNG"))
+        assertTrue(PhotoImportDecoder.isRawFileName("DSC00123.ARW"))
+        assertTrue(PhotoImportDecoder.isRawFileName("photo.nef"))
+        assertTrue(PhotoImportDecoder.isRawFileName("IMG_0001.RW2"))
+        // 压缩图与无关扩展都不是 RAW
+        assertFalse(PhotoImportDecoder.isRawFileName("IMG_1234.jpg"))
+        assertFalse(PhotoImportDecoder.isRawFileName("IMG_1234.heic"))
+        assertFalse(PhotoImportDecoder.isRawFileName("noext"))
+        assertFalse(PhotoImportDecoder.isRawFileName(null))
+        assertFalse(PhotoImportDecoder.isRawFileName(""))
+    }
+
+    @Test
+    fun rawMimesAreRecognizedAndCompressedImagesAreNot() {
+        assertTrue(PhotoImportDecoder.isRawMime("image/x-adobe-dng"))
+        assertTrue(PhotoImportDecoder.isRawMime("image/dng"))
+        assertTrue(PhotoImportDecoder.isRawMime("image/x-sony-arw"))
+        assertTrue(PhotoImportDecoder.isRawMime("image/x-nikon-nef"))
+        // BitmapFactory 能解的都不是 RAW（防止把普通相册图误判成 RAW）
+        assertFalse(PhotoImportDecoder.isRawMime("image/jpeg"))
+        assertFalse(PhotoImportDecoder.isRawMime("image/heic"))
+        assertFalse(PhotoImportDecoder.isRawMime("image/png"))
+        assertFalse(PhotoImportDecoder.isRawMime(null))
+        assertFalse(PhotoImportDecoder.isRawMime(""))
     }
 }

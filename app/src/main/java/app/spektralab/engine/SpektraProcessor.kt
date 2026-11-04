@@ -329,8 +329,9 @@ object SpektraProcessor {
         paramsJson: String,
         outJpegPath: String,
         maxPx: Int,
+        maxLongEdge: Int = 0,
     ): Pair<Int, Int>? {
-        val session = eng.openRawSession(dngPath, paramsJson, if (maxPx > 0) maxPx else 0, 0)
+        val session = eng.openRawSession(dngPath, paramsJson, if (maxPx > 0) maxPx else 0, maxLongEdge)
         return try {
             dumpParamsOnce(context, session)
             session.solve("both")
@@ -349,6 +350,27 @@ object SpektraProcessor {
             null
         } finally {
             session.close()
+        }
+    }
+
+    /**
+     * 导入 RAW 时的兜底/预览出图：限制长边开 RAW 会话 → solve → exportJpeg。
+     * 一石二鸟 —— 既是入卷的 JPEG 帧（RAW 通路万一失败的兜底），也是
+     * 「这个 RAW 引擎解不解得开」的入卷前验证：解不开返回 null，调用方跳过这张。
+     */
+    fun renderRawPreview(
+        context: Context,
+        dngPath: String,
+        paramsJson: String,
+        outJpegPath: String,
+        maxLongEdge: Int = 1920,
+    ): Pair<Int, Int>? {
+        return try {
+            val eng = ensureEngine(context.applicationContext)
+            renderRawOne(eng, context, dngPath, paramsJson, outJpegPath, 0, maxLongEdge)
+        } catch (e: Throwable) {
+            Log.e(TAG, "renderRawPreview 失败: ${e.message} | dng=$dngPath", e)
+            null
         }
     }
 

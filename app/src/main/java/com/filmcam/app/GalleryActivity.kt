@@ -170,9 +170,10 @@ class GalleryActivity : AppCompatActivity() {
         val roll = UndevelopedFilmStore.startRoll(stockId, printId)
         var count = 0
         for (uri in uris) {
-            val frame = readPhotoAsFrame(uri) ?: continue
+            val frame = readPhotoAsFrame(uri, stockId, printId) ?: continue
             UndevelopedFilmStore.saveFrame(
-                roll.rollId, frame.bytes, frame.takenAtMs, null, frame.orientation
+                roll.rollId, frame.bytes, frame.takenAtMs, null, frame.orientation,
+                rawDng = frame.rawFile,
             )
             count++
         }
@@ -183,16 +184,34 @@ class GalleryActivity : AppCompatActivity() {
         return roll.rollId to count
     }
 
-    private class ImportedFrame(val bytes: ByteArray, val takenAtMs: Long, val orientation: Int)
+    private class ImportedFrame(
+        val bytes: ByteArray,
+        val takenAtMs: Long,
+        val orientation: Int,
+        /** RAW 底片临时文件（引擎/相机侧产出的 DNG/RAW）；null = 纯 JPEG 帧 */
+        val rawFile: java.io.File? = null,
+    )
 
     /**
-     * 读一张本地照片：按像素上限降采样后重新压成 JPEG。
-     * 降采样是必须的 —— 现在手机一张 50MP，直接喂给引擎既慢又容易顶到内存上限，
-     * 而冲洗本来就是按胶卷的分辨率出片，多出来的像素没有意义。
-     * 方向与拍摄时刻照抄 EXIF：否则横拍的照片会躺倒，日期戳也会变成导入当天。
+     * 读一张本地照片入卷。两条路：
+     * - 压缩图（JPEG/PNG/HEIC…）：BitmapFactory 降采样后重压 JPEG；
+     * - RAW（DNG/ARW/NEF…）：BitmapFactory 解不了传感器原始数据，拷成临时文件后
+     *   交给引擎 RAW 会话渲染一张**兜底 JPEG**入卷（顺带验证引擎解得开这张 RAW），
+     *   RAW 本体作为「底片」随帧入卷 —— 冲洗时优先走 RAW 通路（P3），失败落回兜底 JPEG。
+     *
+     * RAW 判定按扩展名优先（SAF 对 RAW 的 mime 常常是 octet-stream）；扩展名/mime
+     * 都认不出但 BitmapFactory 又探不出尺寸的，最后也按 RAW 试一次——解不开自然跳过。
      */
-    private fun readPhotoAsFrame(uri: Uri): ImportedFrame? {
+    private fun readPhotoAsFrame(uri: Uri, stockId: String, printId: String): ImportedFrame? {
         val cr = contentResolver
+        val displayName = queryDisplayName(uri)
+        val ext = displayName?.substringAfterLast('.', "")?.lowercase() ?: ""
+        if (com.filmcam.app.develop.PhotoImportDecoder.isRawFileName(displayName) ||
+            com.filmcam.app.develop.PhotoImportDecoder.isRawMime(runCatching { cr.getType(uri) }.getOrNull())
+        ) {
+            return readRawAsFrame(uri, stockId, printId, ext.ifBlank { "dng" })
+        }
+
         val bmp = com.filmcam.app.develop.PhotoImportDecoder.decodeSampled(
             openStream = { runCatching { cr.openInputStream(uri) }.getOrNull() },
             probe = { s ->
@@ -212,8 +231,9 @@ class GalleryActivity : AppCompatActivity() {
             maxPixels = MAX_IMPORT_PIXELS.toLong(),
         )
         if (bmp == null) {
-            Log.w(TAG, "导入解码失败，跳过：$uri")
-            return null
+            // BitmapFactory 探不出尺寸 ≠ 坏文件：RAW 就是探不出来的。最后按 RAW 试一次
+            Log.i(TAG, "导入探测不到尺寸，按 RAW 再试一次：$uri")
+            return readRawAsFrame(uri, stockId, printId, ext.ifBlank { "dng" })
         }
         val bytes = java.io.ByteArrayOutputStream().use { out ->
             bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 95, out)
@@ -221,11 +241,80 @@ class GalleryActivity : AppCompatActivity() {
         }
         bmp.recycle()
 
+        val (orientation, takenAtMs) = readExifMeta(uri)
+        return ImportedFrame(bytes, takenAtMs, orientation)
+    }
+
+    /**
+     * 读一张 RAW 入卷：临时文件 → 引擎渲染兜底 JPEG（验证可解码）→ 方向归一化。
+     * 任何一步失败返回 null 并清理临时文件。
+     */
+    private fun readRawAsFrame(uri: Uri, stockId: String, printId: String, ext: String): ImportedFrame? {
+        // 1. 引擎 RAW 会话只认文件路径：先拷到 cache
+        val tmpRaw = java.io.File(cacheDir, "import_raw_${System.currentTimeMillis()}.$ext")
+        val copied = runCatching {
+            contentResolver.openInputStream(uri)?.use { input ->
+                tmpRaw.outputStream().use { input.copyTo(it) }
+            } != null && tmpRaw.length() > 0
+        }.getOrDefault(false)
+        if (!copied) {
+            Log.w(TAG, "导入 RAW 拷贝失败，跳过：$uri")
+            runCatching { tmpRaw.delete() }
+            return null
+        }
+
+        // 2. 引擎渲染兜底 JPEG（限制长边求快）；渲染失败 = 引擎解不开这张 RAW
+        val tmpJpeg = java.io.File(cacheDir, "import_preview_${System.currentTimeMillis()}.jpg")
+        val params = runCatching {
+            FilmStockMapper.buildParamsJson(stockId, printId)
+        }.getOrNull()
+        val dims = if (params != null) {
+            app.spektralab.engine.SpektraProcessor.renderRawPreview(
+                applicationContext, tmpRaw.absolutePath, params, tmpJpeg.absolutePath
+            )
+        } else null
+        if (dims == null) {
+            Log.w(TAG, "导入 RAW 引擎解不开（或参数构建失败），跳过：$uri")
+            runCatching { tmpRaw.delete() }; runCatching { tmpJpeg.delete() }
+            return null
+        }
+
+        // 3. EXIF 方向原样记录、兜底 JPEG 原样存（不归一化）：RAW 冲洗通路的旋转启发式
+        //    和竖片门版式选择都靠这个记录（与相机 DNG 帧同一语义）；
+        //    JPEG 兜底通路按记录旋转 —— 引擎若已应用方向标签，双重失败兜底时可能多转一次，
+        //    但那是「RAW 冲洗失败 + 引擎转过了」双重小概率，帧不丢即可
+        val (orientation, takenAtMs) = readExifMeta(uri)
+        val bmp = android.graphics.BitmapFactory.decodeFile(tmpJpeg.absolutePath)
+        if (bmp != null) {
+            val bytes = java.io.ByteArrayOutputStream().use { out ->
+                bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 95, out)
+                out.toByteArray()
+            }
+            bmp.recycle()
+            runCatching { tmpJpeg.delete() }
+            Log.i(TAG, "导入 RAW 成功 ${dims.first}x${dims.second} 底片=${tmpRaw.length() / 1024}KB：$uri")
+            return ImportedFrame(bytes, takenAtMs, orientation, rawFile = tmpRaw)
+        }
+        // 兜底 JPEG 解不开（理论不该发生）：底片照留，用 1x1 占位——帧记录必须有 JPEG handle
+        Log.w(TAG, "导入 RAW 的兜底 JPEG 解码失败：$uri")
+        runCatching { tmpJpeg.delete() }
+        val placeholder = java.io.ByteArrayOutputStream().use { out ->
+            android.graphics.Bitmap.createBitmap(1, 1, android.graphics.Bitmap.Config.ARGB_8888)
+                .compress(android.graphics.Bitmap.CompressFormat.JPEG, 90, out)
+            out.toByteArray()
+        }
+        return ImportedFrame(placeholder, takenAtMs, orientation, rawFile = tmpRaw)
+    }
+
+    /** 从 uri 读 EXIF 方向（0/90/180/270）与拍摄时刻（读不到用当前时间）。 */
+    private fun readExifMeta(uri: Uri): Pair<Int, Long> {
         var orientation = 0
         var takenAtMs = System.currentTimeMillis()
         runCatching {
-            cr.openInputStream(uri)?.use { s ->
+            contentResolver.openInputStream(uri)?.use { s ->
                 val exif = androidx.exifinterface.media.ExifInterface(s)
+                // androidx ExifInterface 支持 DNG/CR2/NEF/NRW/ARW/RW2/ORF/PEF/SRW/RAF 等
+                // TIFF 系 RAW 的读取，方向与拍摄时刻照抄——日期戳要的是拍摄那天，不是导入当天
                 orientation = when (
                     exif.getAttributeInt(
                         androidx.exifinterface.media.ExifInterface.TAG_ORIENTATION,
@@ -245,8 +334,14 @@ class GalleryActivity : AppCompatActivity() {
                 }
             }
         }
-        return ImportedFrame(bytes, takenAtMs, orientation)
+        return orientation to takenAtMs
     }
+
+    /** SAF uri 的显示名（判扩展名用） */
+    private fun queryDisplayName(uri: Uri): String? = runCatching {
+        contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)
+            ?.use { c -> if (c.moveToFirst()) c.getString(0) else null }
+    }.getOrNull()
 
     override fun onStart() {
         super.onStart()

@@ -20,6 +20,42 @@ object PhotoImportDecoder {
 
     data class Size(val width: Int, val height: Int)
 
+    /** 常见相机 RAW 扩展名（LibRaw 支持面里挑的高频档；按小写比较） */
+    val RAW_EXTENSIONS = setOf(
+        "dng", "arw", "srf", "sr2",          // Sony / Adobe
+        "nef", "nrw",                        // Nikon
+        "cr2", "cr3", "crw",                 // Canon
+        "raf",                               // Fuji
+        "orf",                               // Olympus
+        "rw2", "rwl",                        // Panasonic / Leica
+        "pef", "ptx",                        // Pentax
+        "srw",                               // Samsung
+        "raw", "dcr", "kdc", "erf", "mrw", "mef", "mos", "iiq", "3fr", "fff", "x3f",
+    )
+
+    /** 文件名是不是 RAW（按扩展名；SAF 对 RAW 的 mime 常常是 octet-stream，扩展名更可靠） */
+    fun isRawFileName(displayName: String?): Boolean {
+        if (displayName.isNullOrBlank()) return false
+        val ext = displayName.substringAfterLast('.', "").lowercase()
+        return ext in RAW_EXTENSIONS
+    }
+
+    /**
+     * mime 是不是 RAW。BitmapFactory 能解的压缩格式（jpeg/png/webp/heic/bmp/gif）
+     * 都不是 RAW；只认明确带 dng/raw 的和各家厂商 RAW mime。
+     * （注意别在注释里写 image 斜杠星这种字面量——Kotlin 块注释可嵌套，会被当成新注释开头）
+     */
+    fun isRawMime(mime: String?): Boolean {
+        if (mime.isNullOrBlank()) return false
+        val m = mime.lowercase()
+        if (m == "image/jpeg" || m == "image/png" || m == "image/webp" ||
+            m == "image/heic" || m == "image/heif" || m == "image/gif" || m == "image/bmp"
+        ) return false
+        return m.contains("dng") || m.contains("raw") || m.contains("arw") ||
+            m.contains("nef") || m.contains("cr2") || m.contains("cr3") || m.contains("raf") ||
+            m.contains("orf") || m.contains("rw2") || m.contains("pef") || m.contains("srw")
+    }
+
     /**
      * 按像素上限算 `inSampleSize`（必须是 2 的幂）。
      * 尺寸非法时给 1，交给下游判断，不在这里抛。
