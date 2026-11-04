@@ -616,7 +616,14 @@ class Camera2Controller(private val context: Context) {
             object : android.hardware.camera2.CameraCaptureSession.StateCallback() {
                 override fun onConfigured(session: android.hardware.camera2.CameraCaptureSession) {
                     captureSession = session
-                    session.setRepeatingRequest(previewRequestBuilder!!.build(), previewMetaCallback, backgroundHandler)
+                    // 快速退出相机页时设备可能已 close，HAL 的配置回调晚到一步，
+                    // setRepeatingRequest 会抛 IllegalStateException 把整个进程带走（真机实锤）。
+                    // 预览流没起来只是页面黑一瞬，吞掉比崩掉好。
+                    runCatching {
+                        session.setRepeatingRequest(previewRequestBuilder!!.build(), previewMetaCallback, backgroundHandler)
+                    }.onFailure {
+                        android.util.Log.w(TAG, "会话配置回调迟到，预览请求未发出: ${it.message}")
+                    }
                 }
                 override fun onConfigureFailed(session: android.hardware.camera2.CameraCaptureSession) {
                     Toast.makeText(context, "会话创建失败", Toast.LENGTH_SHORT).show()
