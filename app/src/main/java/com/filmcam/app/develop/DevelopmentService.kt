@@ -206,9 +206,10 @@ class DevelopmentService : Service() {
             }
             var effective = devSettings.copy(paperOverride = resolved.paperId)
             // 滤色强度增益（色彩微调的 filter_shift_scale）：**值域未标定**，不能直接下发。
-            // 先拿「不带它」的保守档当基线单独问过引擎——被拒就从本场所有参数里撤掉；
+            // 只在印相档下发（店扫档不叠色彩微调，见 buildParamsJson），先拿「不带它」的
+            // 保守档当基线单独问过引擎——被拒就从本场所有参数里撤掉；
             // 它要是混进参数里，连兜底链的每一级都会带着它一起失败。
-            if (effective.ccScale != null) {
+            if (effective.ccScale != null && !effective.outputStyle.isScan) {
                 val cleanSafe = FilmStockMapper.buildParamsJson(
                     roll.filmStockId, mappedPrint, effective.copy(ccScale = null),
                     includeStyleMark = false,

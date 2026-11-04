@@ -286,8 +286,8 @@ App 版本：%1$s (%2$d)
     <string name="eng_cc_m_magenta">洋红</string>
     <string name="eng_cc_m_green">青绿</string>
     <string name="eng_cc_scale">滤色强度</string>
-    <string name="eng_cc_note">肤色偏黄：冷暖往「冷·白」拖；还嫌黄再配一点洋红。两根滤色片本身很弱（拉满也只挪一两个色阶），要看到变化须调大滤色强度（0 = 引擎默认强度）。全局生效、不随胶卷换，改完下一次冲洗生效</string>
-    <string name="eng_cc_default">默认</string>
+    <string name="eng_cc_note">肤色偏黄：冷暖往「冷·白」拖；还嫌黄再配一点洋红。两根滤色片本身很弱（拉满也只挪一两个色阶），要看到变化须调大滤色强度。默认 +1.00/−0.35，强度 15；强度 0 = 关。只影响印相出口（店扫档保持自家校色），不随胶卷换，改完下一次冲洗生效</string>
+    <string name="eng_cc_off">关</string>
     <string name="eng_style_hint">放大机印成相纸，还是店里把底片扫出来</string>
     <string name="eng_dev_hint">颗粒 · 辉光 · 眩光 · 印相曝光 · 相纸（按胶卷分别存）</string>
     <string name="hidden_slow_trigger">慢门触发机制</string>

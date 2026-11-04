@@ -452,13 +452,17 @@ class AboutActivity : AppCompatActivity() {
         tvLens.text = "${prefs.getFloat(
             "filmcam_dev_lens_blur", app.spektralab.engine.FilmStockMapper.LENS_BLUR_UM
         ).roundToInt()}μm"
-        // 色彩微调：同样全局一个值；两轴都归零且未开强度 = 显示「默认」
+        // 色彩微调：同样全局一个值；没动过滑杆 = 冻结定值（CC_*_DEFAULT），
+        // 显式全零 + 强度 0 = 主动关掉
         run {
-            val y = prefs.getFloat("filmcam_dev_cc_y", 0f)
-            val m = prefs.getFloat("filmcam_dev_cc_m", 0f)
-            val s = prefs.getFloat("filmcam_dev_cc_scale", 0f)
-            tvColor.text = if (y == 0f && m == 0f && s <= 0f) getString(R.string.eng_cc_default)
-            else String.format(java.util.Locale.US, "%+.2f/%+.2f", y, m)
+            val m2 = app.spektralab.engine.FilmStockMapper
+            val y = prefs.getFloat("filmcam_dev_cc_y", m2.CC_Y_DEFAULT)
+            val mm = prefs.getFloat("filmcam_dev_cc_m", m2.CC_M_DEFAULT)
+            val s = if (prefs.contains("filmcam_dev_cc_scale"))
+                prefs.getFloat("filmcam_dev_cc_scale", m2.CC_SCALE_DEFAULT)
+            else m2.CC_SCALE_DEFAULT
+            tvColor.text = if (y == 0f && mm == 0f && s <= 0f) getString(R.string.eng_cc_off)
+            else String.format(java.util.Locale.US, "%+.2f/%+.2f", y, mm)
         }
 
         // 当前装在机身上的是哪支胶卷：冲洗参数是按胶卷分开存的，默认就该停在这支
@@ -704,7 +708,7 @@ class AboutActivity : AppCompatActivity() {
         fun fmt(v: Float) = String.format(java.util.Locale.US, "%+.2f", v)
 
         sbY.progress = progressOf(
-            prefs.getFloat("filmcam_dev_cc_y", 0f).coerceIn(-1f, 1f)
+            prefs.getFloat("filmcam_dev_cc_y", mapper.CC_Y_DEFAULT).coerceIn(-1f, 1f)
         )
         tvY.text = fmt(shiftOf(sbY.progress))
         sbY.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
@@ -717,7 +721,7 @@ class AboutActivity : AppCompatActivity() {
         })
 
         sbM.progress = progressOf(
-            prefs.getFloat("filmcam_dev_cc_m", 0f).coerceIn(-1f, 1f)
+            prefs.getFloat("filmcam_dev_cc_m", mapper.CC_M_DEFAULT).coerceIn(-1f, 1f)
         )
         tvM.text = fmt(shiftOf(sbM.progress))
         sbM.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
@@ -729,16 +733,19 @@ class AboutActivity : AppCompatActivity() {
             override fun onStopTrackingTouch(sb: SeekBar?) {}
         })
 
-        // 滤色强度：progress 0..30 ↔ 值 p*0.5 ∈ [0,15]；0 = 不发键
-        val scaleNow = prefs.getFloat("filmcam_dev_cc_scale", 0f)
+        // 滤色强度：progress 0..30 ↔ 值 p*0.5 ∈ [0,15]；没存过 = 冻结默认（15），
+        // 显式拖到 0 = 关（不发键）——contains 区分这两种状态
+        val scaleNow = (if (prefs.contains("filmcam_dev_cc_scale"))
+            prefs.getFloat("filmcam_dev_cc_scale", mapper.CC_SCALE_DEFAULT)
+        else mapper.CC_SCALE_DEFAULT)
             .coerceIn(0f, mapper.CC_SCALE_MAX)
         sbS.progress = (scaleNow / 0.5f).roundToInt()
-        tvS.text = if (sbS.progress == 0) getString(R.string.eng_cc_default)
+        tvS.text = if (sbS.progress == 0) getString(R.string.eng_cc_off)
         else String.format(java.util.Locale.US, "%.1f", sbS.progress * 0.5f)
         sbS.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(sb: SeekBar?, progress: Int, fromUser: Boolean) {
                 if (fromUser) prefs.edit().putFloat("filmcam_dev_cc_scale", progress * 0.5f).apply()
-                tvS.text = if (progress == 0) getString(R.string.eng_cc_default)
+                tvS.text = if (progress == 0) getString(R.string.eng_cc_off)
                 else String.format(java.util.Locale.US, "%.1f", progress * 0.5f)
             }
             override fun onStartTrackingTouch(sb: SeekBar?) {}

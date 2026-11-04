@@ -274,8 +274,8 @@ Memory available: %10$d MB / %11$d MB total
     <string name="eng_cc_m_magenta">Magenta</string>
     <string name="eng_cc_m_green">Green</string>
     <string name="eng_cc_scale">Filter strength</string>
-    <string name="eng_cc_note">Yellowish skin: drag warmth toward cool/fair; add a touch of magenta if still yellow. The two filters alone are very weak (full scale moves only a level or two) — raise filter strength to see real change (0 = engine default). Applies to all rolls; takes effect on the next development.</string>
-    <string name="eng_cc_default">Default</string>
+    <string name="eng_cc_note">Yellowish skin: drag warmth toward cool/fair; add a touch of magenta if still yellow. The two filters alone are very weak (full scale moves only a level or two) — raise filter strength to see real change. Defaults +1.00/−0.35, strength 15; strength 0 = off. Print output only (lab-scan styles keep their own signature); takes effect on the next development.</string>
+    <string name="eng_cc_off">Off</string>
     <string name="eng_style_hint">Enlarged onto paper, or the lab scanning the negative</string>
     <string name="eng_dev_hint">Grain · halation · glare · print exposure · paper (saved per film stock)</string>
     <string name="hidden_slow_trigger">Slow shutter trigger</string>

@@ -178,17 +178,18 @@ object FilmStockMapper {
          * 对的是「这台手机 + 这套引擎」的整体成色，换胶卷不换口味）。
          * ccY = 放大机黄滤片偏移（**正=冷/白，负=暖/黄**）；ccM = 品红滤片偏移
          * （**正=偏青绿，负=偏洋红**——肤色「不够白」通常要配一点负值）。
-         * 印相档基线 0（本来不发滤色片）；店扫档叠加在两家店的签名值上，
-         * 和仍钳回引擎硬区间 [-1,1]。
+         * 默认 = 冻结定值（见 [CC_Y_DEFAULT] 等，真机对照 T3 实拍选定）；
+         * 店扫档叠加在两家店的签名值上，和仍钳回引擎硬区间 [-1,1]。
          */
-        val ccY: Float = 0f,
-        val ccM: Float = 0f,
+        val ccY: Float = CC_Y_DEFAULT,
+        val ccM: Float = CC_M_DEFAULT,
         /**
          * 滤色强度增益 `filter_shift_scale`：滤色片本身太弱（真机标定 ±1.0 也只挪
-         * ~1.6 个 R−B 色阶），要真正挪动肤色得靠它放大。null = 不发（用引擎默认强度）。
-         * **值域未标定**——DevelopmentService 会在冲洗前单独预检，被拒整场撤掉。
+         * ~1.6 个 R−B 色阶），要真正挪动肤色得靠它放大。默认 [CC_SCALE_DEFAULT]；
+         * null = 不发（用户在面板上显式拖到 0 = 主动关掉）。
+         * 值域未标定——DevelopmentService 会在冲洗前单独预检，被拒整场撤掉。
          */
-        val ccScale: Float? = null,
+        val ccScale: Float? = CC_SCALE_DEFAULT,
     ) {
         /**
          * 成片按哪一格片门出片。片框关着时也一样按 135 全画幅那一格（3:2）——
@@ -429,12 +430,14 @@ object FilmStockMapper {
             // 镜头柔度同样全局存（机身的一部分），工程师面板标定用；区间 = 引擎真机验证过的接受范围
             lensBlurUm = sp.getFloat("filmcam_dev_lens_blur", LENS_BLUR_UM).coerceIn(0f, LENS_BLUR_MAX_UM),
             // 色彩微调同样全局存（整体成色，不按胶卷）：y 正=冷/白、负=暖/黄；
-            // m 正=青绿、负=洋红。区间 = 滤色片引擎硬区间。
-            ccY = sp.getFloat("filmcam_dev_cc_y", 0f).coerceIn(-CC_SHIFT_MAX, CC_SHIFT_MAX),
-            ccM = sp.getFloat("filmcam_dev_cc_m", 0f).coerceIn(-CC_SHIFT_MAX, CC_SHIFT_MAX),
-            // 滤色强度：0/缺省 = 不发这个键（用引擎默认强度）；>0 才下发
-            ccScale = sp.getFloat("filmcam_dev_cc_scale", 0f)
-                .takeIf { it > 0f }?.coerceAtMost(CC_SCALE_MAX),
+            // m 正=青绿、负=洋红。没动过滑杆 = 冻结定值。
+            ccY = sp.getFloat("filmcam_dev_cc_y", CC_Y_DEFAULT).coerceIn(-CC_SHIFT_MAX, CC_SHIFT_MAX),
+            ccM = sp.getFloat("filmcam_dev_cc_m", CC_M_DEFAULT).coerceIn(-CC_SHIFT_MAX, CC_SHIFT_MAX),
+            // 滤色强度：必须用 contains 区分「没存过」（= 冻结默认 15）和
+            // 「显式存了 0」（= 主动关掉不发键）——两者语义不同，getFloat 默认值分不出来
+            ccScale = if (sp.contains("filmcam_dev_cc_scale")) {
+                sp.getFloat("filmcam_dev_cc_scale", CC_SCALE_DEFAULT).takeIf { it > 0f }
+            } else CC_SCALE_DEFAULT,
         )
     }
 
@@ -692,21 +695,23 @@ object FilmStockMapper {
         if (includeStyleMark) {
             sb.append(",\"").append(MARK_OUTPUT_STYLE).append("\":\"").append(settings.outputStyle.wire).append('"')
         }
-        // 店扫味（走印相通路，靠末端参数拉开与光学印相的差别）
+        // 店扫味（走印相通路，靠末端参数拉开与光学印相的差别）。
+        // **不叠色彩微调**：两家店的滤色片签名是独立标定过的（OutputStyleTest 守护契约），
+        // 全局 +1.0 会把 Noritsu 的 -1.0 暖调正好抵消归零；而且滤色强度增益
+        // 会把 ±1.0 的签名放大到失控。色彩微调是「家里暗房」的校色，只属于印相档。
         if (style.isScan) {
-            val entries = (scanExtraOverride ?: scanFinishEntries(style, scanFinishLevel))
-                .let { applyColorBalance(it, settings) }
+            val entries = scanExtraOverride ?: scanFinishEntries(style, scanFinishLevel)
             entries.forEach { (k, v) -> sb.append(",\"").append(k).append("\":").append(v) }
         } else if (settings.ccY != 0f || settings.ccM != 0f) {
-            // 印相档本来不发滤色片（放大机校色归零）；色彩微调非零才发，基线就是 0。
+            // 印相档的滤色片只由色彩微调产生（默认 = 冻结定值，见 CC_*_DEFAULT）；
+            // 用户显式全零 = 主动关掉，一个键都不发，回到不滤色的老成色。
             // 肤色「偏黄不够白」主要就从这里修：ccY 往正（冷/白）拖，必要时配一点负 ccM（洋红）。
             sb.append(",\"y_filter_shift\":").append(jsonNum(settings.ccY.coerceIn(-CC_SHIFT_MAX, CC_SHIFT_MAX)))
             sb.append(",\"m_filter_shift\":").append(jsonNum(settings.ccM.coerceIn(-CC_SHIFT_MAX, CC_SHIFT_MAX)))
-        }
-        // 滤色强度增益：滤色片 ±1.0 也只挪 ~1.6 个 R−B 色阶，真要挪动肤色靠它放大。
-        // 值域未标定——DevelopmentService 冲洗前单独预检，被拒整场撤掉（含兜底档）。
-        settings.ccScale?.let {
-            sb.append(",\"filter_shift_scale\":").append(jsonNum(it.coerceIn(0.01f, CC_SCALE_MAX)))
+            // 滤色强度增益跟着印相档的滤色片走（店扫签名用引擎默认强度）
+            settings.ccScale?.let {
+                sb.append(",\"filter_shift_scale\":").append(jsonNum(it.coerceIn(0.01f, CC_SCALE_MAX)))
+            }
         }
         // 片框（整卷统一档位；帧号由冲洗侧逐帧覆盖）
         // extraEntries 优先：冲洗前的小图自检会挑出真正能出图的版式传进来
@@ -751,6 +756,16 @@ object FilmStockMapper {
      * 这里只限制面板滑杆能给到多大。
      */
     const val CC_SCALE_MAX = 15.0f
+
+    /**
+     * 色彩微调**冻结定值**（真机对照 T3 实拍选定，2026-11-04）：
+     * 冷暖 +1.0（往冷/白修肤色偏黄）、绿洋红 -0.35（配一点洋红）、滤色强度 15。
+     * 滑杆没动过就走这套默认；用户在面板上显式改过就用自己的值
+     * （全零 + 强度 0 = 主动关掉，回到不滤色的老成色）。
+     */
+    const val CC_Y_DEFAULT = 1.0f
+    const val CC_M_DEFAULT = -0.35f
+    const val CC_SCALE_DEFAULT = 15.0f
 
     /** [DevSettings.ccScale] 的 JSON 数值字面量（预检与下发共用，保证字面一致） */
     fun ccScaleJsonLiteral(scale: Float): String = jsonNum(scale.coerceIn(0.01f, CC_SCALE_MAX))
@@ -867,30 +882,6 @@ object FilmStockMapper {
     }
 
     // ---------- 内部 ----------
-
-    /**
-     * 把全局色彩微调（[DevSettings.ccY] / [DevSettings.ccM]）叠加到店扫档的滤色片上：
-     * 用户偏移加在两家店的签名值之上，和仍钳回引擎硬区间 [-1,1]。
-     * 只有 `y_filter_shift` / `m_filter_shift` 两个数值键会被改写，
-     * 其他键（含字符串值的 `scene_latitude_norm`）原样通过。
-     */
-    private fun applyColorBalance(
-        entries: List<Pair<String, String>>,
-        settings: DevSettings,
-    ): List<Pair<String, String>> {
-        if (settings.ccY == 0f && settings.ccM == 0f) return entries
-        return entries.map { (k, v) ->
-            when (k) {
-                "y_filter_shift" -> k to jsonNum(
-                    (v.toFloat() + settings.ccY).coerceIn(-CC_SHIFT_MAX, CC_SHIFT_MAX)
-                )
-                "m_filter_shift" -> k to jsonNum(
-                    (v.toFloat() + settings.ccM).coerceIn(-CC_SHIFT_MAX, CC_SHIFT_MAX)
-                )
-                else -> k to v
-            }
-        }
-    }
 
     private fun lookup(name: String): Pair<String, String> {
         val key = name.trim().uppercase()
