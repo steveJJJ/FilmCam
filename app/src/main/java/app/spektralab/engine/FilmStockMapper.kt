@@ -758,13 +758,14 @@ object FilmStockMapper {
     const val CC_SCALE_MAX = 15.0f
 
     /**
-     * 色彩微调**冻结定值**（真机对照 T3 实拍选定，2026-11-04）：
-     * 冷暖 +1.0（往冷/白修肤色偏黄）、绿洋红 -0.35（配一点洋红）、滤色强度 15。
+     * 色彩微调**冻结定值**（真机对照 T3 实拍选定，2026-11-04 二次修订）：
+     * 冷暖 +1.0（往冷/白修肤色偏黄）、绿洋红 +0.10（第一版 -0.35 洋红偏过头，
+     * 皮肤发粉，回调到微偏青绿）、滤色强度 15。
      * 滑杆没动过就走这套默认；用户在面板上显式改过就用自己的值
      * （全零 + 强度 0 = 主动关掉，回到不滤色的老成色）。
      */
     const val CC_Y_DEFAULT = 1.0f
-    const val CC_M_DEFAULT = -0.35f
+    const val CC_M_DEFAULT = 0.10f
     const val CC_SCALE_DEFAULT = 15.0f
 
     /** [DevSettings.ccScale] 的 JSON 数值字面量（预检与下发共用，保证字面一致） */
