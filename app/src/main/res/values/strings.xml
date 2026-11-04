@@ -213,6 +213,9 @@ App 版本：%1$s (%2$d)
     <string name="main_dev_grain">颗粒强度</string>
     <string name="main_dev_halation">辉光强度</string>
     <string name="main_dev_glare">眩光强度</string>
+    <string name="main_dev_group_lens">镜头 · LENS</string>
+    <string name="main_dev_lens_blur">镜头柔度</string>
+    <string name="main_dev_lens_hint">Sonnar 打在底片上的模糊斑尺度（μm），全局生效、不随胶卷换。0 = 关（纯数码锐）。参考：4 察觉不到 · 8 轻微 · 12 默认 · 20 明显柔 · 35 奶油。改完下一次冲洗生效</string>
     <string name="main_dev_group_print">放大 · PRINT</string>
     <string name="main_dev_enlarger_exposure">放大机曝光</string>
     <string name="main_dev_paper_row">相纸选择</string>

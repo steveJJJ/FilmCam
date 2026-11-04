@@ -142,11 +142,30 @@ class FilmStockMapperTest {
     @Test
     fun `镜头层带标定过的 lens_blur_um`() {
         // Sonnar 在底片上的柔度，真机 matrix 扫描标定（0~35μm 全收，12μm=f/5.6-8 观感）。
-        // 定值不进 UI：镜头是机身的一部分，不随胶卷换。
+        // 默认 12，工程师「冲洗参数」面板可全局覆盖（键 filmcam_dev_lens_blur）。
         val obj = JSONObject(FilmStockMapper.buildParamsJson("kodak_portra_400", "kodak_portra_endura"))
         assertEquals(12.0, obj.optDouble("lens_blur_um"), 1e-6)
         // 常量与白名单自洽：这个键必须真的在引擎白名单里
         assertTrue(FilmStockMapper.ENGINE_KNOWN_KEYS.contains("lens_blur_um"))
+    }
+
+    @Test
+    fun `镜头柔度可被工程师面板全局覆盖`() {
+        // DevSettings 传入 0（关）和 35（真机验证过的上限），必须原样进 JSON
+        val off = JSONObject(
+            FilmStockMapper.buildParamsJson(
+                "kodak_portra_400", "kodak_portra_endura",
+                FilmStockMapper.DevSettings(lensBlurUm = 0f)
+            )
+        )
+        assertEquals(0.0, off.optDouble("lens_blur_um"), 1e-6)
+        val max = JSONObject(
+            FilmStockMapper.buildParamsJson(
+                "kodak_portra_400", "kodak_portra_endura",
+                FilmStockMapper.DevSettings(lensBlurUm = FilmStockMapper.LENS_BLUR_MAX_UM)
+            )
+        )
+        assertEquals(35.0, max.optDouble("lens_blur_um"), 1e-6)
     }
 
     @Test

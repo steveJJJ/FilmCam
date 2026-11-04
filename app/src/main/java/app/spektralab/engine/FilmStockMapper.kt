@@ -163,6 +163,12 @@ object FilmStockMapper {
         val paperOverride: String? = null, // 预留：相纸 id 覆盖（null/空白 = 用胶卷映射的 print_stock）
         val outputStyle: OutputStyle = OutputStyle.PRINT, // 成片出口：印相 / Frontier / Noritsu
         /**
+         * 镜头柔度（μm）：Sonnar T* 35/2.8 打在 36mm 底片上的模糊斑尺度。
+         * 默认 [LENS_BLUR_UM]；工程师「冲洗参数」面板里可全局调（镜头是机身的一部分，
+         * 不随胶卷换、不按卷存），用于标定最终定值。0 = 关（纯数码锐）。
+         */
+        val lensBlurUm: Float = LENS_BLUR_UM,
+        /**
          * 片框档位：把片基、齿孔、暗边文字一起扫进来，成片像一张底片扫描件（引擎 overscan）。
          * 开着就按 135 全画幅 36×24 片门裁成 3:2。
          */
@@ -404,6 +410,8 @@ object FilmStockMapper {
             // 片框是整卷统一的输出样式（跟出口档位一样），不按胶卷存
             frameFormat = readFrameFormat(context),
             outputStyle = OutputStyle.fromPrefs(sp.getInt("filmcam_output_style", OutputStyle.PRINT.prefs)),
+            // 镜头柔度同样全局存（机身的一部分），工程师面板标定用；区间 = 引擎真机验证过的接受范围
+            lensBlurUm = sp.getFloat("filmcam_dev_lens_blur", LENS_BLUR_UM).coerceIn(0f, LENS_BLUR_MAX_UM),
         )
     }
 
@@ -636,7 +644,9 @@ object FilmStockMapper {
           //   4μm 无感（次像素）、8μm=0.93、12μm=0.86（细节在、锋利感钝掉，f/5.6-8 的观感）、
           //   20μm=0.73（明显柔）、35μm=0.56（奶油）。全分辨率 3939px 下 12μm ≈ 1.3px。
           // 引擎区间实测 0~35 都收，50000 被拒（越界由引擎硬校验兜底）。
-          .append("\"lens_blur_um\":").append(jsonNum(LENS_BLUR_UM)).append(',')
+          // 默认值在工程师「冲洗参数」面板可调（全局键 filmcam_dev_lens_blur），
+          // 最终定值以用户在真机上的对比结论为准。
+          .append("\"lens_blur_um\":").append(jsonNum(settings.lensBlurUm)).append(',')
           .append("\"film_format_mm\":36.0")
         if (scan) sb.append(",\"scan_film\":true")
         // 风格标记只在 EXIF 快照里出现；发给引擎会触发 unknown parameter，整卷出不了图
@@ -668,12 +678,16 @@ object FilmStockMapper {
     const val SCAN_LEVEL_SAFE = 1
 
     /**
-     * 镜头柔度：`lens_blur_um`，Sonnar T* 35/2.8 在 36mm 底片上的模糊斑尺度。
-     * 这是「镜头层」唯一的引擎参数（暗角在冲洗侧 [DevelopmentService.applySonnarVignette]），
-     * 定值不进 UI——镜头是机身的一部分，不随胶卷换、不该让用户调。
+     * 镜头柔度默认值：`lens_blur_um`，Sonnar T* 35/2.8 在 36mm 底片上的模糊斑尺度。
+     * 这是「镜头层」唯一的引擎参数（暗角在冲洗侧 [DevelopmentService.applySonnarVignette]）。
      * 标定数据见 [buildParamsJson] 里 `lens_blur_um` 那行的注释。
+     * 工程师「冲洗参数」面板可全局覆盖（键 `filmcam_dev_lens_blur`）——
+     * 用户觉得画质受损时可以自己扫值找最合适的点，定值以真机对比结论为准。
      */
     const val LENS_BLUR_UM = 12.0f
+
+    /** 镜头柔度上限：引擎真机实测 0~35 都收、50000 被拒，超出区间由引擎硬校验兜底 */
+    const val LENS_BLUR_MAX_UM = 35.0f
 
     /** 片框版式：135 全画幅（36×24mm，3:2，T3 这一格）—— 画面要先按片门裁成 3:2 */
     const val OVERSCAN_FORMAT_FULL = "135"

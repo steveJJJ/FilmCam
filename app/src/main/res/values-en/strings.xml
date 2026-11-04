@@ -205,6 +205,9 @@ Memory available: %10$d MB / %11$d MB total
     <string name="main_dev_grain">Grain</string>
     <string name="main_dev_halation">Halation</string>
     <string name="main_dev_glare">Glare</string>
+    <string name="main_dev_group_lens">LENS</string>
+    <string name="main_dev_lens_blur">Lens softness</string>
+    <string name="main_dev_lens_hint">Sonnar blur spot on film, in µm. Applies to all rolls (it is part of the body). 0 = off (digital-sharp). Reference: 4 invisible · 8 slight · 12 default · 20 soft · 35 dreamy. Takes effect on the next development.</string>
     <string name="main_dev_group_print">PRINT</string>
     <string name="main_dev_enlarger_exposure">Enlarger exposure</string>
     <string name="main_dev_paper_row">Paper</string>
