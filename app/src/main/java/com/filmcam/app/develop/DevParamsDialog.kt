@@ -18,8 +18,7 @@ import kotlin.math.roundToInt
  * 这里做成与 Activity 无耦合的独立入口：调用方只需要给出「默认选中哪支胶卷」。
  *
  * 存储键形如 `filmcam_dev_<param>_<stockId>`，缺省即回落引擎/相纸的冻结默认值，
- * 「恢复默认」就是把这几个后缀键删掉。例外是镜头柔度：它是机身的一部分，
- * 用全局键 `filmcam_dev_lens_blur`（无后缀），切换胶卷/恢复默认都不影响它。
+ * 「恢复默认」就是把这几个后缀键删掉。
  */
 object DevParamsDialog {
 
@@ -50,9 +49,6 @@ object DevParamsDialog {
         val tvPaper = view.findViewById<android.widget.TextView>(R.id.tvDevPaperValue)
         val rowRoll = view.findViewById<android.view.View>(R.id.rowDevRoll)
         val tvRoll = view.findViewById<android.widget.TextView>(R.id.tvDevRollValue)
-        // 镜头柔度：全局键（机身的一部分），不带 <stockId> 后缀、不随上方胶卷切换变
-        val sbLens = view.findViewById<SeekBar>(R.id.sbDevLensBlur)
-        val tvLens = view.findViewById<android.widget.TextView>(R.id.tvDevLensValue)
         val btnReset = view.findViewById<android.widget.Button>(R.id.btnDevReset)
         btnReset.text = activity.getString(R.string.main_dev_reset)
 
@@ -88,11 +84,6 @@ object DevParamsDialog {
             sbExposure.progress = ((exp - 0.5f) * 100f).roundToInt()
             tvExposure.text = String.format("%.2f", exp)
             tvPaper.text = paperDisplayName(prefs.getString(devKey("paper"), "") ?: "")
-            // 镜头柔度全局读：progress = μm 整数步（真机标定点 4/8/12/20/35 都是整数）
-            val lensUm = prefs.getFloat("filmcam_dev_lens_blur", FilmStockMapper.LENS_BLUR_UM)
-                .coerceIn(0f, FilmStockMapper.LENS_BLUR_MAX_UM)
-            sbLens.progress = lensUm.roundToInt()
-            tvLens.text = "${lensUm.roundToInt()}μm"
             // 反转片没有印相纸环节（引擎 scan_film 直扫正片）：相纸行置灰
             val positiveStock = FilmStockMapper.isPositive(selRollId)
             rowPaper.isEnabled = !positiveStock
@@ -156,16 +147,6 @@ object DevParamsDialog {
                 val v = 0.5f + progress / 100f
                 prefs.edit().putFloat(devKey("print_exposure"), v).apply()
                 tvExposure.text = String.format("%.2f", v)
-            }
-            override fun onStartTrackingTouch(sb: SeekBar?) {}
-            override fun onStopTrackingTouch(sb: SeekBar?) {}
-        })
-
-        // 镜头柔度滑杆：全局写入，下一次冲洗生效
-        sbLens.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-            override fun onProgressChanged(sb: SeekBar?, progress: Int, fromUser: Boolean) {
-                if (fromUser) prefs.edit().putFloat("filmcam_dev_lens_blur", progress.toFloat()).apply()
-                tvLens.text = "${progress}μm"
             }
             override fun onStartTrackingTouch(sb: SeekBar?) {}
             override fun onStopTrackingTouch(sb: SeekBar?) {}

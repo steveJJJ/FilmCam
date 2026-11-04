@@ -12,6 +12,7 @@ import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import kotlin.math.roundToInt
 
 /**
  * 关于页：产品介绍 + 赞赏码 + 版本号。
@@ -404,11 +405,11 @@ class AboutActivity : AppCompatActivity() {
         val swSkip = view.findViewById<android.widget.Switch>(R.id.swSkipDevelop)
         val sbProb = view.findViewById<SeekBar>(R.id.sbSoftFocusProb)
         val tvProb = view.findViewById<TextView>(R.id.tvSoftFocusProb)
-        val rgTrigger = view.findViewById<android.widget.RadioGroup>(R.id.rgSlowTrigger)
 
         val rowSlow = view.findViewById<View>(R.id.rowEngSlow)
         val rowStyle = view.findViewById<View>(R.id.rowEngStyle)
         val rowDev = view.findViewById<View>(R.id.rowEngDev)
+        val rowLens = view.findViewById<View>(R.id.rowEngLens)
 
         /** 绑定一行「名称 + 说明」，返回右侧读数 TextView */
         fun bindRow(row: View, labelRes: Int, hintRes: Int): TextView {
@@ -422,6 +423,7 @@ class AboutActivity : AppCompatActivity() {
         val tvSlow = bindRow(rowSlow, R.string.set_slow, R.string.eng_slow_hint)
         val tvStyle = bindRow(rowStyle, R.string.set_style, R.string.eng_style_hint)
         bindRow(rowDev, R.string.set_dev, R.string.eng_dev_hint)
+        val tvLens = bindRow(rowLens, R.string.eng_lens_blur, R.string.eng_lens_hint)
 
         fun slowMode(): com.filmcam.app.camera.FilmExposure.Mode =
             com.filmcam.app.camera.FilmExposure.Mode.fromPrefs(prefs.getInt("slowShutter", 0))
@@ -444,6 +446,10 @@ class AboutActivity : AppCompatActivity() {
         }
         saveSlow(slowMode())
         saveStyleName()
+        // 镜头柔度：机身属性，全局一个值（不按胶卷存）
+        tvLens.text = "${prefs.getFloat(
+            "filmcam_dev_lens_blur", app.spektralab.engine.FilmStockMapper.LENS_BLUR_UM
+        ).roundToInt()}μm"
 
         // 当前装在机身上的是哪支胶卷：冲洗参数是按胶卷分开存的，默认就该停在这支
         val rollIdx = prefs.getInt("rollIndex", 0)
@@ -454,15 +460,11 @@ class AboutActivity : AppCompatActivity() {
             runCatching { app.spektralab.engine.FilmStockMapper.filmStockIdFor(it.name) }.getOrNull()
         }
 
-        // 慢门：关 → 自然 → 偏慢，点上就地翻档
+        // 慢门：档位与触发机制是一体的，收进同一个子面板
+        // （触发机制就是「多大概率算慢门」，放在慢门外面等于把一件事拆成两处调）
         rowSlow.setOnClickListener {
-            saveSlow(
-                when (slowMode()) {
-                    com.filmcam.app.camera.FilmExposure.Mode.OFF -> com.filmcam.app.camera.FilmExposure.Mode.NATURAL
-                    com.filmcam.app.camera.FilmExposure.Mode.NATURAL -> com.filmcam.app.camera.FilmExposure.Mode.SLOW
-                    com.filmcam.app.camera.FilmExposure.Mode.SLOW -> com.filmcam.app.camera.FilmExposure.Mode.OFF
-                }
-            )
+            consoleRef?.dismiss()
+            showSlowShutterDialog { showEngineerConsole() }
         }
         // 输出风格：印相 → Frontier → Noritsu，只影响下一次冲洗
         rowStyle.setOnClickListener {
@@ -475,6 +477,11 @@ class AboutActivity : AppCompatActivity() {
             com.filmcam.app.develop.DevParamsDialog.show(
                 this, currentStockId, onClose = { showEngineerConsole() }
             )
+        }
+        // 镜头柔度：机身属性，单独一层（不随胶卷换，所以不进按卷分组的冲洗参数）
+        rowLens.setOnClickListener {
+            consoleRef?.dismiss()
+            showLensBlurDialog { showEngineerConsole() }
         }
 
         // 工程师模式开关：关掉 = 这些旋钮重新藏起来，入口回到"连点 10 次"
@@ -513,28 +520,6 @@ class AboutActivity : AppCompatActivity() {
             override fun onStopTrackingTouch(sb: SeekBar?) {}
         })
 
-        // 慢门触发机制：三选一（默认纯概率派）
-        rgTrigger.check(
-            when (com.filmcam.app.camera.FilmExposure.Trigger.fromPrefs(
-                prefs.getInt(
-                    "slowTrigger",
-                    com.filmcam.app.camera.FilmExposure.Trigger.PROBABILITY.prefs
-                )
-            )) {
-                com.filmcam.app.camera.FilmExposure.Trigger.PROBABILITY -> R.id.rbSlowProb
-                com.filmcam.app.camera.FilmExposure.Trigger.REAL -> R.id.rbSlowReal
-                com.filmcam.app.camera.FilmExposure.Trigger.REAL_MIX -> R.id.rbSlowMix
-            }
-        )
-        rgTrigger.setOnCheckedChangeListener { _, checkedId ->
-            val trigger = when (checkedId) {
-                R.id.rbSlowReal -> com.filmcam.app.camera.FilmExposure.Trigger.REAL
-                R.id.rbSlowMix -> com.filmcam.app.camera.FilmExposure.Trigger.REAL_MIX
-                else -> com.filmcam.app.camera.FilmExposure.Trigger.PROBABILITY
-            }
-            prefs.edit().putInt("slowTrigger", trigger.prefs).apply()
-        }
-
         // 冲洗耗时诊断：换机器后第一件事是看看时间花在哪一段，点一下复制走
         val tvDiag = view.findViewById<TextView>(R.id.tvDiag)
         val diagText = com.filmcam.app.develop.DevDiagnostics.summary(this)
@@ -566,6 +551,116 @@ class AboutActivity : AppCompatActivity() {
             .create()
         consoleRef = dialog
         dialog.show()
+    }
+
+    /**
+     * 慢门子面板：档位 + 触发机制。
+     *
+     * 这两件事本来是一体的 ——「档位」决定要不要慢，「触发机制」决定按多大概率算慢门。
+     * 之前把触发机制平铺在控制台上，等于把同一个功能的两个旋钮放到了两处。
+     * 档位行点一下就地翻档（关 → 自然 → 偏慢），与旧版控制台的上手习惯一致。
+     */
+    private fun showSlowShutterDialog(onClose: () -> Unit) {
+        val prefs = getSharedPreferences("filmcam", MODE_PRIVATE)
+        val view = layoutInflater.inflate(R.layout.dialog_slow_shutter, null)
+        com.filmcam.app.ui.BodyTheme.applyToViewTree(view)
+        val rowMode = view.findViewById<View>(R.id.rowSlowMode)
+        val tvMode = view.findViewById<TextView>(R.id.tvSlowModeValue)
+        val rg = view.findViewById<android.widget.RadioGroup>(R.id.rgSlowTrigger)
+
+        fun currentMode(): com.filmcam.app.camera.FilmExposure.Mode =
+            com.filmcam.app.camera.FilmExposure.Mode.fromPrefs(prefs.getInt("slowShutter", 0))
+        fun saveMode(m: com.filmcam.app.camera.FilmExposure.Mode) {
+            prefs.edit().putInt("slowShutter", m.prefs).apply()
+            tvMode.setText(
+                when (m) {
+                    com.filmcam.app.camera.FilmExposure.Mode.NATURAL -> R.string.slow_natural
+                    com.filmcam.app.camera.FilmExposure.Mode.SLOW -> R.string.slow_frequent
+                    else -> R.string.slow_off
+                }
+            )
+        }
+        saveMode(currentMode())
+        rowMode.setOnClickListener {
+            saveMode(
+                when (currentMode()) {
+                    com.filmcam.app.camera.FilmExposure.Mode.OFF ->
+                        com.filmcam.app.camera.FilmExposure.Mode.NATURAL
+                    com.filmcam.app.camera.FilmExposure.Mode.NATURAL ->
+                        com.filmcam.app.camera.FilmExposure.Mode.SLOW
+                    com.filmcam.app.camera.FilmExposure.Mode.SLOW ->
+                        com.filmcam.app.camera.FilmExposure.Mode.OFF
+                }
+            )
+        }
+
+        // 触发机制（默认纯概率派）；先 check 再挂监听，避免初始化那一下被当成用户操作
+        rg.check(
+            when (com.filmcam.app.camera.FilmExposure.Trigger.fromPrefs(
+                prefs.getInt(
+                    "slowTrigger",
+                    com.filmcam.app.camera.FilmExposure.Trigger.PROBABILITY.prefs
+                )
+            )) {
+                com.filmcam.app.camera.FilmExposure.Trigger.PROBABILITY -> R.id.rbSlowProb
+                com.filmcam.app.camera.FilmExposure.Trigger.REAL -> R.id.rbSlowReal
+                com.filmcam.app.camera.FilmExposure.Trigger.REAL_MIX -> R.id.rbSlowMix
+            }
+        )
+        rg.setOnCheckedChangeListener { _, checkedId ->
+            val trigger = when (checkedId) {
+                R.id.rbSlowReal -> com.filmcam.app.camera.FilmExposure.Trigger.REAL
+                R.id.rbSlowMix -> com.filmcam.app.camera.FilmExposure.Trigger.REAL_MIX
+                else -> com.filmcam.app.camera.FilmExposure.Trigger.PROBABILITY
+            }
+            prefs.edit().putInt("slowTrigger", trigger.prefs).apply()
+        }
+
+        androidx.appcompat.app.AlertDialog.Builder(this, com.filmcam.app.ui.BodyTheme.dialogTheme)
+            .setTitle(R.string.set_slow)
+            .setView(view)
+            .setPositiveButton(R.string.set_close, null)
+            .create()
+            .apply { setOnDismissListener { onClose() } }
+            .show()
+    }
+
+    /**
+     * 镜头柔度子面板（0–35μm）。
+     *
+     * 机身属性：全局一个值（键 filmcam_dev_lens_blur），换胶卷、恢复冲洗参数都不影响它，
+     * 所以不能放在按胶卷分组的「冲洗参数」里。下一次冲洗生效。
+     */
+    private fun showLensBlurDialog(onClose: () -> Unit) {
+        val prefs = getSharedPreferences("filmcam", MODE_PRIVATE)
+        val view = layoutInflater.inflate(R.layout.dialog_lens_blur, null)
+        com.filmcam.app.ui.BodyTheme.applyToViewTree(view)
+        val sb = view.findViewById<SeekBar>(R.id.sbLensBlur)
+        val tv = view.findViewById<TextView>(R.id.tvLensValue)
+
+        val mapper = app.spektralab.engine.FilmStockMapper
+        val current = prefs.getFloat("filmcam_dev_lens_blur", mapper.LENS_BLUR_UM)
+            .coerceIn(0f, mapper.LENS_BLUR_MAX_UM)
+        sb.progress = current.roundToInt()
+        tv.text = "${sb.progress}μm"
+        sb.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(sb: SeekBar?, progress: Int, fromUser: Boolean) {
+                if (fromUser) {
+                    prefs.edit().putFloat("filmcam_dev_lens_blur", progress.toFloat()).apply()
+                }
+                tv.text = "${progress}μm"
+            }
+            override fun onStartTrackingTouch(sb: SeekBar?) {}
+            override fun onStopTrackingTouch(sb: SeekBar?) {}
+        })
+
+        androidx.appcompat.app.AlertDialog.Builder(this, com.filmcam.app.ui.BodyTheme.dialogTheme)
+            .setTitle(R.string.eng_lens_blur)
+            .setView(view)
+            .setPositiveButton(R.string.set_close, null)
+            .create()
+            .apply { setOnDismissListener { onClose() } }
+            .show()
     }
 
     /**
