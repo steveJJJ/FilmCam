@@ -24,6 +24,13 @@ class Camera2Controller(private val context: Context) {
     /** 闪光预闪最长等待：超时就直接开快门，绝不让用户干等 */
     private companion object {
         const val FLASH_PRECAPTURE_TIMEOUT_MS = 700L
+
+        /**
+         * 直闪帧的曝光偏置（EV，负 = 更暗）。ALWAYS_FLASH 的测光只保「主体正常」，
+         * 再压 2/3 档让被闪光够不着的背景进一步沉黑——负片肩部宽，主体欠这点无妨。
+         * 实际下发时按设备 AE 补偿步长换算成整档（1/2 步长机型 ≈ -0.5EV，1/3 步长 ≈ -0.67EV）。
+         */
+        const val FLASH_EV_BIAS = -2f / 3f
         const val TAG = "Camera2Controller"
     }
 
@@ -136,6 +143,15 @@ class Camera2Controller(private val context: Context) {
 
     /** 能否关掉零快门延迟（ZSL）。不能关时 HAL 可能从缓冲里挑一张合成过的旧帧 */
     private var canDisableZsl = false
+
+    /**
+     * 能否把色调曲线钉成线性（CONTRAST_CURVE + ≥2 个曲线点）。
+     * 直闪帧用它关掉厂商 tone mapping —— 不然 ISP 会把被闪光压黑的背景又提回来。
+     */
+    private var canLinearTonemap = false
+
+    /** 设备 AE 补偿步长（EV/档，如 1/2 = 0.5EV）；读不到时保持 1（最保守） */
+    private var aeCompStep = android.util.Rational(1, 1)
 
     /** 预览 AE 最近一次测光结果 —— 慢门决策的唯一输入 */
     @Volatile private var lastAeSec = 0f
@@ -267,6 +283,23 @@ class Camera2Controller(private val context: Context) {
         // ZSL 开关是 API 30 才有的 key，且没有公开的能力查询接口：
         // 只能在请求里试着设，失败就静默跳过（部分 HAL 不认这个 key）。
         canDisableZsl = android.os.Build.VERSION.SDK_INT >= 30
+        // 直闪帧要用线性色调曲线压住 ISP 的暗部提亮：设备得认 CONTRAST_CURVE 模式
+        // 且至少给 2 个曲线点（0,0 和 1,1 就够画直线）
+        runCatching {
+            val modes = chars.get(CameraCharacteristics.TONEMAP_AVAILABLE_TONE_MAP_MODES)
+            val points = chars.get(CameraCharacteristics.TONEMAP_MAX_CURVE_POINTS) ?: 0
+            if (points >= 2 && modes != null &&
+                modes.contains(android.hardware.camera2.CameraMetadata.TONEMAP_MODE_CONTRAST_CURVE)
+            ) canLinearTonemap = true
+        }
+        // AE 补偿步长：换算闪光帧 EV 偏置要用（1/2 与 1/3 步长的设备很常见）
+        chars.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_STEP)?.let { s ->
+            if (s != null && s.numerator > 0 && s.denominator > 0) aeCompStep = s
+        }
+        android.util.Log.i(
+            "FlashTuning",
+            "caps tonemapLinear=$canLinearTonemap aeStep=$aeCompStep"
+        )
         val capsLine = "slowShutter caps manualSensor=$hasManualSensor " +
             "exp=${deviceMinExposureSec}~${deviceMaxExposureSec}s iso=$deviceIsoRange " +
             "ap=$apertureValue oisOff=$canDisableOis nrOff=$canDisableNr " +
@@ -400,6 +433,9 @@ class Camera2Controller(private val context: Context) {
                 applyFlashSettings(this)
                 // 采集端「不加工」：胶片模拟要从最生的像素开始
                 applyCaptureTuning(this)
+                // 直闪帧的专属调优（AWB 钉日光 / 线性色调曲线 / 负 EV），
+                // 内部自带条件判断，非直闪帧直接返回
+                applyFlashCaptureTuning(this, slow)
                 // 必须放在最后：慢门要覆盖 AE 模式，也要压过上面闪光分支的 ALWAYS_FLASH
                 if (slow) applySlowShutter(this, slowExposureNs, slowIso)
             }
@@ -448,6 +484,73 @@ class Camera2Controller(private val context: Context) {
         android.util.Log.i(
             "CaptureTuning",
             "edgeOff=$canDisableEdge nrOff=$canDisableNr nrMin=$canDisableNrMinimal zslOff=$canDisableZsl"
+        )
+    }
+
+    /**
+     * 直闪帧的采集端调优（断点①：三星 ISP 在闪光瞬间对画面的两次「加工」）。
+     *
+     * 真 T3 直闪的三个签名对应三件事，全部只在**内置闪光、自动曝光、非慢门**的
+     * 快门请求上生效——torch 是常亮补光、外闪走手动曝光、慢门是另一套曝光模型：
+     *
+     *  1. 色调曲线钉线性：ISP 的 tone mapping 会把被闪光压黑的背景又提回来，
+     *     平方反比衰减被削平。线性曲线 = ISP 能给的最「生」的响应，衰减原样保留，
+     *     压反差的胶片曲线留给引擎去做。设备不认 CONTRAST_CURVE 就跳过。
+     *  2. AWB 钉日光：氙气闪光 ≈ 5500K。AUTO 模式在闪光瞬间会把钨丝背景往中性拉，
+     *     钉死后主体中性、背景留暖橙——这就是 T3 直闪的冷暖分离。
+     *     用户手动选了白平衡预设时不抢（那是用户自己的口味）。
+     *  3. 压 [FLASH_EV_BIAS]：ALWAYS_FLASH 测光只保主体正常，再压一点让背景
+     *     进一步沉黑（负片肩部宽，主体欠这点无妨）。按设备 AE 步长换算成整档。
+     */
+    private fun applyFlashCaptureTuning(builder: CaptureRequest.Builder, slow: Boolean) {
+        if (!flashEnabled || !hasFlashUnit) return
+        if (slow || manualIso != null || manualExposure != null) return
+
+        var awbDaylight = false
+        if (currentAwbMode == null ||
+            currentAwbMode == android.hardware.camera2.CameraMetadata.CONTROL_AWB_MODE_AUTO
+        ) {
+            awbDaylight = runCatching {
+                builder.set(
+                    CaptureRequest.CONTROL_AWB_MODE,
+                    android.hardware.camera2.CameraMetadata.CONTROL_AWB_MODE_DAYLIGHT
+                )
+            }.isSuccess
+        }
+
+        val tonemapLinear = if (canLinearTonemap) {
+            runCatching {
+                // (in, out) 点对：(0,0) 与 (1,1) 两点画一条对角线 = 单位直线
+                val linear = android.hardware.camera2.params.TonemapCurve(
+                    floatArrayOf(0f, 0f, 1f, 1f),
+                    floatArrayOf(0f, 0f, 1f, 1f),
+                    floatArrayOf(0f, 0f, 1f, 1f)
+                )
+                builder.set(
+                    CaptureRequest.TONEMAP_MODE,
+                    android.hardware.camera2.CameraMetadata.TONEMAP_MODE_CONTRAST_CURVE
+                )
+                builder.set(CaptureRequest.TONEMAP_CURVE, linear)
+            }.isSuccess
+        } else false
+
+        var evBiasSteps = 0
+        val stepEv = aeCompStep.numerator.toFloat() / aeCompStep.denominator
+        if (stepEv > 0f) {
+            // 除数与被除数都是 Float：Math.round(Float) 返回 Int（步长单位）
+            evBiasSteps = Math.round(FLASH_EV_BIAS / stepEv)
+            if (evBiasSteps != 0) {
+                runCatching {
+                    builder.set(
+                        CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION,
+                        (exposureComp + evBiasSteps).coerceIn(aeCompRange.first, aeCompRange.last)
+                    )
+                }.onFailure { evBiasSteps = 0 }
+            }
+        }
+        android.util.Log.i(
+            "FlashTuning",
+            "capture awbDaylight=$awbDaylight tonemapLinear=$tonemapLinear evBiasSteps=$evBiasSteps"
         )
     }
 
