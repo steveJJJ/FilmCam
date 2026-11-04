@@ -272,6 +272,87 @@ object SpektraProcessor {
     }
 
     /**
+     * P3 RAW 通路：DNG 底片直接进引擎（openRawSession → 内置 LibRaw 解码 → 16bit 线性
+     * → 胶片链）。绕过手机 ISP 出 JPEG 前的三道加工（tone mapping / AWB / 多帧合成），
+     * 这是「让成片贴近真机 T3」的信源天花板。
+     *
+     * 与 [processFrame] 的差别：RAW 会话在 open 时就应用参数（解码管线读它），
+     * 所以兜底链换档必须**整个会话重开**，不能像位图会话那样 setParams 重试。
+     */
+    fun processRawFrame(
+        context: Context,
+        dngPath: String,
+        paramsJson: String,
+        outJpegPath: String,
+        fallbackParamsJsons: List<String> = emptyList(),
+    ): ProcessResult {
+        return try {
+            val eng = ensureEngine(context)
+            val maxPx = eng.maxFramePixels()
+            // 主参数 + 兜底链（去重，与 processFrame 同规则）
+            val chain = ArrayList<String>(fallbackParamsJsons.size + 1)
+            chain.add(paramsJson)
+            for (p in fallbackParamsJsons) if (p != paramsJson && p !in chain) chain.add(p)
+
+            var rendered: Pair<Int, Int>? = null
+            var fellBack = false
+            for (i in chain.indices) {
+                rendered = renderRawOne(eng, context, dngPath, chain[i], outJpegPath, maxPx)
+                if (rendered != null) {
+                    fellBack = i > 0
+                    if (fellBack) {
+                        Log.w(TAG, "RAW 主参数未被引擎接受，已用第 ${i + 1} 档兜底参数出图: $outJpegPath")
+                    }
+                    break
+                }
+                Log.w(TAG, "RAW 第 ${i + 1}/${chain.size} 档参数冲洗失败，换下一档: $dngPath")
+            }
+            val dims = rendered
+                ?: throw IllegalStateException("RAW 冲洗失败（${chain.size} 档参数全部未被引擎接受）")
+            val src = runCatching { SpektraLabEngine.rawSourceSize() }.getOrDefault(null)
+            Log.i(
+                TAG,
+                "RAW 底片 ${java.io.File(dngPath).name} 源尺寸=${src?.joinToString("x")} 出图 ${dims.first}x${dims.second}"
+            )
+            ProcessResult(true, dims.first, dims.second, false, "", fellBack)
+        } catch (e: Throwable) {
+            Log.e(TAG, "processRawFrame 失败: ${e.message} | dng=$dngPath out=$outJpegPath", e)
+            ProcessResult(false, 0, 0, false, e.message ?: e.javaClass.simpleName)
+        }
+    }
+
+    /** 开一个 RAW session 跑完整冲洗链（open 已带参数 → solve → exportJpeg）。失败返回 null。 */
+    private fun renderRawOne(
+        eng: SpektraLabEngine,
+        context: Context,
+        dngPath: String,
+        paramsJson: String,
+        outJpegPath: String,
+        maxPx: Int,
+    ): Pair<Int, Int>? {
+        val session = eng.openRawSession(dngPath, paramsJson, if (maxPx > 0) maxPx else 0, 0)
+        return try {
+            dumpParamsOnce(context, session)
+            session.solve("both")
+            val info = session.exportJpeg(outJpegPath, 95, 512, "full")
+            val outFile = java.io.File(outJpegPath)
+            val validDims = info.size >= 2 && info[0] > 0 && info[1] > 0
+            if (!validDims || !outFile.exists() || outFile.length() <= 0L) {
+                throw java.io.IOException(
+                    "RAW exportJpeg 未产出有效文件: path=$outJpegPath exists=${outFile.exists()} " +
+                        "size=${outFile.length()} info=${info.joinToString(",")}"
+                )
+            }
+            info[0] to info[1]
+        } catch (e: Throwable) {
+            Log.e(TAG, "renderRawOne 失败: ${e.message} | dng=$dngPath out=$outJpegPath", e)
+            null
+        } finally {
+            session.close()
+        }
+    }
+
+    /**
      * 参数预检：逐个候选键单独开一个小 session 试 setParams，返回引擎**不接受**的键。
      *
      * 为什么要有这一步：引擎对未知键 / 越界值都是硬失败，而且**只有真下发才会暴露** ——

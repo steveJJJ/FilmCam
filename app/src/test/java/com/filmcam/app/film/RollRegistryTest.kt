@@ -137,6 +137,26 @@ class RollRegistryTest {
         assertNull(ShotMeta.fromJson(out[0].frames[0].shot))
     }
 
+    // ---------- RAW 底片（P3） ----------
+
+    @Test
+    fun `raw 字段往返保持`() {
+        val src = listOf(roll(frames = mutableListOf(frame(1).copy(raw = "/x/negatives/r/frame_01.dng"))))
+        val back = RollRegistry.deserialize(RollRegistry.serialize(src))
+        assertEquals("/x/negatives/r/frame_01.dng", back[0].frames[0].raw)
+    }
+
+    @Test
+    fun `旧记录没有 raw 键时读出空串且纯 JPEG 帧不写 raw 键`() {
+        // 旧记录（升级前的卷）缺 raw 键 → 空串，走 JPEG 通路
+        val raw = """[{"rollId":"r","status":"shooting","frames":[{"index":1,"handle":"h","takenAtMs":5,"iso":100}]}]"""
+        val out = RollRegistry.deserialize(raw)
+        assertEquals("", out[0].frames[0].raw)
+        // 纯 JPEG 帧序列化时不带 raw 键（保持旧格式逐字节兼容）
+        val src = listOf(roll(frames = mutableListOf(frame(1))))
+        assertFalse(RollRegistry.serialize(src).contains("\"raw\""))
+    }
+
     // ---------- 状态规则 ----------
 
     @Test

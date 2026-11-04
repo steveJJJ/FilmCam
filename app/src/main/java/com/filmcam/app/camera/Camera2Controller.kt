@@ -6,6 +6,8 @@ import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraDevice
 import android.hardware.camera2.CameraManager
 import android.hardware.camera2.CaptureRequest
+import android.hardware.camera2.TotalCaptureResult
+import android.media.Image
 import android.media.ImageReader
 import android.os.Handler
 import android.os.HandlerThread
@@ -13,6 +15,7 @@ import android.util.Size
 import android.graphics.SurfaceTexture
 import android.view.Surface
 import android.widget.Toast
+import java.io.File
 import java.lang.Exception
 
 /**
@@ -21,9 +24,34 @@ import java.lang.Exception
  */
 class Camera2Controller(private val context: Context) {
 
-    /** 闪光预闪最长等待：超时就直接开快门，绝不让用户干等 */
-    private companion object {
+    /** internal 供单测访问（pickRawSize 是纯函数） */
+    internal companion object {
         const val FLASH_PRECAPTURE_TIMEOUT_MS = 700L
+
+        /**
+         * RAW 图 / 快门结果到达的最大等待。JPEG 与 RAW 出自同一次快门，
+         * 正常先后脚到；超时说明这帧 RAW 拿不到了（HAL 没出图/结果丢失），
+         * 按纯 JPEG 帧落卷，帧不丢。
+         */
+        const val RAW_WAIT_MS = 1500L
+
+        /** RAW 选尺寸的面积上限（像素）。三星 Ultra 主摄可能把全分辨率 Bayer 列出来，
+         *  一张 200MP DNG 400MB 起步，写盘和冲洗都扛不住 —— 选「不超过 16MP 的最大档」，
+         *  正好覆盖 12MP 合并档；全超就取最小档。 */
+        const val RAW_MAX_PIXELS = 16_000_000
+
+        /**
+         * 从 HAL 报的 RAW_SENSOR 档位里选一个：取面积不超过 [RAW_MAX_PIXELS] 的最大档
+         * （12MP 合并档优先），全都超限则取最小档（聊胜于无）；空表返回 null（不支持）。
+         * 纯函数（宽高对进出），可单测。
+         */
+        fun pickRawSize(sizes: List<Pair<Int, Int>>): Pair<Int, Int>? {
+            if (sizes.isEmpty()) return null
+            val area = { s: Pair<Int, Int> -> s.first.toLong() * s.second }
+            val capped = sizes.filter { area(it) <= RAW_MAX_PIXELS }
+            return if (capped.isNotEmpty()) capped.maxByOrNull(area)
+            else sizes.minByOrNull(area)   // 全超限：取最小档，别让一张 DNG 几百 MB
+        }
 
         /**
          * 直闪帧的曝光偏置（EV，负 = 更暗）。ALWAYS_FLASH 的测光只保「主体正常」，
@@ -41,6 +69,30 @@ class Camera2Controller(private val context: Context) {
     private var previewRequestBuilder: CaptureRequest.Builder? = null
     private var cameraId: String = "0"
     private var imageReader: ImageReader? = null
+
+    // ---------------- P3 RAW 负片 ----------------
+
+    /** RAW 第二路输出（RAW_SENSOR 16bit Bayer）；null = 设备不支持 */
+    private var rawImageReader: ImageReader? = null
+
+    /** DngCreator 要用的 Characteristics（start 时存一份） */
+    private var cameraChars: CameraCharacteristics? = null
+
+    /** DNG 写盘线程：DngCreator.writeImage 是重 IO，不能占相机线程 */
+    private val rawWriterExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
+
+    /** 一次快门的三个碎片（JPEG 字节 / RAW 图 / 快门结果）汇合处，全在相机线程上访问 */
+    private var pendingShot: PendingShot? = null
+
+    /**
+     * RAW 负片开关（工程师控制台，默认关）。开了之后每次快门同时收 JPEG + RAW，
+     * DNG 落卷作「底片」，冲洗时走引擎 RAW 会话（绕过 ISP 的 tone mapping / AWB / 多帧合成）。
+     * 设备不支持 RAW_SENSOR 时开了也没用（rawImageReader 为 null，按纯 JPEG 帧）。
+     */
+    @Volatile var rawNegativeEnabled: Boolean = false
+
+    /** 设备是否支持 RAW_SENSOR 输出（拍照前就探好） */
+    val rawCapable: Boolean get() = rawImageReader != null
 
     // 手动参数
     private var manualIso: Int? = null
@@ -96,6 +148,117 @@ class Camera2Controller(private val context: Context) {
                 )
             }
         }
+
+    /**
+     * 快门帧结果的暂存回调：P3 RAW 负片要拿 TotalCaptureResult 喂 DngCreator
+     * （DNG 头里的曝光/白平衡/方向元数据全从它来），顺手把原闪光状态日志也打了。
+     */
+    private val stillCaptureCallback =
+        object : android.hardware.camera2.CameraCaptureSession.CaptureCallback() {
+            override fun onCaptureCompleted(
+                session: android.hardware.camera2.CameraCaptureSession,
+                request: CaptureRequest,
+                result: TotalCaptureResult,
+            ) {
+                if (rawNegativeEnabled && rawImageReader != null) {
+                    // 到达顺序不保证（结果可能先于 JPEG/RAW）：槽不存在就建，谁先到谁开户
+                    val p = pendingShot ?: PendingShot().also { pendingShot = it }
+                    if (!p.completed) p.result = result
+                }
+                // 原闪光状态日志原样保留
+                val st = result.get(android.hardware.camera2.CaptureResult.FLASH_STATE)
+                val ae = result.get(android.hardware.camera2.CaptureResult.CONTROL_AE_STATE)
+                android.util.Log.i(
+                    TAG,
+                    "拍照完成 flashState=${
+                        when (st) {
+                            android.hardware.camera2.CameraMetadata.FLASH_STATE_UNAVAILABLE -> "UNAVAILABLE"
+                            android.hardware.camera2.CameraMetadata.FLASH_STATE_CHARGING -> "CHARGING"
+                            android.hardware.camera2.CameraMetadata.FLASH_STATE_READY -> "READY"
+                            android.hardware.camera2.CameraMetadata.FLASH_STATE_FIRED -> "FIRED"
+                            android.hardware.camera2.CameraMetadata.FLASH_STATE_PARTIAL -> "PARTIAL"
+                            else -> "$st"
+                        }
+                    } aeState=$ae"
+                )
+            }
+        }
+
+    /** 一次快门的碎片。只在相机后台线程（JPEG/RAW 监听、结果回调、超时 Runnable）上访问，无需加锁。 */
+    private class PendingShot {
+        var jpeg: ByteArray? = null
+        var rotation: Int = 0
+        var rawImage: Image? = null
+        var result: TotalCaptureResult? = null
+        var completed = false
+        var timeoutPosted = false
+    }
+
+    /** JPEG / RAW / 快门结果三者到齐（或超时）→ 交付落卷。相机线程上调用。 */
+    private fun tryCompletePendingShot() {
+        val p = pendingShot ?: return
+        if (p.completed) return
+        if (p.jpeg != null && p.rawImage != null && p.result != null) {
+            p.completed = true
+            deliverPendingShot(p)
+        }
+    }
+
+    /** 超时兜底：RAW 拿不到了就按纯 JPEG 帧交付，帧不丢。相机线程上调用。 */
+    private fun completePendingShotOnTimeout() {
+        val p = pendingShot ?: return
+        if (p.completed) return
+        p.completed = true
+        p.rawImage?.close()
+        p.rawImage = null
+        android.util.Log.w(TAG, "RAW 碎片未到齐（raw=${p.rawImage != null} result=${p.result != null}），按纯 JPEG 帧落卷")
+        deliverPendingShot(p)
+    }
+
+    /** 汇合后的交付：JPEG 必须有；RAW 齐 → 相机线程外写 DNG 再回调，否则直接回调。 */
+    private fun deliverPendingShot(p: PendingShot) {
+        pendingShot = null
+        val jpeg = p.jpeg
+        val image = p.rawImage
+        val result = p.result
+        if (jpeg == null || image == null || result == null) {
+            // 任一缺件：DNG 不写（Image 关掉），JPEG 照常落卷
+            image?.close()
+            if (jpeg == null) return
+            onPhotoCaptured?.invoke(jpeg, p.rotation, null)
+            return
+        }
+        val chars = cameraChars
+        if (chars == null) {
+            image.close()
+            onPhotoCaptured?.invoke(jpeg, p.rotation, null)
+            return
+        }
+        // DNG 写盘是重 IO：丢给专职线程，相机线程立刻回去伺候预览
+        val submitted = runCatching {
+            rawWriterExecutor.execute {
+                val tmp = File(context.cacheDir, "raw_shot_${System.currentTimeMillis()}.dng")
+                val ok = runCatching {
+                    android.hardware.camera2.DngCreator(chars, result).use { creator ->
+                        java.io.FileOutputStream(tmp).use { out -> creator.writeImage(out, image) }
+                    }
+                    tmp.length() > 0
+                }.onFailure {
+                    android.util.Log.e(TAG, "DNG 写盘失败（本帧按 JPEG 负片）: ${it.message}", it)
+                }.getOrDefault(false)
+                image.close()
+                val dng = if (ok) tmp else { tmp.delete(); null }
+                android.util.Log.i(
+                    TAG, "RAW 底片 ${if (dng != null) "${tmp.length() / 1024}KB" else "失败"} -> ${dng?.name}"
+                )
+                onPhotoCaptured?.invoke(jpeg, p.rotation, dng)
+            }
+        }.isSuccess
+        if (!submitted) {
+            image.close()
+            onPhotoCaptured?.invoke(jpeg, p.rotation, null)
+        }
+    }
 
     /**
      * 内置闪光灯是否开启。
@@ -196,11 +359,13 @@ class Camera2Controller(private val context: Context) {
 
     // 拍照回调
     /**
-     * 拍照回调：相机 ISP 输出的原始 JPEG 字节 + 像素需顺时针旋转的角度（0/90/180/270）。
+     * 拍照回调：相机 ISP 输出的原始 JPEG 字节 + 像素需顺时针旋转的角度（0/90/180/270）
+     * + RAW 底片临时文件（null = 这帧没有 DNG：RAW 关着 / 设备不支持 / 这帧 RAW 没拿到）。
      * 不做任何解码/旋转/重编码——那会把一次编码变成两次并多吃约 100MB 内存。
-     * 方向只作为元数据随帧记录，由冲洗侧统一旋转。
+     * 方向只作为元数据随帧记录，由冲洗侧统一旋转。DNG 由落卷方移进底片目录，临时文件
+     * 用完（或落卷失败）由落卷方负责删除。
      */
-    var onPhotoCaptured: ((ByteArray, Int) -> Unit)? = null
+    var onPhotoCaptured: ((ByteArray, Int, File?) -> Unit)? = null
 
     /** 取景器元信息回调：(AF 状态, 曝光时间秒)，驱动 T3 取景器内的合焦灯与快门档显示 */
     var onViewfinderMeta: ((afState: Int?, exposureSec: Float, isoAe: Int) -> Unit)? = null
@@ -349,10 +514,62 @@ class Camera2Controller(private val context: Context) {
             } finally {
                 image.close()
             }
-            onPhotoCaptured?.invoke(bytes, jpegRotationDegrees(sensorOrientation).also {
+            val rotation = jpegRotationDegrees(sensorOrientation).also {
                 android.util.Log.i("Camera2", "capture jpegRotation=$it deviceRotation=${deviceRotationDegrees()}")
-            })
+            }
+            if (!rawNegativeEnabled || rawImageReader == null) {
+                // RAW 没开 / 不支持：老路径，JPEG 即全部
+                onPhotoCaptured?.invoke(bytes, rotation, null)
+            } else {
+                // RAW 开着：JPEG 先进汇合处，等 RAW 图 + 快门结果（或超时）一起交付
+                val p = pendingShot ?: PendingShot().also { pendingShot = it }
+                if (!p.completed) {
+                    p.jpeg = bytes
+                    p.rotation = rotation
+                    if (!p.timeoutPosted) {
+                        p.timeoutPosted = true
+                        backgroundHandler?.postDelayed({ completePendingShotOnTimeout() }, RAW_WAIT_MS)
+                    }
+                    tryCompletePendingShot()
+                } else {
+                    // 上一张的超时碎片混进来（极小概率）：按独立 JPEG 帧交付，不丢
+                    onPhotoCaptured?.invoke(bytes, rotation, null)
+                }
+            }
         }, backgroundHandler)
+
+        // P3 RAW 负片：RAW_SENSOR 第二路（16bit Bayer，没过 tone mapping / AWB / 多帧合成）。
+        // 能力探测 + 选档（≤16MP 的最大档，避开 200MP 全尺寸 Bayer）。
+        cameraChars = chars
+        val rawSizes: List<Size> = runCatching {
+            map?.getOutputSizes(ImageFormat.RAW_SENSOR)?.toList().orEmpty()
+        }.getOrDefault(emptyList())
+        val rawPicked = pickRawSize(rawSizes.map { it.width to it.height })
+        if (rawPicked != null) {
+            val rs = Size(rawPicked.first, rawPicked.second)
+            rawImageReader = ImageReader.newInstance(rs.width, rs.height, ImageFormat.RAW_SENSOR, 2)
+            rawImageReader?.setOnImageAvailableListener({ reader ->
+                val image = reader.acquireNextImage() ?: return@setOnImageAvailableListener
+                val p = pendingShot
+                if (p == null || p.completed) {
+                    // 没有等待中的快门（RAW 开关刚打开后的残影）：直接丢掉
+                    image.close()
+                    return@setOnImageAvailableListener
+                }
+                p.rawImage = image
+                tryCompletePendingShot()
+            }, backgroundHandler)
+            android.util.Log.i(TAG, "RAW 负片可用：${rs.width}x${rs.height}（HAL 共 ${rawSizes.size} 档）")
+        } else {
+            android.util.Log.i(TAG, "RAW 负片不可用：HAL 无 RAW_SENSOR 输出")
+        }
+        runCatching {
+            java.io.File(context.applicationInfo.dataDir, "files").let { d ->
+                java.io.File(d, "filmcam_diag.txt").appendText(
+                    "rawSensor=${rawPicked != null} rawSize=${rawPicked?.first}x${rawPicked?.second}\n"
+                )
+            }
+        }
 
         try {
             manager.openCamera(cameraId, object : CameraDevice.StateCallback() {
@@ -377,6 +594,11 @@ class Camera2Controller(private val context: Context) {
         this.previewSurface = previewSurface
         val readerSurface = imageReader!!.surface
 
+        // RAW surface 只要设备支持就常驻会话（开关切换不重建会话——
+        // 往没配置过的 surface 上 addTarget 会让整次 capture 直接抛异常）
+        val outputs = mutableListOf(previewSurface, readerSurface)
+        rawImageReader?.let { outputs.add(it.surface) }
+
         previewRequestBuilder = camera.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW).apply {
             addTarget(previewSurface)
             set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
@@ -390,7 +612,7 @@ class Camera2Controller(private val context: Context) {
         }
 
         camera.createCaptureSession(
-            listOf(previewSurface, readerSurface),
+            outputs,
             object : android.hardware.camera2.CameraCaptureSession.StateCallback() {
                 override fun onConfigured(session: android.hardware.camera2.CameraCaptureSession) {
                     captureSession = session
@@ -418,6 +640,10 @@ class Camera2Controller(private val context: Context) {
             val slow = slowExposureNs > 0L && slowIso > 0
             val captureBuilder = camera.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE).apply {
                 addTarget(readerSurface)
+                // P3 RAW：开着的快门同时收 RAW_SENSOR（同一帧的 Bayer 原始数据）
+                if (rawNegativeEnabled) {
+                    rawImageReader?.surface?.let { addTarget(it) }
+                }
                 set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
                 applyManualSettings(this)
                 // 白平衡跟随预览当前预设（STILL_CAPTURE 是独立 builder，不带会回到 AUTO）
@@ -623,7 +849,7 @@ class Camera2Controller(private val context: Context) {
         // 慢门已把 AE 关掉，HAL 不会闪，也不需要预闪测光 —— 直接开快门
         if (!flashEnabled || slowShutter || manualIso != null || manualExposure != null || surface == null) {
             // 未开闪光 / 手动曝光（HAL 不会闪）→ 直接拍
-            session.capture(captureBuilder.build(), null, handler)
+            session.capture(captureBuilder.build(), stillCaptureCallback, handler)
             return
         }
 
@@ -632,7 +858,7 @@ class Camera2Controller(private val context: Context) {
             if (!fired) {
                 fired = true
                 runCatching {
-                    session.capture(captureBuilder.build(), flashStateCallback, handler)
+                    session.capture(captureBuilder.build(), stillCaptureCallback, handler)
                 }
             }
         }
@@ -984,6 +1210,13 @@ class Camera2Controller(private val context: Context) {
         captureSession?.close()
         cameraDevice?.close()
         imageReader?.close()
+        rawImageReader?.close()
+        rawImageReader = null
+        // 汇合中的碎片一并丢弃（Image 必须关，否则 HAL 缓冲泄漏）
+        pendingShot?.rawImage?.close()
+        pendingShot = null
+        // DNG 写盘线程常驻不 shutdown：stop 之后还可能 start（暂停/恢复），
+        // 空闲单线程的开销为零，关了反而要在 start 里重建
         backgroundThread?.quitSafely()
         captureSession = null
         cameraDevice = null

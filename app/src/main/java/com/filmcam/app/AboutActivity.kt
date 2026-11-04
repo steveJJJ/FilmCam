@@ -518,6 +518,26 @@ class AboutActivity : AppCompatActivity() {
             prefs.edit().putBoolean("debug_instant_develop", checked).apply()
         }
 
+        // P3 RAW 负片：开关本身设备无关（不支持的机型开了也不会产生底片，无害），
+        // 但能力探一下能让用户当场知道这台机器行不行
+        val swRaw = view.findViewById<android.widget.Switch>(R.id.swRawNegative)
+        swRaw.isChecked = prefs.getBoolean("filmcam_dev_raw", false)
+        swRaw.setOnCheckedChangeListener { _, checked ->
+            prefs.edit().putBoolean("filmcam_dev_raw", checked).apply()
+        }
+        runCatching {
+            val cm = getSystemService(android.hardware.camera2.CameraManager::class.java)
+            val rawSizes = cm?.getCameraCharacteristics("0")
+                ?.get(android.hardware.camera2.CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
+                ?.getOutputSizes(android.graphics.ImageFormat.RAW_SENSOR)
+            if (rawSizes.isNullOrEmpty()) {
+                swRaw.isEnabled = false
+                swRaw.text = getString(R.string.eng_raw_unavailable)
+            } else {
+                android.util.Log.i("AboutActivity", "RAW_SENSOR 可用 ${rawSizes.size} 档，最大 ${rawSizes.maxByOrNull { it.width.toLong() * it.height }!!}")
+            }
+        }
+
         // 概率缺省：老用户开过模拟失焦 → 40%（旧版硬编码值）；否则 0（关）
         val prob = prefs.getInt(
             "softFocus_prob",

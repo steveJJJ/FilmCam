@@ -106,6 +106,22 @@
                 android:text="@string/main_debug_skip_develop"
                 android:textSize="15sp" />
 
+            <Switch
+                android:id="@+id/swRawNegative"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:text="@string/eng_raw_negative"
+                android:textSize="15sp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:text="@string/eng_raw_hint"
+                android:textColor="#888"
+                android:textSize="12sp" />
+
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"

@@ -26,7 +26,9 @@ object RollRegistry {
         val takenAtMs: Long,
         val iso: Int?,
         val orientation: Int = 0,
-        val shot: String = ""
+        val shot: String = "",
+        /** RAW 底片（DNG）的绝对路径；空串 = 这帧是纯 JPEG 负片。老记录缺此字段按空串读 */
+        val raw: String = ""
     )
 
     data class RollRec(
@@ -77,7 +79,8 @@ object RollRegistry {
                         // iso 可能是 JSONObject.NULL —— 用 isNull 判断，不能用 optInt（会返回 0）
                         iso = if (f.isNull("iso")) null else f.optInt("iso", 0),
                         orientation = f.optInt("orientation", 0),
-                        shot = f.optString("shot", "")
+                        shot = f.optString("shot", ""),
+                        raw = f.optString("raw", "")
                     )
                 )
             }
@@ -113,6 +116,7 @@ object RollRegistry {
                 if (f.iso == null) fo.put("iso", JSONObject.NULL) else fo.put("iso", f.iso)
                 fo.put("orientation", f.orientation)
                 if (f.shot.isNotEmpty()) fo.put("shot", f.shot)
+                if (f.raw.isNotEmpty()) fo.put("raw", f.raw)
                 fa.put(fo)
             }
             o.put("frames", fa)

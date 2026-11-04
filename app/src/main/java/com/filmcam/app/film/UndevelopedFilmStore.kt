@@ -141,6 +141,8 @@ object UndevelopedFilmStore {
         iso: Int?,
         orientation: Int = 0,
         shotJson: String = "",
+        /** RAW 底片临时文件（相机侧写的 DNG）；null = 纯 JPEG 帧。移入底片目录后临时文件不复存在 */
+        rawDng: java.io.File? = null,
     ): Int = synchronized(this) {
         val rolls = loadAll()
         val roll = findRec(rolls, rollId)
@@ -194,10 +196,31 @@ object UndevelopedFilmStore {
             handle = file.absolutePath
         }
 
+        // RAW 底片归位：app 私有目录 negatives/<rollId>/frame_NN.dng（冲洗后保留，删卷时清理）
+        var rawPath = ""
+        if (rawDng != null && rawDng.exists() && rawDng.length() > 0) {
+            val negDir = java.io.File(requireContext().getExternalFilesDir(null), "negatives/$rollId")
+            if (negDir.exists() || negDir.mkdirs()) {
+                val target = java.io.File(negDir, "frame_$nn.dng")
+                if (rawDng.renameTo(target) || runCatching {
+                        rawDng.copyTo(target, overwrite = true); rawDng.delete()
+                    }.isSuccess) {
+                    rawPath = target.absolutePath
+                } else {
+                    runCatching { rawDng.delete() }
+                }
+            } else {
+                runCatching { rawDng.delete() }
+            }
+        } else {
+            rawDng?.let { runCatching { it.delete() } }
+        }
+
         roll.frames.add(
             FrameRec(
                 index = index, handle = handle, takenAtMs = takenAtMs,
-                iso = iso, orientation = orientation, shot = shotJson
+                iso = iso, orientation = orientation, shot = shotJson,
+                raw = rawPath
             )
         )
         persist(rolls)
@@ -225,6 +248,16 @@ object UndevelopedFilmStore {
     /** 该帧像素需顺时针旋转的角度（0/90/180/270）。缺省 0。 */
     fun frameOrientation(rollId: String, index: Int): Int = synchronized(this) {
         findRec(loadAll(), rollId).frames.firstOrNull { it.index == index }?.orientation ?: 0
+    }
+
+    /**
+     * 该帧的 RAW 底片（DNG）路径；null = 没有底片（纯 JPEG 帧 / 文件已被清理）。
+     * 冲洗侧据此决定走引擎 RAW 会话还是 JPEG 通路。
+     */
+    fun frameRawPath(rollId: String, index: Int): String? = synchronized(this) {
+        val raw = findRec(loadAll(), rollId).frames.firstOrNull { it.index == index }?.raw
+            ?: return@synchronized null
+        if (raw.isNotEmpty() && java.io.File(raw).exists()) raw else null
     }
 
     /** 冲洗侧解码用：打开原始未冲洗帧的输入流。 */
@@ -393,6 +426,12 @@ object UndevelopedFilmStore {
                     File(f.handle).delete()
                 }
             }
+            // RAW 底片一并清（app 私有目录，不走 MediaStore）
+            if (f.raw.isNotEmpty()) runCatching { File(f.raw).delete() }
+        }
+        // 底片目录整卷兜底清理（防个别文件漏删留空目录）
+        runCatching {
+            java.io.File(requireContext().getExternalFilesDir(null), "negatives/$rollId").deleteRecursively()
         }
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
             runCatching {

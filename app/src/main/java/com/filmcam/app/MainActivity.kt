@@ -75,6 +75,8 @@ class MainActivity : AppCompatActivity() {
     /** 触感强度档位：0=低 1=中 2=强（用户可在设置里切，见 vibrate() 的缩放系数） */
     private var hapticLevel = 1
     private var debugInstantDevelop = false  // 调试：拍完立即后台冲洗出片
+    /** P3 RAW 负片（工程师控制台，默认关）：开着的快门同时收 RAW，DNG 作底片进引擎 RAW 会话 */
+    private var rawNegativeEnabled = false
     private val FILM_MAX = 36  // 一卷36张
 
     // T3 机身 UI 状态
@@ -467,6 +469,7 @@ class MainActivity : AppCompatActivity() {
         // 旧 filmCount 键仅作迁移保留读取，不再作为权威（张数一律读 UndevelopedFilmStore.shotCount）
         @Suppress("UNUSED_VARIABLE") val legacyFilmCount = prefs.getInt("filmCount", 0)
         debugInstantDevelop = prefs.getBoolean("debug_instant_develop", false)
+        rawNegativeEnabled = prefs.getBoolean("filmcam_dev_raw", false)
         flash.mode = try {
             FlashMode.valueOf(prefs.getString("flashMode", FlashMode.OFF.name) ?: FlashMode.OFF.name)
         } catch (_: Exception) { FlashMode.OFF }
@@ -1308,6 +1311,9 @@ class MainActivity : AppCompatActivity() {
 
         // 工程师模式里可能刚改过慢门触发机制/档位：回前台重新对齐，不必重启 App
         val prefs = getSharedPreferences("filmcam", MODE_PRIVATE)
+        // RAW 负片开关同理：控制台里刚拨的，回到取景器就要生效
+        rawNegativeEnabled = prefs.getBoolean("filmcam_dev_raw", false)
+        cameraController?.rawNegativeEnabled = rawNegativeEnabled
         val newTrigger = FilmExposure.Trigger.fromPrefs(
             prefs.getInt("slowTrigger", FilmExposure.Trigger.PROBABILITY.prefs)
         )
@@ -1374,12 +1380,13 @@ class MainActivity : AppCompatActivity() {
             updateViewfinderIndicators(afState, exposureSec, isoAe)
         }
         // 全分辨率拍照回调：后台把原帧 JPEG 存入未冲洗胶卷（零处理，不做 LUT/日期戳/EXIF——那些在冲洗侧做）
-        cameraController?.onPhotoCaptured = { bytes, rotation ->
+        cameraController?.onPhotoCaptured = { bytes, rotation, rawDng ->
             saveExecutor.execute {
                 var savedRollId: String? = null
                 try {
-                    // 字节直传：相机 ISP 的 JPEG 原样入卷，不解码、不旋转、不全尺寸重编码。
+                    // 字节直传：相机 ISP 输出的 JPEG 原样入卷，不解码、不旋转、不全尺寸重编码。
                     // 方向由 rotation 随帧记录，冲洗侧统一旋转（90° 整数倍，无损）。
+                    // rawDng（有则）由 saveFrame 移进底片目录 negatives/<rollId>/ 作「底片」。
                     // 无活动卷 → 按当前胶卷映射开新卷
                     var roll = UndevelopedFilmStore.currentRoll()
                     if (roll == null) {
@@ -1392,7 +1399,7 @@ class MainActivity : AppCompatActivity() {
                     val iso = isoValues[isoValue]
                     val count = UndevelopedFilmStore.saveFrame(
                         roll.rollId, bytes, System.currentTimeMillis(), iso, rotation,
-                        shotJson = lastShotJson
+                        shotJson = lastShotJson, rawDng = rawDng
                     )
                     runOnUiThread {
                         if (count >= FILM_MAX) {
@@ -1409,6 +1416,8 @@ class MainActivity : AppCompatActivity() {
                         }
                     }
                 } catch (e: Exception) {
+                    // 底片没落上卷就不能留在缓存目录里（一张几十 MB，漏一张占一块地）
+                    rawDng?.let { runCatching { it.delete() } }
                     runOnUiThread {
                         Toast.makeText(this, getString(R.string.main_toast_save_failed, e.message), Toast.LENGTH_LONG).show()
                     }

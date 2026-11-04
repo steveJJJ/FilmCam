@@ -532,6 +532,30 @@ class DevelopmentService : Service() {
     ): Boolean {
         val tTotal0 = android.os.SystemClock.elapsedRealtime()
 
+        // ---- P3 RAW 通路：有 DNG 底片的帧走引擎 RAW 会话（绕过 ISP 的 JPEG 加工）----
+        // 任何失败（引擎不认 / 渲染炸 / 后处理异常）→ 落回下方 JPEG 通路，帧不丢
+        val rawDngPath = runCatching {
+            UndevelopedFilmStore.frameRawPath(roll.rollId, index)
+        }.getOrNull()
+        if (rawDngPath != null) {
+            val tRaw0 = android.os.SystemClock.elapsedRealtime()
+            val rawFellBack = runCatching {
+                developFrameFromRaw(
+                    roll, index, rawDngPath, paramsJson, exifParamsJson, filmDisplayName,
+                    tmpJpeg, fallbackParamsJsons, frameNumber, gate,
+                    frameParamsJson, frameOkPortrait, flashParamsJson, flashFrameParamsJson,
+                )
+            }.onFailure {
+                Log.w(TAG, "帧 $index RAW 通路失败，落回 JPEG 通路: ${it.message}", it)
+            }.getOrNull()
+            if (rawFellBack != null) {
+                val tRaw = android.os.SystemClock.elapsedRealtime() - tRaw0
+                Log.i(TAG, "帧 $index [RAW] 用时 ${tRaw}ms · ${tmpJpeg.length() / 1024}KB")
+                DevDiagnostics.frame(tRaw, 0, tRaw, 0, 0, 0, 0, 0, false)
+                return rawFellBack
+            }
+        }
+
         // 只看 bounds，算出解码缩放倍数（maxPx<=0 表示引擎不限，sample 保持 1）
         var sample = 1
         if (framePixelLimit > 0) {
@@ -708,6 +732,119 @@ class DevelopmentService : Service() {
             )
         }
         return fellBack
+    }
+
+    /**
+     * P3 RAW 通路的一帧冲洗：DNG 底片 → 引擎 RAW 会话出图 → 后处理（旋转 / 片门 /
+     * 日期戳 / 暗角）→ EXIF → 落盘成片。返回值语义与 [processOneFrame] 一致（fellBack）。
+     *
+     * 后处理说明：JPEG 通路是「画在进引擎的位图上」（日期戳透过镜头曝在底片上、暗角
+     * 长在底片上），RAW 通路进引擎的是 DNG 文件没法画，所以改画在**引擎输出**上——
+     * 等于把日期戳和暗角印在相纸上，顺序近似，等真机观感定夺要不要再挪。
+     */
+    private fun developFrameFromRaw(
+        roll: RollInfo,
+        index: Int,
+        dngPath: String,
+        paramsJson: String,
+        exifParamsJson: String,
+        filmDisplayName: String,
+        tmpJpeg: File,
+        fallbackParamsJsons: List<String>,
+        frameNumber: Int,
+        gate: FilmStockMapper.FrameFormat,
+        frameParamsJson: String?,
+        frameOkPortrait: Boolean,
+        flashParamsJson: String?,
+        flashFrameParamsJson: String?,
+    ): Boolean {
+        val takenAt = try {
+            UndevelopedFilmStore.frameTakenAt(roll.rollId, index)
+        } catch (_: Throwable) { System.currentTimeMillis() }
+        val iso = UndevelopedFilmStore.frameIso(roll.rollId, index)
+        val shotJson = UndevelopedFilmStore.frameShot(roll.rollId, index)
+        val rotation = UndevelopedFilmStore.frameOrientation(roll.rollId, index)
+
+        // 参数选择与 JPEG 通路同一套规则（片框/直闪/竖片门），portrait 由帧记录的方向推
+        val isFlash = com.filmcam.app.film.ShotMeta.fromJson(shotJson)
+            ?.flash?.let { it != "OFF" } == true
+        val portrait = rotation == 90 || rotation == 270
+        val useFrame = frameParamsJson != null && (!portrait || frameOkPortrait)
+        val baseJson = when {
+            useFrame && isFlash -> flashFrameParamsJson ?: frameParamsJson!!
+            useFrame -> frameParamsJson!!
+            isFlash -> flashParamsJson ?: paramsJson
+            else -> paramsJson
+        }
+        val effectiveFallbacks =
+            if (isFlash && baseJson != paramsJson) listOf(paramsJson) + fallbackParamsJsons
+            else fallbackParamsJsons
+        val frameParamsJsonOrNull =
+            if (useFrame && frameNumber > 0) {
+                FilmStockMapper.withFrameNumber(baseJson, frameNumber)
+            } else baseJson
+
+        // 引擎 RAW 会话出图（主参数 + 兜底链；主参数失败整个会话重开）
+        val result = SpektraProcessor.processRawFrame(
+            applicationContext, dngPath, frameParamsJsonOrNull, tmpJpeg.absolutePath,
+            fallbackParamsJsons = effectiveFallbacks
+        )
+        check(result.ok) { "processRawFrame 失败: ${result.message}" }
+
+        // ---- 后处理：旋转 / 片门 / 日期戳 / 暗角 ----
+        var bmp = BitmapFactory.decodeFile(tmpJpeg.absolutePath)
+            ?: throw IllegalStateException("RAW 输出解码失败: $tmpJpeg")
+        try {
+            // 方向启发式：引擎的 LibRaw 解码多半不应用 DNG 的方向标签——
+            // 竖拍（rotation 90/270）而输出是横的 → 按帧记录旋转；输出已是竖的 = 引擎转过了
+            if ((rotation == 90 || rotation == 270) && bmp.width > bmp.height) {
+                val rotated = rotateBitmap(bmp, rotation)
+                bmp.recycle()
+                bmp = rotated
+                Log.d(TAG, "帧 $index [RAW] 输出按记录旋转 $rotation°")
+            } else if (rotation == 180) {
+                val rotated = rotateBitmap(bmp, 180)
+                bmp.recycle()
+                bmp = rotated
+            }
+            // 片门：引擎若没裁到片门比例（输出 4:3），中心外切裁成 3:2 / 2:3——
+            // 已是片门形状时 gateCrop 是无操作
+            val crop = FilmStockMapper.gateCrop(gate, bmp.width, bmp.height)
+            if (crop.cropped) {
+                val gated = Bitmap.createBitmap(crop.w, crop.h, Bitmap.Config.ARGB_8888)
+                Canvas(gated).drawBitmap(bmp, -crop.x.toFloat(), -crop.y.toFloat(), Paint())
+                bmp.recycle()
+                bmp = gated
+                Log.d(TAG, "帧 $index [RAW] 片门裁切 ${crop.w}x${crop.h}")
+            }
+            if (isDateStampEnabled()) {
+                runCatching { DateStampRenderer.drawOnBitmap(applicationContext, bmp, takenAt) }
+            }
+            runCatching { applySonnarVignette(bmp) }
+            // 回写 tmpJpeg（引擎输出被后处理替换）
+            java.io.FileOutputStream(tmpJpeg).use { out ->
+                bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 95, out)
+            }
+        } finally {
+            bmp.recycle()
+        }
+
+        // EXIF + 落盘成片（与 JPEG 通路同一收尾）
+        ContaxExif.write(
+            tmpJpeg, iso, result.width, result.height, takenAt,
+            metadataAtMs = System.currentTimeMillis(),
+            filmDisplayName = filmDisplayName,
+            filmStockId = roll.filmStockId,
+            printStockId = roll.printStockId,
+            rollId = roll.rollId,
+            paramsJson = exifParamsJson,
+            shotJson = shotJson,
+        )
+        check(tmpJpeg.exists() && tmpJpeg.length() > 0) { "RAW 冲洗后临时 JPEG 为空: $tmpJpeg" }
+        val uri = UndevelopedFilmStore.writeDevelopedFrame(roll.rollId, index, tmpJpeg)
+        Log.d(TAG, "帧 $index [RAW] 落盘完成 uri=$uri")
+        tmpJpeg.delete()
+        return result.fellBack
     }
 
     /**

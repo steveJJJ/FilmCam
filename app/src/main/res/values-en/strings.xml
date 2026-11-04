@@ -265,6 +265,9 @@ Memory available: %10$d MB / %11$d MB total
     <string name="eng_lens_blur">Lens softness</string>
     <string name="eng_lens_hint">Sonnar softness on film (part of the body, not per roll)</string>
     <string name="eng_lens_note">0 = off (digital-sharp) · 4 invisible · 8 slight · 12 default · 20 soft · 35 dreamy. Takes effect on the next development.</string>
+    <string name="eng_raw_negative">RAW negative</string>
+    <string name="eng_raw_hint">Capture RAW (16-bit Bayer, bypassing the ISP tone mapping / AWB / multi-frame stacking) alongside JPEG. The DNG is kept as the negative (~25–40MB each) and developed through the engine RAW session. Falls back to the JPEG path on any failure.</string>
+    <string name="eng_raw_unavailable">RAW negative (not supported)</string>
     <string name="eng_cc">Color balance</string>
     <string name="eng_cc_hint">Fix skin tone (yellowish) with enlarger filters</string>
     <string name="eng_cc_y">Warmth</string>
