@@ -604,6 +604,10 @@ object FilmStockMapper {
      *   冲洗前会拿它做一遍引擎预检，把引擎不接受的键剔掉再传进来，
      *   这样新参数被拒时只丢这一味，不会整档掉回印相。
      * @param extraEntries 追加的额外参数（片框那类与风格无关的键），同样是 JSON 字面量。
+     * @param flashShot 这一帧是不是闪光拍摄（ShotMeta.flash != OFF）。
+     *   直闪帧走单独的一套味道：辉光增强 + [flashFinishEntries]（预检过滤后的子集）。
+     * @param flashEntries 直闪追加键（DevelopmentService 预检后传入；空表 = 全被拒，
+     *   仍保留辉光增强）。null 与 false 等价、不进直闪分支。
      */
     fun buildParamsJson(
         filmStockId: String,
@@ -613,6 +617,8 @@ object FilmStockMapper {
         scanFinishLevel: Int = SCAN_LEVEL_FULL,
         scanExtraOverride: List<Pair<String, String>>? = null,
         extraEntries: List<Pair<String, String>>? = null,
+        flashShot: Boolean = false,
+        flashEntries: List<Pair<String, String>>? = null,
     ): String {
         val effectivePrintStock = settings.paperOverride?.takeIf { it.isNotBlank() } ?: printStockId
         // scan_film 只对反转片成立：正片本身就是可直接观看的正像。
@@ -621,6 +627,10 @@ object FilmStockMapper {
         // 所以「店扫」档也必须走印相通路，再用扫描仪/宽容度参数塑造店扫味。
         val scan = isPositive(filmStockId)
         val style = settings.outputStyle
+        // 直闪帧的辉光增强：高光反射点 + 溢出边缘红晕比自然光帧明显
+        val halationAmount =
+            if (flashShot) (settings.halationAmount * FLASH_HALATION_BOOST).coerceIn(0f, 2f)
+            else settings.halationAmount
         // 店扫档的曝光倾向只在完整档生效：保守档要和可出图的基线完全一致
         val effectiveExposure =
             if (style.isScan && scanFinishLevel == SCAN_LEVEL_FULL)
@@ -636,7 +646,7 @@ object FilmStockMapper {
           .append("\"print_exposure\":").append(jsonNum(effectiveExposure)).append(',')
           .append("\"preview_long_edge\":2048,")
           .append("\"grain_amount\":").append(jsonNum(settings.grainAmount)).append(',')
-          .append("\"halation_amount\":").append(jsonNum(settings.halationAmount)).append(',')
+          .append("\"halation_amount\":").append(jsonNum(halationAmount)).append(',')
           .append("\"glare_amount\":").append(jsonNum(settings.glareAmount)).append(',')
           // 镜头层：Sonnar T* 35/2.8 打在底片上的柔度（胶片尺度 μm，36mm 宽）。
           // 手机 HAL 出的数据偏"数码级干净"，一点镜头柔度是胶片味的重要来源。
@@ -648,6 +658,12 @@ object FilmStockMapper {
           // 最终定值以用户在真机上的对比结论为准。
           .append("\"lens_blur_um\":").append(jsonNum(settings.lensBlurUm)).append(',')
           .append("\"film_format_mm\":36.0")
+        // 直闪味（预检后的子集；全部被拒时只剩上面的辉光增强）
+        if (flashShot) {
+            flashEntries?.forEach { (k, v) ->
+                sb.append(",\"").append(k).append("\":").append(v)
+            }
+        }
         if (scan) sb.append(",\"scan_film\":true")
         // 风格标记只在 EXIF 快照里出现；发给引擎会触发 unknown parameter，整卷出不了图
         if (includeStyleMark) {
@@ -688,6 +704,29 @@ object FilmStockMapper {
 
     /** 镜头柔度上限：引擎真机实测 0~35 都收、50000 被拒，超出区间由引擎硬校验兜底 */
     const val LENS_BLUR_MAX_UM = 35.0f
+
+    /**
+     * 直闪帧的辉光增强系数。直闪的小灯管在皮肤/镜面上打出集中的高光反射点，
+     * 高光溢出边缘的红晕（halation）比自然光帧明显得多。
+     * 只对 `halation_amount` 乘系数，仍钳在 0–2 的已验证区间内。
+     */
+    const val FLASH_HALATION_BOOST = 1.5f
+
+    /**
+     * 直闪帧追加的引擎参数（键-值对，值是 JSON 字面量）。
+     *
+     * 直闪底片和自然光底片在暗房里就是两种东西：反差大、主体密、背景薄，
+     * 印相时店员有一套针对性的处理。这里把其中可参数化的部分搬过来：
+     *
+     *  - `preflash_exposure`：放大机预闪 —— 印正像前给相纸一次均匀的弱曝光，
+     *    把黑位抬起来、反差压一点。直闪帧的背景被闪光甩进黑暗，预一点闪
+     *    避免印出来背景死黑一片（店扫处理直闪卷的常规操作）。
+     *    值域未标定：冲洗前的 [SpektraProcessor.probeRejectedKeys] 预检会真渲一张
+     *    小图试这个值，引擎不收就整键剔除，只会丢这一味、不炸整帧。
+     */
+    fun flashFinishEntries(): List<Pair<String, String>> = listOf(
+        "preflash_exposure" to "0.08",
+    )
 
     /** 片框版式：135 全画幅（36×24mm，3:2，T3 这一格）—— 画面要先按片门裁成 3:2 */
     const val OVERSCAN_FORMAT_FULL = "135"

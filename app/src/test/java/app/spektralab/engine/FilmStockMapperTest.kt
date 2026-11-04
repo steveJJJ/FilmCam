@@ -177,6 +177,50 @@ class FilmStockMapperTest {
     }
 
     @Test
+    fun `直闪帧带辉光增强与预闪参数`() {
+        // 自然光帧（基线）：不带预闪，辉光 = 用户设置原值
+        val plain = JSONObject(
+            FilmStockMapper.buildParamsJson("kodak_portra_400", "kodak_portra_endura")
+        )
+        assertFalse("非闪光帧不应带 preflash_exposure", plain.has("preflash_exposure"))
+        assertEquals(1.0, plain.optDouble("halation_amount"), 1e-6)
+
+        // 直闪帧：辉光 ×1.5，追加预闪（暗房处理直闪底片的常规操作）
+        val flash = JSONObject(
+            FilmStockMapper.buildParamsJson(
+                "kodak_portra_400", "kodak_portra_endura",
+                FilmStockMapper.DevSettings(),
+                includeStyleMark = false,
+                flashShot = true,
+                flashEntries = FilmStockMapper.flashFinishEntries(),
+            )
+        )
+        assertEquals(1.5, flash.optDouble("halation_amount"), 1e-6)
+        assertEquals(0.08, flash.optDouble("preflash_exposure"), 1e-9)
+        // 直闪键必须在引擎白名单里（否则预检必拒，白搭）
+        FilmStockMapper.flashFinishEntries().forEach { (k, _) ->
+            assertTrue("直闪键 $k 不在引擎白名单", FilmStockMapper.ENGINE_KNOWN_KEYS.contains(k))
+        }
+    }
+
+    @Test
+    fun `直闪辉光增强钳在已验证区间`() {
+        // 基线 2.0（顶格）× 1.5 = 3.0，必须钳回 2.0 —— 引擎区间 0~2 是真机验过的
+        val flash = JSONObject(
+            FilmStockMapper.buildParamsJson(
+                "kodak_portra_400", "kodak_portra_endura",
+                FilmStockMapper.DevSettings(halationAmount = 2.0f),
+                includeStyleMark = false,
+                flashShot = true,
+                flashEntries = emptyList(),
+            )
+        )
+        assertEquals(2.0, flash.optDouble("halation_amount"), 1e-6)
+        // 直闪键全被预检拒掉时（空表）：辉光增强仍然生效
+        assertTrue(!flash.has("preflash_exposure"))
+    }
+
+    @Test
     fun `参数默认值与冻结模板一致`() {
         val obj = JSONObject(FilmStockMapper.buildParamsJson("kodak_portra_400", "kodak_portra_endura"))
         assertEquals(1.0, obj.getDouble("grain_amount"), 1e-6)

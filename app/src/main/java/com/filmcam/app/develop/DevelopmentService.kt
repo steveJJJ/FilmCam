@@ -255,7 +255,9 @@ class DevelopmentService : Service() {
             val frameExtras = frameFormat?.let {
                 FilmStockMapper.frameBorderEntries(roll.filmStockId, 1, it)
             } ?: emptyList()
-            val extras = scanExtras + frameExtras
+            // 直闪味（预检混在同一个批次里跑，省一次引擎起session）
+            val flashExtras = FilmStockMapper.flashFinishEntries()
+            val extras = scanExtras + frameExtras + flashExtras
             val rejected: Set<String> =
                 if (extras.isEmpty()) emptySet()
                 else runCatching { SpektraProcessor.probeRejectedKeys(this, safeJson, extras) }
@@ -265,6 +267,7 @@ class DevelopmentService : Service() {
             val frameKeys = frameExtras.map { it.first }.toSet()
             val acceptedScan = scanExtras.filter { it.first !in rejected }
             val acceptedFrame = frameExtras.filter { it.first !in rejected }
+            val acceptedFlash = flashExtras.filter { it.first !in rejected }
             // 片框开着但帧号没被接受时，逐帧覆盖会把被拒的键塞回去 → 整卷失败，故记录
             val perFrameNumber =
                 if (effective.frameFormat.isOn && "overscan_frame_number" !in rejected) 1 else 0
@@ -287,6 +290,31 @@ class DevelopmentService : Service() {
                         effective.outputStyle, FilmStockMapper.SCAN_LEVEL_SAFE
                     ) + acceptedScan,
                     extraEntries = acceptedFrame,
+                )
+            } else null
+            // 直闪帧的两份变体（无片框 / 带片框）：辉光增强 + 预检过的直闪键。
+            // 真机上直闪底片在暗房就是另一套印法，这里把闪光帧和自然光帧真正分开。
+            val flashParamsJson = FilmStockMapper.buildParamsJson(
+                roll.filmStockId, mappedPrint, effective,
+                includeStyleMark = false,
+                scanFinishLevel = FilmStockMapper.SCAN_LEVEL_FULL,
+                scanExtraOverride = FilmStockMapper.scanFinishEntries(
+                    effective.outputStyle, FilmStockMapper.SCAN_LEVEL_SAFE
+                ) + acceptedScan,
+                flashShot = true,
+                flashEntries = acceptedFlash,
+            )
+            val flashFrameParamsJson = if (frameParamsJson != null) {
+                FilmStockMapper.buildParamsJson(
+                    roll.filmStockId, mappedPrint, effective,
+                    includeStyleMark = false,
+                    scanFinishLevel = FilmStockMapper.SCAN_LEVEL_FULL,
+                    scanExtraOverride = FilmStockMapper.scanFinishEntries(
+                        effective.outputStyle, FilmStockMapper.SCAN_LEVEL_SAFE
+                    ) + acceptedScan,
+                    extraEntries = acceptedFrame,
+                    flashShot = true,
+                    flashEntries = acceptedFlash,
                 )
             } else null
             var activeFallbackChain: List<String> = buildList {
@@ -332,6 +360,9 @@ class DevelopmentService : Service() {
                         gate = gate,
                         frameParamsJson = frameParamsJson,
                         frameOkPortrait = frameCheck.okPortrait,
+                        // 直闪帧变体（闪光的帧用它，非闪光帧不受影响）
+                        flashParamsJson = flashParamsJson,
+                        flashFrameParamsJson = flashFrameParamsJson,
                     )
                     if (usedFallback) {
                         fallbackFrames++
@@ -474,6 +505,10 @@ class DevelopmentService : Service() {
         frameParamsJson: String? = null,
         /** 引擎是否认这一格的**竖置**片门（冲洗前的自检问过；不认的竖帧就不带片框）。 */
         frameOkPortrait: Boolean = true,
+        /** 直闪帧参数（无片框版）；闪光帧优先用它，渲染失败兜底回普通参数。 */
+        flashParamsJson: String? = null,
+        /** 直闪帧参数（带片框版）；null = 这卷没有可用的片框版式。 */
+        flashFrameParamsJson: String? = null,
     ): Boolean {
         val tTotal0 = android.os.SystemClock.elapsedRealtime()
 
@@ -574,16 +609,28 @@ class DevelopmentService : Service() {
             val tEngine0 = android.os.SystemClock.elapsedRealtime()
             // 竖帧能不能带片框：引擎认不认竖置片门是冲洗前自检问来的，
             // 不认就这一帧只出画面（画幅照样是竖片门那一格），别为一片片基把画面毁了。
+            // 闪光帧（BUILT_IN / EXTERNAL）换用直闪变体：底片上它们就是另一种东西。
+            val isFlash = com.filmcam.app.film.ShotMeta.fromJson(shotJson)
+                ?.flash?.let { it != "OFF" } == true
             val portrait = bmp.width < bmp.height
             val useFrame = frameParamsJson != null && (!portrait || frameOkPortrait)
-            val baseJson = if (useFrame) frameParamsJson!! else paramsJson
+            val baseJson = when {
+                useFrame && isFlash -> flashFrameParamsJson ?: frameParamsJson!!
+                useFrame -> frameParamsJson!!
+                isFlash -> flashParamsJson ?: paramsJson
+                else -> paramsJson
+            }
+            // 直闪参数万一被引擎拒，先兜回同一帧的普通参数 —— 味道丢了，帧不能丢
+            val effectiveFallbacks =
+                if (isFlash && baseJson != paramsJson) listOf(paramsJson) + fallbackParamsJsons
+                else fallbackParamsJsons
             val frameParamsJsonOrNull =
                 if (useFrame && frameNumber > 0) {
                     FilmStockMapper.withFrameNumber(baseJson, frameNumber)
                 } else baseJson
             val result = SpektraProcessor.processFrame(
                 applicationContext, bmp, frameParamsJsonOrNull, tmpJpeg.absolutePath,
-                recycleInput = true, fallbackParamsJsons = fallbackParamsJsons
+                recycleInput = true, fallbackParamsJsons = effectiveFallbacks
             )
             tEngineMs = android.os.SystemClock.elapsedRealtime() - tEngine0
             outW = result.width
