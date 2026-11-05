@@ -152,13 +152,10 @@ object FilmStockMapper {
         "overscan_holes", "overscan_fog", "overscan_leaks", "overscan_pair",
         "overscan_carrier", "overscan_edge_text", "overscan_frame_number",
         "overscan_frame_seed", "overscan_camera_seed", "overscan_f_number",
-        // 注意：io.geometry.crop_*（引擎侧裁剪）虽在 .so 字符串表里，真机实测两种
-        // 量纲都在 spk_open 被拒，且注入会拖挂本来能开的会话 —— 不收录、不发。
+        // 注意：io.geometry.* 整组真机实测被引擎拒收——crop_* 两种量纲都在
+        // spk_open 报错，quarter_turns 直接让竖拍帧掉兜底档（冲洗完成页报
+        // 「有帧未按要求出图」）。整组不收录、不发。
         // RAW 片门预裁走 DNG ActiveArea 改写（见 SpektraProcessor.prepareGateDng）。
-        // quarter_turns 与 crop_* 同组但语义不同：RAW 竖拍时让引擎解码后先转画面
-        // 再按竖置片门渲染（齿孔才能落在上下）。同组有被整组拒收的风险，所以只加在
-        // 主参数、兜底档不带——引擎不认就自动掉回「横置渲染+后处理旋转」。
-        "io.geometry.quarter_turns",
     )
 
     /** 冲洗（暗房）用户可调参数；未改设置时全部取冻结模板默认值。 */

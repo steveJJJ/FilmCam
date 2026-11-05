@@ -784,21 +784,13 @@ class DevelopmentService : Service() {
                 FilmStockMapper.withFrameNumber(baseJson, frameNumber)
             } else baseJson
 
-        // RAW 竖拍方向：引擎的 LibRaw 解码不转画面（横躺进渲染），片框按横置画，
-        // 后处理转正后齿孔就跑到左右——和 JPEG 通路（正立竖画面、齿孔上下）对不上。
-        // 让引擎解码后先转 90° 再渲染：io.geometry.quarter_turns（1 = 90°，3 = 270°）。
-        // key 若被引擎拒收，兜底链自动掉回横置渲染 + 后处理旋转（安全降级）。
-        val turnJson = if (portrait) {
-            runCatching {
-                val o = org.json.JSONObject(frameParamsJsonOrNull)
-                o.put("io.geometry.quarter_turns", if (rotation == 90) 1 else 3)
-                o.toString()
-            }.getOrNull() ?: frameParamsJsonOrNull
-        } else frameParamsJsonOrNull
-
+        // RAW 竖拍方向：试过 io.geometry.quarter_turns（让引擎解码后先转画面再按
+        // 竖置片门渲染，齿孔就能落上下）——真机实测被拒：与 crop_* 同组整组不收，
+        // 竖拍帧全部掉兜底档（冲洗完成页报「有帧未按要求出图」）。已撤回，见
+        // FilmStockMapper 白名单注释。
         // 引擎 RAW 会话出图（主参数 + 兜底链；主参数失败整个会话重开）
         val result = SpektraProcessor.processRawFrame(
-            applicationContext, dngPath, turnJson, tmpJpeg.absolutePath,
+            applicationContext, dngPath, frameParamsJsonOrNull, tmpJpeg.absolutePath,
             fallbackParamsJsons = effectiveFallbacks
         )
         check(result.ok) { "processRawFrame 失败: ${result.message}" }
