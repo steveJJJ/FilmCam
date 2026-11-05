@@ -461,16 +461,13 @@ class AboutActivity : AppCompatActivity() {
         tvLens.text = "${prefs.getFloat(
             "filmcam_dev_lens_blur", app.spektralab.engine.FilmStockMapper.LENS_BLUR_UM
         ).roundToInt()}μm"
-        // 色彩微调：同样全局一个值；没动过滑杆 = 冻结定值（CC_*_DEFAULT），
-        // 显式全零 + 强度 0 = 主动关掉
+        // 色彩微调：同样全局一个值；没动过滑杆 = 0（不校色，纯净基线——
+        // 冻结定值已取消，见 CC_Y_DEFAULT 注释）。滤色片全零时一个键都不发 = 关
         run {
             val m2 = app.spektralab.engine.FilmStockMapper
             val y = prefs.getFloat("filmcam_dev_cc_y", m2.CC_Y_DEFAULT)
             val mm = prefs.getFloat("filmcam_dev_cc_m", m2.CC_M_DEFAULT)
-            val s = if (prefs.contains("filmcam_dev_cc_scale"))
-                prefs.getFloat("filmcam_dev_cc_scale", m2.CC_SCALE_DEFAULT)
-            else m2.CC_SCALE_DEFAULT
-            tvColor.text = if (y == 0f && mm == 0f && s <= 0f) getString(R.string.eng_cc_off)
+            tvColor.text = if (y == 0f && mm == 0f) getString(R.string.eng_cc_off)
             else String.format(java.util.Locale.US, "%+.2f/%+.2f", y, mm)
         }
 

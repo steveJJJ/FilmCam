@@ -180,10 +180,10 @@ object FilmStockMapper {
         /**
          * 全局色彩微调（工程师「色彩微调」面板，全局存、不按胶卷——
          * 对的是「这台手机 + 这套引擎」的整体成色，换胶卷不换口味）。
-         * ccY = 放大机黄滤片偏移（**正=冷/白，负=暖/黄**）；ccM = 品红滤片偏移
+          * ccY = 放大机黄滤片偏移（**正=冷/白，负=暖/黄**）；ccM = 品红滤片偏移
          * （**正=偏青绿，负=偏洋红**——肤色「不够白」通常要配一点负值）。
-         * 默认 = 冻结定值（见 [CC_Y_DEFAULT] 等，真机对照 T3 实拍选定）；
-         * 店扫档叠加在两家店的签名值上，和仍钳回引擎硬区间 [-1,1]。
+         * 默认 = 0（冻结定值已取消，纯净基线，见 [CC_Y_DEFAULT]）；
+         * 店扫档不叠色彩微调（只属印相档，店扫色彩由签名决定）。
          */
         val ccY: Float = CC_Y_DEFAULT,
         val ccM: Float = CC_M_DEFAULT,
@@ -434,11 +434,11 @@ object FilmStockMapper {
             // 镜头柔度同样全局存（机身的一部分），工程师面板标定用；区间 = 引擎真机验证过的接受范围
             lensBlurUm = sp.getFloat("filmcam_dev_lens_blur", LENS_BLUR_UM).coerceIn(0f, LENS_BLUR_MAX_UM),
             // 色彩微调同样全局存（整体成色，不按胶卷）：y 正=冷/白、负=暖/黄；
-            // m 正=青绿、负=洋红。没动过滑杆 = 冻结定值。
+            // m 正=青绿、负=洋红。没动过滑杆 = 0（不校色，纯净基线）。
             ccY = sp.getFloat("filmcam_dev_cc_y", CC_Y_DEFAULT).coerceIn(-CC_SHIFT_MAX, CC_SHIFT_MAX),
             ccM = sp.getFloat("filmcam_dev_cc_m", CC_M_DEFAULT).coerceIn(-CC_SHIFT_MAX, CC_SHIFT_MAX),
-            // 滤色强度：必须用 contains 区分「没存过」（= 冻结默认 15）和
-            // 「显式存了 0」（= 主动关掉不发键）——两者语义不同，getFloat 默认值分不出来
+            // 滤色强度：默认 15（仅在滤色片非零时才随键下发）；contains 区分
+            // 「没存过」和「显式存 0」（= 主动不发）——getFloat 默认值分不出来
             ccScale = if (sp.contains("filmcam_dev_cc_scale")) {
                 sp.getFloat("filmcam_dev_cc_scale", CC_SCALE_DEFAULT).takeIf { it > 0f }
             } else CC_SCALE_DEFAULT,
@@ -762,14 +762,16 @@ object FilmStockMapper {
     const val CC_SCALE_MAX = 15.0f
 
     /**
-     * 色彩微调**冻结定值**（真机对照 T3 实拍选定，2026-11-04 二次修订）：
-     * 冷暖 +1.0（往冷/白修肤色偏黄）、绿洋红 +0.10（第一版 -0.35 洋红偏过头，
-     * 皮肤发粉，回调到微偏青绿）、滤色强度 15。
-     * 滑杆没动过就走这套默认；用户在面板上显式改过就用自己的值
-     * （全零 + 强度 0 = 主动关掉，回到不滤色的老成色）。
+     * 色彩微调默认值（**2026-11-05 起取消冻结定值**）。
+     *
+     * 原冻结定值 +1.0/+0.10/15 是 11-04 按「JPEG 通路 + 采集端全关降噪」基线对照
+     * T3 实拍选的；该基线已漂移两次（v19 恢复 HAL 默认加工、RAW 通路上线），
+     * 继续默认下发等于拿旧基线的补偿叠加新基线双重校色。默认 0/0 = 纯净基线，
+     * 一个滤色键都不发；需要校色在面板手动调（调了滤色强度增益才有意义）。
+     * 旧的 +1.0/+0.10 历史值留在 git（34978dd / ea883e6）供日后重标参考。
      */
-    const val CC_Y_DEFAULT = 1.0f
-    const val CC_M_DEFAULT = 0.10f
+    const val CC_Y_DEFAULT = 0f
+    const val CC_M_DEFAULT = 0f
     const val CC_SCALE_DEFAULT = 15.0f
 
     /** [DevSettings.ccScale] 的 JSON 数值字面量（预检与下发共用，保证字面一致） */

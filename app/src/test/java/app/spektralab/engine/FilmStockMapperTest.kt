@@ -324,14 +324,17 @@ class FilmStockMapperTest {
     // ---------- 色彩微调（放大机滤色片 + 滤色强度） ----------
 
     @Test
-    fun `色彩微调冻结定值默认直发`() {
-        // 没动过滑杆 = 冻结定值（真机对照 T3 实拍选定）：印相档默认就带滤色片 + 强度
+    fun `色彩微调默认零偏移一个键都不发`() {
+        // 冻结定值已取消（基线漂移两次：v19 恢复 HAL 加工、RAW 通路上线）：
+        // 没动过滑杆 = 0/0 = 纯净基线，印相档不带任何滤色键
         val obj = JSONObject(
             FilmStockMapper.buildParamsJson("kodak_gold_200", "kodak_endura_premier")
         )
-        assertEquals(FilmStockMapper.CC_Y_DEFAULT.toDouble(), obj.optDouble("y_filter_shift"), 1e-3)
-        assertEquals(FilmStockMapper.CC_M_DEFAULT.toDouble(), obj.optDouble("m_filter_shift"), 1e-3)
-        assertEquals(FilmStockMapper.CC_SCALE_DEFAULT.toDouble(), obj.optDouble("filter_shift_scale"), 1e-3)
+        assertEquals(0f, FilmStockMapper.CC_Y_DEFAULT)
+        assertEquals(0f, FilmStockMapper.CC_M_DEFAULT)
+        assertFalse("默认零偏移不该有 y_filter_shift: $obj", obj.has("y_filter_shift"))
+        assertFalse("默认零偏移不该有 m_filter_shift: $obj", obj.has("m_filter_shift"))
+        assertFalse("默认零偏移不该有 filter_shift_scale: $obj", obj.has("filter_shift_scale"))
     }
 
     @Test
