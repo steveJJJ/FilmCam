@@ -155,6 +155,10 @@ object FilmStockMapper {
         // 注意：io.geometry.crop_*（引擎侧裁剪）虽在 .so 字符串表里，真机实测两种
         // 量纲都在 spk_open 被拒，且注入会拖挂本来能开的会话 —— 不收录、不发。
         // RAW 片门预裁走 DNG ActiveArea 改写（见 SpektraProcessor.prepareGateDng）。
+        // quarter_turns 与 crop_* 同组但语义不同：RAW 竖拍时让引擎解码后先转画面
+        // 再按竖置片门渲染（齿孔才能落在上下）。同组有被整组拒收的风险，所以只加在
+        // 主参数、兜底档不带——引擎不认就自动掉回「横置渲染+后处理旋转」。
+        "io.geometry.quarter_turns",
     )
 
     /** 冲洗（暗房）用户可调参数；未改设置时全部取冻结模板默认值。 */

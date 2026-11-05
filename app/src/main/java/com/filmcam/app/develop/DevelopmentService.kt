@@ -784,9 +784,21 @@ class DevelopmentService : Service() {
                 FilmStockMapper.withFrameNumber(baseJson, frameNumber)
             } else baseJson
 
+        // RAW 竖拍方向：引擎的 LibRaw 解码不转画面（横躺进渲染），片框按横置画，
+        // 后处理转正后齿孔就跑到左右——和 JPEG 通路（正立竖画面、齿孔上下）对不上。
+        // 让引擎解码后先转 90° 再渲染：io.geometry.quarter_turns（1 = 90°，3 = 270°）。
+        // key 若被引擎拒收，兜底链自动掉回横置渲染 + 后处理旋转（安全降级）。
+        val turnJson = if (portrait) {
+            runCatching {
+                val o = org.json.JSONObject(frameParamsJsonOrNull)
+                o.put("io.geometry.quarter_turns", if (rotation == 90) 1 else 3)
+                o.toString()
+            }.getOrNull() ?: frameParamsJsonOrNull
+        } else frameParamsJsonOrNull
+
         // 引擎 RAW 会话出图（主参数 + 兜底链；主参数失败整个会话重开）
         val result = SpektraProcessor.processRawFrame(
-            applicationContext, dngPath, frameParamsJsonOrNull, tmpJpeg.absolutePath,
+            applicationContext, dngPath, turnJson, tmpJpeg.absolutePath,
             fallbackParamsJsons = effectiveFallbacks
         )
         check(result.ok) { "processRawFrame 失败: ${result.message}" }
@@ -807,15 +819,22 @@ class DevelopmentService : Service() {
                 bmp.recycle()
                 bmp = rotated
             }
-            // 片门：引擎若没裁到片门比例（输出 4:3），中心外切裁成 3:2 / 2:3——
-            // 已是片门形状时 gateCrop 是无操作
-            val crop = FilmStockMapper.gateCrop(gate, bmp.width, bmp.height)
-            if (crop.cropped) {
-                val gated = Bitmap.createBitmap(crop.w, crop.h, Bitmap.Config.ARGB_8888)
-                Canvas(gated).drawBitmap(bmp, -crop.x.toFloat(), -crop.y.toFloat(), Paint())
-                bmp.recycle()
-                bmp = gated
-                Log.d(TAG, "帧 $index [RAW] 片门裁切 ${crop.w}x${crop.h}")
+            // 片门：只裁真正的 4:3 裸画面（片框关闭时引擎输出原画幅）。带片框的
+            // 出图总比例远离 4:3（画面外有片基+齿孔），按片门比例硬裁会把片框裁烂
+            // ——真机实锤：竖拍旋转后右侧残留一条齿孔带、左侧被裁没、剩半块边缘文字。
+            // 画面比例已在 prepareGateDng 用 ActiveArea 预裁过，理论上不会走到这。
+            val r = bmp.width.toFloat() / bmp.height.toFloat()
+            val isBare43 = kotlin.math.abs(r - 3f / 4f) < 0.02f ||
+                kotlin.math.abs(r - 4f / 3f) < 0.03f
+            if (isBare43) {
+                val crop = FilmStockMapper.gateCrop(gate, bmp.width, bmp.height)
+                if (crop.cropped) {
+                    val gated = Bitmap.createBitmap(crop.w, crop.h, Bitmap.Config.ARGB_8888)
+                    Canvas(gated).drawBitmap(bmp, -crop.x.toFloat(), -crop.y.toFloat(), Paint())
+                    bmp.recycle()
+                    bmp = gated
+                    Log.d(TAG, "帧 $index [RAW] 片门裁切 ${crop.w}x${crop.h}")
+                }
             }
             if (isDateStampEnabled()) {
                 runCatching { DateStampRenderer.drawOnBitmap(applicationContext, bmp, takenAt) }

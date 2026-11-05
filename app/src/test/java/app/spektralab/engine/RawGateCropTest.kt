@@ -232,9 +232,11 @@ class RawGateCropTest {
     }
 
     @Test
-    fun `白名单不再包含 io geometry`() {
-        // io.geometry 参数真机实测被引擎拒收（spk_open failed），已全面弃用
+    fun `白名单不含 io geometry crop 但允许 quarter_turns`() {
+        // io.geometry.crop_* 真机实测被引擎拒收（spk_open failed），已弃用不发；
+        // quarter_turns 是竖拍方向实验 key，只加在主参数、兜底档不带
         val keys = FilmStockMapper.ENGINE_KNOWN_KEYS
-        assertTrue(keys.none { it.startsWith("io.geometry") })
+        assertTrue(keys.none { it.startsWith("io.geometry.crop") })
+        assertTrue(keys.contains("io.geometry.quarter_turns"))
     }
 }
