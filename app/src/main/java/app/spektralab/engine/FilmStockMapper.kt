@@ -194,14 +194,6 @@ object FilmStockMapper {
          * 值域未标定——DevelopmentService 会在冲洗前单独预检，被拒整场撤掉。
          */
         val ccScale: Float? = CC_SCALE_DEFAULT,
-        /**
-         * **店扫档专属**色彩微调（工程师控制台「店扫校色」，选了 Frontier/Noritsu
-         * 才有的设置）：叠加在店扫自家的滤色片签名上，和钳回 [-1,1]。
-         * 默认 0 = 完全不动签名（店扫味保持出厂标定）。印相档不看这两个值
-         * ——印相校色是冻结定值（[ccY]/[ccM]），微调 UI 只挂在店扫档下。
-         */
-        val scanCcY: Float = 0f,
-        val scanCcM: Float = 0f,
     ) {
         /**
          * 成片按哪一格片门出片。片框关着时也一样按 135 全画幅那一格（3:2）——
@@ -450,9 +442,6 @@ object FilmStockMapper {
             ccScale = if (sp.contains("filmcam_dev_cc_scale")) {
                 sp.getFloat("filmcam_dev_cc_scale", CC_SCALE_DEFAULT).takeIf { it > 0f }
             } else CC_SCALE_DEFAULT,
-            // 店扫校色（店扫档专属）：默认 0 = 不动店扫签名；全局存、不按胶卷
-            scanCcY = sp.getFloat("filmcam_dev_scan_cc_y", 0f).coerceIn(-CC_SHIFT_MAX, CC_SHIFT_MAX),
-            scanCcM = sp.getFloat("filmcam_dev_scan_cc_m", 0f).coerceIn(-CC_SHIFT_MAX, CC_SHIFT_MAX),
         )
     }
 
@@ -711,14 +700,12 @@ object FilmStockMapper {
             sb.append(",\"").append(MARK_OUTPUT_STYLE).append("\":\"").append(settings.outputStyle.wire).append('"')
         }
         // 店扫味（走印相通路，靠末端参数拉开与光学印相的差别）。
-        // 色彩微调**不再**从印相档那条路叠进来（全局 +1.0 会把 Noritsu 的 -1.0 暖调
-        // 正好抵消归零，且滤色强度增益会把签名放大到失控）。店扫档有自己的
-        // 「店扫校色」：独立键 [DevSettings.scanCcY]/[scanCcM]，默认 0 = 纯签名，
-        // 用户显式调了才叠在签名上（钳回引擎硬区间 [-1,1]）。
+        // **不叠色彩微调**：两家店的滤色片签名是独立标定过的（OutputStyleTest 守护契约），
+        // 全局 +1.0 会把 Noritsu 的 -1.0 暖调正好抵消归零；而且滤色强度增益
+        // 会把 ±1.0 的签名放大到失控。色彩微调是「家里暗房」的校色，只属于印相档。
         if (style.isScan) {
             val entries = scanExtraOverride ?: scanFinishEntries(style, scanFinishLevel)
-            val tuned = applyScanColorTrim(entries, settings.scanCcY, settings.scanCcM)
-            tuned.forEach { (k, v) -> sb.append(",\"").append(k).append("\":").append(v) }
+            entries.forEach { (k, v) -> sb.append(",\"").append(k).append("\":").append(v) }
         } else if (settings.ccY != 0f || settings.ccM != 0f) {
             // 印相档的滤色片只由色彩微调产生（默认 = 冻结定值，见 CC_*_DEFAULT）；
             // 用户显式全零 = 主动关掉，一个键都不发，回到不滤色的老成色。
@@ -886,37 +873,6 @@ object FilmStockMapper {
             "dir_couplers_amount" to "1.0",
         )
         else -> emptyList()
-    }
-
-    /**
-     * 店扫校色：把用户微调**叠加**在店扫签名上（店扫档专属设置）。
-     *
-     * 语义：签名是出厂标定的「店扫味」，微调是用户在这之上的偏移，默认 0 = 不动。
-     * - 该档带这个键（完整档）→ 签名值 + 偏移，钳回引擎硬区间 [-1,1]
-     * - 该档不带（保守档 SCAN_LEVEL_SAFE 没有滤色片）→ 偏移非零才插入该键
-     *
-     * **边界单向性**：两家店的黄滤片签名顶在 ±1.0（真机标定：±1.0 才挪得动 ~1.6 个
-     * R−B 色阶，小值等于没给），所以 Frontier 只能往暖（负偏移）调、Noritsu 只能往冷
-     * （正偏移）调；反方向会被钳平，UI 上有说明。
-     */
-    internal fun applyScanColorTrim(
-        entries: List<Pair<String, String>>,
-        dy: Float,
-        dm: Float,
-    ): List<Pair<String, String>> {
-        if (dy == 0f && dm == 0f) return entries
-        fun trimmed(key: String, delta: Float): Pair<String, String> {
-            // 保守档不带该键时偏移从 0 起算
-            val base = entries.firstOrNull { it.first == key }?.second?.toFloatOrNull() ?: 0f
-            return key to jsonNum((base + delta).coerceIn(-CC_SHIFT_MAX, CC_SHIFT_MAX))
-        }
-        val repl = buildMap {
-            if (dy != 0f) put("y_filter_shift", trimmed("y_filter_shift", dy).second)
-            if (dm != 0f) put("m_filter_shift", trimmed("m_filter_shift", dm).second)
-        }
-        val merged = entries.map { (k, v) -> k to (repl[k] ?: v) }
-        val missing = repl.filterKeys { k -> entries.none { it.first == k } }.map { it.key to it.value }
-        return merged + missing
     }
 
     /**

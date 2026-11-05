@@ -425,25 +425,7 @@ class AboutActivity : AppCompatActivity() {
         val tvStyle = bindRow(rowStyle, R.string.set_style, R.string.eng_style_hint)
         bindRow(rowDev, R.string.set_dev, R.string.eng_dev_hint)
         val tvLens = bindRow(rowLens, R.string.eng_lens_blur, R.string.eng_lens_hint)
-        // 店扫校色：**店扫档专属**设置，印相档不显示这一行（印相校色是冻结定值）
-        val tvColor = bindRow(rowColor, R.string.eng_scan_cc, R.string.eng_scan_cc_hint)
-
-        /**
-         * 刷新「店扫校色」行：可见性跟当前输出风格走（印相档整行隐藏），
-         * 读数 = 叠加在店扫签名上的偏移（默认 0/0 = 不动签名，显示「关」）。
-         */
-        fun refreshColorRow() {
-            val mapper2 = app.spektralab.engine.FilmStockMapper
-            val style = mapper2.readOutputStyle(this)
-            val vis = if (style.isScan) View.VISIBLE else View.GONE
-            rowColor.visibility = vis
-            // 行隐藏时连着它前面的分隔线一起收掉，别留一条空横线
-            view.findViewById<View>(R.id.dividerEngColor).visibility = vis
-            val y = prefs.getFloat("filmcam_dev_scan_cc_y", 0f)
-            val mm = prefs.getFloat("filmcam_dev_scan_cc_m", 0f)
-            tvColor.text = if (y == 0f && mm == 0f) getString(R.string.eng_cc_off)
-            else String.format(java.util.Locale.US, "%+.2f/%+.2f", y, mm)
-        }
+        val tvColor = bindRow(rowColor, R.string.eng_cc, R.string.eng_cc_hint)
 
         fun slowMode(): com.filmcam.app.camera.FilmExposure.Mode =
             com.filmcam.app.camera.FilmExposure.Mode.fromPrefs(prefs.getInt("slowShutter", 0))
@@ -463,8 +445,6 @@ class AboutActivity : AppCompatActivity() {
                 app.spektralab.engine.FilmStockMapper.OutputStyle.NORITSU -> getString(R.string.style_noritsu)
                 else -> getString(R.string.style_print)
             }
-            // 店扫校色只在店扫档出现——切风格时同步更新
-            refreshColorRow()
         }
         saveSlow(slowMode())
         saveStyleName()
@@ -472,7 +452,18 @@ class AboutActivity : AppCompatActivity() {
         tvLens.text = "${prefs.getFloat(
             "filmcam_dev_lens_blur", app.spektralab.engine.FilmStockMapper.LENS_BLUR_UM
         ).roundToInt()}μm"
-        // 店扫校色的读数与可见性已由 refreshColorRow() 在 saveStyleName() 里刷新
+        // 色彩微调：同样全局一个值；没动过滑杆 = 冻结定值（CC_*_DEFAULT），
+        // 显式全零 + 强度 0 = 主动关掉
+        run {
+            val m2 = app.spektralab.engine.FilmStockMapper
+            val y = prefs.getFloat("filmcam_dev_cc_y", m2.CC_Y_DEFAULT)
+            val mm = prefs.getFloat("filmcam_dev_cc_m", m2.CC_M_DEFAULT)
+            val s = if (prefs.contains("filmcam_dev_cc_scale"))
+                prefs.getFloat("filmcam_dev_cc_scale", m2.CC_SCALE_DEFAULT)
+            else m2.CC_SCALE_DEFAULT
+            tvColor.text = if (y == 0f && mm == 0f && s <= 0f) getString(R.string.eng_cc_off)
+            else String.format(java.util.Locale.US, "%+.2f/%+.2f", y, mm)
+        }
 
         // 当前装在机身上的是哪支胶卷：冲洗参数是按胶卷分开存的，默认就该停在这支
         val rollIdx = prefs.getInt("rollIndex", 0)
@@ -506,7 +497,7 @@ class AboutActivity : AppCompatActivity() {
             consoleRef?.dismiss()
             showLensBlurDialog { showEngineerConsole() }
         }
-        // 店扫校色：店扫档专属（印相档这一行是隐藏的），全局存、单独一层
+        // 色彩微调：整体成色（肤色偏黄这类），同样全局存、单独一层
         rowColor.setOnClickListener {
             consoleRef?.dismiss()
             showColorBalanceDialog { showEngineerConsole() }
@@ -712,15 +703,12 @@ class AboutActivity : AppCompatActivity() {
     }
 
     /**
-     * **店扫校色**子面板（冷暖 / 绿洋红）——店扫档专属设置。
+     * 色彩微调子面板（冷暖 / 绿洋红 / 滤色强度）。
      *
-     * 只在输出风格选了 Frontier / Noritsu 时才有入口（印相档整行隐藏）。语义是
-     * **叠加**在店扫自家滤色片签名上的偏移：默认 0/0 = 不动签名（保持出厂标定的店扫味）。
-     * 方向：y 正=冷/白、负=暖/黄；m 正=青绿、负=洋红；引擎硬区间 [-1,1]，滑杆步进 0.05。
-     *
-     * 注意边界单向性：两家店的黄滤片签名顶在 ±1.0，所以 Frontier 只能往暖（负）调、
-     * Noritsu 只能往冷（正）调，反方向会被引擎区间钳平。滤色强度不在这里调——
-     * 那是店扫签名自己的标定，面板上把那一块隐藏。
+     * 对「这台手机 + 这套引擎」的整体成色（肤色偏黄不够白这类），全局一个值、
+     * 不按胶卷存。方向：y 正=冷/白、负=暖/黄；m 正=青绿、负=洋红。
+     * 两根滤色片引擎硬区间 [-1,1]，滑杆步进 0.05；滤色强度 0=不发键（引擎默认强度），
+     * 0.5 步进到 15（值域未标定，冲洗前预检兜底）。
      */
     private fun showColorBalanceDialog(onClose: () -> Unit) {
         val prefs = getSharedPreferences("filmcam", MODE_PRIVATE)
@@ -732,9 +720,6 @@ class AboutActivity : AppCompatActivity() {
         val tvM = view.findViewById<TextView>(R.id.tvCcMValue)
         val sbS = view.findViewById<SeekBar>(R.id.sbCcScale)
         val tvS = view.findViewById<TextView>(R.id.tvCcScaleValue)
-        // 店扫校色不调滤色强度（强度属于店扫签名自己的标定）——整块隐藏
-        view.findViewById<View>(R.id.rowCcScaleBlock).visibility = View.GONE
-        sbS.visibility = View.GONE
 
         val mapper = app.spektralab.engine.FilmStockMapper
         // 滤色片：progress 0..40 ↔ 值 (p-20)*0.05 ∈ [-1,1]
@@ -743,12 +728,12 @@ class AboutActivity : AppCompatActivity() {
         fun fmt(v: Float) = String.format(java.util.Locale.US, "%+.2f", v)
 
         sbY.progress = progressOf(
-            prefs.getFloat("filmcam_dev_scan_cc_y", 0f).coerceIn(-1f, 1f)
+            prefs.getFloat("filmcam_dev_cc_y", mapper.CC_Y_DEFAULT).coerceIn(-1f, 1f)
         )
         tvY.text = fmt(shiftOf(sbY.progress))
         sbY.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(sb: SeekBar?, progress: Int, fromUser: Boolean) {
-                if (fromUser) prefs.edit().putFloat("filmcam_dev_scan_cc_y", shiftOf(progress)).apply()
+                if (fromUser) prefs.edit().putFloat("filmcam_dev_cc_y", shiftOf(progress)).apply()
                 tvY.text = fmt(shiftOf(progress))
             }
             override fun onStartTrackingTouch(sb: SeekBar?) {}
@@ -756,12 +741,12 @@ class AboutActivity : AppCompatActivity() {
         })
 
         sbM.progress = progressOf(
-            prefs.getFloat("filmcam_dev_scan_cc_m", 0f).coerceIn(-1f, 1f)
+            prefs.getFloat("filmcam_dev_cc_m", mapper.CC_M_DEFAULT).coerceIn(-1f, 1f)
         )
         tvM.text = fmt(shiftOf(sbM.progress))
         sbM.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(sb: SeekBar?, progress: Int, fromUser: Boolean) {
-                if (fromUser) prefs.edit().putFloat("filmcam_dev_scan_cc_m", shiftOf(progress)).apply()
+                if (fromUser) prefs.edit().putFloat("filmcam_dev_cc_m", shiftOf(progress)).apply()
                 tvM.text = fmt(shiftOf(progress))
             }
             override fun onStartTrackingTouch(sb: SeekBar?) {}
@@ -788,7 +773,7 @@ class AboutActivity : AppCompatActivity() {
         })
 
         androidx.appcompat.app.AlertDialog.Builder(this, com.filmcam.app.ui.BodyTheme.dialogTheme)
-            .setTitle(R.string.eng_scan_cc)
+            .setTitle(R.string.eng_cc)
             .setView(view)
             .setPositiveButton(R.string.set_close, null)
             .create()
