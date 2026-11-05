@@ -75,6 +75,9 @@ class Camera2Controller(private val context: Context) {
     /** RAW 第二路输出（RAW_SENSOR 16bit Bayer）；null = 设备不支持 */
     private var rawImageReader: ImageReader? = null
 
+    /** RAW 早到寄存槽：HAL 的 RAW 图可能先于快门结果回调到货（三星实测），先存这等 JPEG 锚点来取 */
+    @Volatile private var bufferedRaw: Image? = null
+
     /** DngCreator 要用的 Characteristics（start 时存一份） */
     private var cameraChars: CameraCharacteristics? = null
 
@@ -211,6 +214,8 @@ class Camera2Controller(private val context: Context) {
         p.completed = true
         p.rawImage?.close()
         p.rawImage = null
+        bufferedRaw?.close()
+        bufferedRaw = null
         android.util.Log.w(TAG, "RAW 碎片未到齐（raw=${p.rawImage != null} result=${p.result != null}），按纯 JPEG 帧落卷")
         deliverPendingShot(p)
     }
@@ -517,6 +522,7 @@ class Camera2Controller(private val context: Context) {
             val rotation = jpegRotationDegrees(sensorOrientation).also {
                 android.util.Log.i("Camera2", "capture jpegRotation=$it deviceRotation=${deviceRotationDegrees()}")
             }
+            android.util.Log.i(TAG, "JPEG 到货：rawNegativeEnabled=$rawNegativeEnabled rawReader=${rawImageReader != null}")
             if (!rawNegativeEnabled || rawImageReader == null) {
                 // RAW 没开 / 不支持：老路径，JPEG 即全部
                 onPhotoCaptured?.invoke(bytes, rotation, null)
@@ -526,6 +532,8 @@ class Camera2Controller(private val context: Context) {
                 if (!p.completed) {
                     p.jpeg = bytes
                     p.rotation = rotation
+                    // RAW 图可能早于本回调到货：从寄存槽取回（早到 ≠ 丢失）
+                    bufferedRaw?.let { p.rawImage = it; bufferedRaw = null }
                     if (!p.timeoutPosted) {
                         p.timeoutPosted = true
                         backgroundHandler?.postDelayed({ completePendingShotOnTimeout() }, RAW_WAIT_MS)
@@ -552,8 +560,11 @@ class Camera2Controller(private val context: Context) {
                 val image = reader.acquireNextImage() ?: return@setOnImageAvailableListener
                 val p = pendingShot
                 if (p == null || p.completed) {
-                    // 没有等待中的快门（RAW 开关刚打开后的残影）：直接丢掉
-                    image.close()
+                    // RAW 可能比 TotalCaptureResult 还早到（三星 HAL 实测如此：
+                    // AE 流程拖长时结果回调最后才来）——这时不能丢，寄存单槽等锚点。
+                    // 超时/交付时会清槽；新 RAW 到货覆盖旧槽（先关旧的防泄漏）。
+                    bufferedRaw?.close()
+                    bufferedRaw = image
                     return@setOnImageAvailableListener
                 }
                 p.rawImage = image

@@ -1368,6 +1368,10 @@ class MainActivity : AppCompatActivity() {
 
     private fun startCamera(surfaceTexture: SurfaceTexture) {
         cameraController = Camera2Controller(this)
+        // RAW 负片开关在这里补挂：onResume 传开关时控制器还不存在（时序是
+        // onResume → surface 就绪 → startCamera），冷启动开的开关传了个空
+        android.util.Log.i("FilmCam", "startCamera: rawNegativeEnabled=$rawNegativeEnabled")
+        cameraController?.rawNegativeEnabled = rawNegativeEnabled
         cameraController?.start(surfaceTexture)
         // 桥接 FlashController → Camera2Controller：内置闪光交给相机 HAL（拍照闪光模式）
         flash.onBuiltInFlash = { enabled ->

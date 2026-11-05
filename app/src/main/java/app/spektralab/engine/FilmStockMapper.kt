@@ -152,6 +152,9 @@ object FilmStockMapper {
         "overscan_holes", "overscan_fog", "overscan_leaks", "overscan_pair",
         "overscan_carrier", "overscan_edge_text", "overscan_frame_number",
         "overscan_frame_seed", "overscan_camera_seed", "overscan_f_number",
+        // 注意：io.geometry.crop_*（引擎侧裁剪）虽在 .so 字符串表里，真机实测两种
+        // 量纲都在 spk_open 被拒，且注入会拖挂本来能开的会话 —— 不收录、不发。
+        // RAW 片门预裁走 DNG ActiveArea 改写（见 SpektraProcessor.prepareGateDng）。
     )
 
     /** 冲洗（暗房）用户可调参数；未改设置时全部取冻结模板默认值。 */

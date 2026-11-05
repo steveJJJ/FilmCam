@@ -55,7 +55,8 @@ object SpektraProcessor {
             FilmStockMapper.initialize(appContext)
 
             // Vulkan 诊断日志路径：应用读不到 stderr，必须靠这个文件定位原生层失败。
-            val logPath = java.io.File(appContext.filesDir, "spektrafilm_vk.log").absolutePath
+            // 放外部私有目录：adb 能直接 pull，联调时不用 root 就能看引擎在抱怨什么
+            val logPath = java.io.File(appContext.getExternalFilesDir(null), "spektrafilm_vk.log").absolutePath
             // 删旧日志，防止下一轮读到上一轮的残留。
             runCatching { java.io.File(logPath).delete() }
 
@@ -293,19 +294,25 @@ object SpektraProcessor {
             val chain = ArrayList<String>(fallbackParamsJsons.size + 1)
             chain.add(paramsJson)
             for (p in fallbackParamsJsons) if (p != paramsJson && p !in chain) chain.add(p)
+            // 片门预裁：改写缓存副本的 ActiveArea（见 prepareGateDng），原底片不动
+            val workPath = prepareGateDng(dngPath, context.cacheDir, paramsJson)
 
             var rendered: Pair<Int, Int>? = null
             var fellBack = false
-            for (i in chain.indices) {
-                rendered = renderRawOne(eng, context, dngPath, chain[i], outJpegPath, maxPx)
-                if (rendered != null) {
-                    fellBack = i > 0
-                    if (fellBack) {
-                        Log.w(TAG, "RAW 主参数未被引擎接受，已用第 ${i + 1} 档兜底参数出图: $outJpegPath")
+            try {
+                for (i in chain.indices) {
+                    rendered = renderRawOne(eng, context, workPath, chain[i], outJpegPath, maxPx)
+                    if (rendered != null) {
+                        fellBack = i > 0
+                        if (fellBack) {
+                            Log.w(TAG, "RAW 主参数未被引擎接受，已用第 ${i + 1} 档兜底参数出图: $outJpegPath")
+                        }
+                        break
                     }
-                    break
+                    Log.w(TAG, "RAW 第 ${i + 1}/${chain.size} 档参数冲洗失败，换下一档: $dngPath")
                 }
-                Log.w(TAG, "RAW 第 ${i + 1}/${chain.size} 档参数冲洗失败，换下一档: $dngPath")
+            } finally {
+                if (workPath != dngPath) runCatching { java.io.File(workPath).delete() }
             }
             val dims = rendered
                 ?: throw IllegalStateException("RAW 冲洗失败（${chain.size} 档参数全部未被引擎接受）")
@@ -321,6 +328,182 @@ object SpektraProcessor {
         }
     }
 
+    // ---------- P3 RAW 片门预裁（ActiveArea 改写方案） ----------
+
+    /**
+     * RAW 通路的片门预裁：引擎在渲染前拿输入尺寸对片门形状校验（差一点都不行），
+     * 而 4:3 的 DNG 直接过不了 135（3:2）的检查 —— JPEG 通路是先裁位图再进引擎，
+     * RAW 的位图在引擎内部解码、外面裁不到。
+     *
+     * 曾试过引擎参数 `io.geometry.crop_*`（.so 字符串表里有）—— key 被收下但值
+     * 两种量纲都在 `spk_open` 被拒，且注进去还会把本来能开的会话弄挂，弃用。
+     *
+     * 真机标定（S25U 实测）：引擎的 LibRaw 解码按 **ActiveArea（0xc68d）** 出图 ——
+     * 把 ActiveArea 从 (0,0,3060,4080) 改成 (170,0,2890,4080)，解码尺寸即变
+     * 4080x2720 = 精确 3:2，片门检查直接通过。所以正确做法是：把 DNG 拷一份到
+     * 缓存、改写副本的 ActiveArea，原底片保持原样（可重冲、可换版式）。
+     *
+     * [cacheDir] 传 context.cacheDir。画面已是片门形状、参数没开片框、解析不动
+     * 或 DNG 没有 ActiveArea 标签时原样返回，交给引擎自带的兜底链处理。
+     */
+    internal fun prepareGateDng(dngPath: String, cacheDir: java.io.File, paramsJson: String): String {
+        val aspectL = gateAspectFromParams(paramsJson) ?: return dngPath
+        val geo = runCatching {
+            java.io.File(dngPath).inputStream().use { ins ->
+                val head = ByteArray(8)
+                if (ins.read(head) == 8) tiffGeometry(ins, head) else null
+            }
+        }.getOrNull() ?: return dngPath
+        // 竖拍走竖置片门（画面在底片上本来就是竖的）：片门比取倒数
+        val aspect = if (geo.height > geo.width) 1f / aspectL else aspectL
+        val crop = FilmStockMapper.gateCrop(geo.width, geo.height, aspect)
+        if (!crop.cropped) return dngPath
+        val off = geo.activeAreaOffset ?: run {
+            Log.w(TAG, "DNG 无 ActiveArea 标签，跳过片门预裁: $dngPath")
+            return dngPath
+        }
+        val a = geo.activeArea!!   // activeAreaOffset 非 null 时必有
+        val work = java.io.File(cacheDir, "gate_" + java.io.File(dngPath).name)
+        val ok = runCatching {
+            java.io.File(dngPath).inputStream().use { ins -> work.outputStream().use { ins.copyTo(it) } }
+            java.io.RandomAccessFile(work, "rw").use { raf ->
+                raf.seek(off.toLong())
+                val order = java.nio.ByteOrder.LITTLE_ENDIAN.takeIf { geo.littleEndian }
+                    ?: java.nio.ByteOrder.BIG_ENDIAN
+                val bb = java.nio.ByteBuffer.allocate(16).order(order)
+                bb.putInt(a[0] + crop.y)             // top
+                bb.putInt(a[1] + crop.x)             // left
+                bb.putInt(a[0] + crop.y + crop.h)    // bottom
+                bb.putInt(a[1] + crop.x + crop.w)    // right
+                raf.write(bb.array())
+            }
+            true
+        }.getOrDefault(false)
+        if (!ok) {
+            runCatching { work.delete() }
+            Log.w(TAG, "片门预裁改写失败，用原底片冲: $dngPath")
+            return dngPath
+        }
+        Log.i(TAG, "RAW 片门预裁：源 ${geo.width}x${geo.height} → $aspect（已改写 ActiveArea）")
+        return work.absolutePath
+    }
+
+    /** 参数里片框开着且版式是 135 时返回片门宽高比（3:2）；其余返回 null（交给后处理裁）。 */
+    internal fun gateAspectFromParams(paramsJson: String): Float? = runCatching {
+        val o = org.json.JSONObject(paramsJson)
+        if (!o.optBoolean("overscan_active", false)) return null
+        when (o.optString("overscan_format")) {
+            "135" -> 36f / 24f
+            else -> null
+        }
+    }.getOrNull()
+
+    /** DNG/TIFF 的几何信息：画面尺寸（引擎实际会解码出来的那块）+ ActiveArea 位置。 */
+    internal class TiffGeometry(
+        val width: Int,
+        val height: Int,
+        /** ActiveArea(top,left,bottom,right)；无该标签为 null（非 DNG 的普通 TIFF） */
+        val activeArea: IntArray?,
+        /** ActiveArea 值域在文件内的偏移（外存 LONG×4），改写用；内联或无标签为 null */
+        val activeAreaOffset: Int?,
+        val littleEndian: Boolean,
+    )
+
+    /**
+     * 解析 DNG/TIFF 的几何：扫全部 IFD（含 SubIFD 链），取面积最大的那组
+     * ImageWidth(0x0100) / ImageLength(0x0101) 作为画面尺寸；DNG 的
+     * ActiveArea(0xc68d, top/left/bottom/right) 存在时以它为准 ——
+     * 引擎的 LibRaw 解码就是按 ActiveArea 出图的（真机 S25U 标定）。
+     * [head] 是已读的文件头 8 字节。解析不动返回 null。
+     */
+    internal fun tiffGeometry(ins: java.io.InputStream, head: ByteArray): TiffGeometry? {
+        return runCatching {
+            if (head[0] != head[1]) return null   // II / MM 头两个字节相同 = 不是 TIFF
+            val le = head[0] == 'I'.code.toByte()
+            val order = java.nio.ByteOrder.LITTLE_ENDIAN.takeIf { le } ?: java.nio.ByteOrder.BIG_ENDIAN
+            fun u16(b: ByteArray, off: Int) =
+                ((b[off].toInt() and 0xFF) or ((b[off + 1].toInt() and 0xFF) shl 8)).let {
+                    if (le) it else java.lang.Short.reverseBytes(it.toShort()).toInt() and 0xFFFF
+                }
+            if (u16(head, 2) != 42) return null
+            // TIFF 的 IFD 偏移是相对文件头的绝对偏移：头要拼回 buffer 再索引，
+            // 否则所有偏移整体错位 8 字节（真机 DNG 上实测翻车）
+            val rest = ins.readBytes()
+            val buf = head + rest
+            fun u32(b: ByteArray, off: Int): Int = java.nio.ByteBuffer.wrap(b, off, 4).order(order).int
+            var best: Pair<Int, Int>? = null
+            var bestArea = 0
+            var aa: IntArray? = null
+            var aaOff: Int? = null
+            val ifdQueue = ArrayDeque<Int>()
+            ifdQueue.add(u32(head, 4))
+            val seen = mutableSetOf<Int>()
+            while (ifdQueue.isNotEmpty()) {
+                val ifd = ifdQueue.removeFirst()
+                if (ifd <= 0 || ifd + 2 > buf.size || !seen.add(ifd)) continue
+                val count = u16(buf, ifd)
+                var p = ifd + 2
+                var curW = 0
+                var curH = 0
+                repeat(count) {
+                    if (p + 12 > buf.size) return@repeat
+                    val tag = u16(buf, p)
+                    val type = u16(buf, p + 2)
+                    val cnt = u32(buf, p + 4)
+                    when (tag) {
+                        0x0100, 0x0101 -> {   // ImageWidth / ImageLength（同一 IFD 内配对）
+                            if (cnt == 1 && (type == 3 || type == 4)) {
+                                val v = if (type == 3) u16(buf, p + 8) else u32(buf, p + 8)
+                                if (tag == 0x0100) curW = v else curH = v
+                            }
+                        }
+                        0x0141 -> {           // SubIFDs：往下钻
+                            if (type == 4 && cnt in 1..8) {
+                                val base = if (4L * cnt <= 4) p + 8 else u32(buf, p + 8)
+                                repeat(cnt) { k ->
+                                    if (base + 4 * k + 4 <= buf.size) ifdQueue.add(u32(buf, base + 4 * k))
+                                }
+                            }
+                        }
+                        0xc68d -> {           // ActiveArea：top/left/bottom/right，LONG×4 外存
+                            if (type == 4 && cnt == 4) {
+                                val base = u32(buf, p + 8)
+                                if (base > 0 && base + 16 <= buf.size) {
+                                    aa = intArrayOf(u32(buf, base), u32(buf, base + 4), u32(buf, base + 8), u32(buf, base + 12))
+                                    aaOff = base
+                                }
+                            }
+                        }
+                    }
+                    p += 12
+                }
+                val area = curW.toLong() * curH
+                if (curW > 0 && curH > 0 && area > bestArea) {
+                    bestArea = area.toInt()
+                    best = curW to curH
+                }
+                if (ifd + 2 + 12 * count + 4 <= buf.size) {
+                    val next = u32(buf, ifd + 2 + 12 * count)
+                    if (next > 0) ifdQueue.add(next)
+                }
+            }
+            val dims = best?.takeIf { it.first > 0 && it.second > 0 } ?: return null
+            // ActiveArea 存在且落在画面里 → 引擎解码的其实是这一块
+            val a = aa
+            if (a != null && a[3] > a[1] && a[2] > a[0] &&
+                a[3] <= dims.first && a[2] <= dims.second
+            ) {
+                TiffGeometry(a[3] - a[1], a[2] - a[0], a, aaOff, le)
+            } else {
+                TiffGeometry(dims.first, dims.second, null, null, le)
+            }
+        }.getOrNull()
+    }
+
+    /** 只需要尺寸的旧入口（测试与日志用）。 */
+    internal fun tiffDimensions(ins: java.io.InputStream, head: ByteArray): Pair<Int, Int>? =
+        tiffGeometry(ins, head)?.let { it.width to it.height }
+
     /** 开一个 RAW session 跑完整冲洗链（open 已带参数 → solve → exportJpeg）。失败返回 null。 */
     private fun renderRawOne(
         eng: SpektraLabEngine,
@@ -331,7 +514,14 @@ object SpektraProcessor {
         maxPx: Int,
         maxLongEdge: Int = 0,
     ): Pair<Int, Int>? {
-        val session = eng.openRawSession(dngPath, paramsJson, if (maxPx > 0) maxPx else 0, maxLongEdge)
+        // open 也要在 try 里：引擎对坏参数是「解码完才炸」（spk_open failed after
+        // RAW decode），open 一抛就把整条兜底链带崩，后面的档永远没机会试
+        val session = try {
+            eng.openRawSession(dngPath, paramsJson, if (maxPx > 0) maxPx else 0, maxLongEdge)
+        } catch (e: Throwable) {
+            Log.e(TAG, "RAW 会话打开失败: ${e.message} | dng=$dngPath", e)
+            return null
+        }
         return try {
             dumpParamsOnce(context, session)
             session.solve("both")
