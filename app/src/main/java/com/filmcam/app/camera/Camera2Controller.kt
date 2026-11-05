@@ -688,26 +688,37 @@ class Camera2Controller(private val context: Context) {
     }
 
     /**
-     * 采集端「不加工」。
+     * 采集端「少加工」（真机回归修订，11-05）。
      *
-     * 手机在写 JPEG 之前会做三件事：边缘锐化、多帧降噪、ZSL 取旧帧。
-     * 这三件事正好把胶片最值钱的东西抹掉 —— 锐化在轮廓留一圈 halo（放大看就是数码味），
-     * 多帧降噪把细节和颗粒一起抹平（之后冲洗再叠颗粒，等于在磨皮脸上撒沙子），
-     * ZSL 则会从缓冲里挑一张合成过的旧帧。T3 的底片没有这些步骤。
+     * 只关**边缘锐化**：锐化在轮廓留一圈 halo，放大看就是数码味，关掉零代价。
      *
-     * 能力不支持的机型逐项跳过，不影响正常拍摄。
+     * **降噪 / ZSL 恢复 HAL 默认**：11-02 曾一起关掉，真机回归实锤代价 —— 三星的
+     * 多帧合成同时是**自动 HDR 的载体**，NOISE_REDUCTION_MODE_OFF 把它一并关掉后，
+     * 室外大光比场景单帧为保高光压低曝光，暗部明显比降噪默认基线沉一大截
+     * （引擎默认 scene_latitude 已开、暗部仍救不回来：8-bit JPEG 里暗部数据已压死）。
+     * 多帧抹细节的代价由 **RAW 通路**承担才是正解 —— RAW_SENSOR 永远不过 ISP，
+     * JPEG 通路本来就是「让 HAL 替你拍好」的那条路。
+     *
+     * A/B 探针：外部私有目录存在 `capture_ab_off.txt` 时回到 11-02 的全关形态
+     * （生像素模式），用于对比亮度/细节代价。
      */
     private fun applyCaptureTuning(builder: CaptureRequest.Builder) {
-        // A/B 探针：外部私有目录存在 capture_ab_off.txt 时本次回 HAL 默认加工
-        // （不关降噪/锐化/ZSL）。同场景拍两张对比入卷 JPEG，分离「采集端不加工」
-        // 对亮度的影响 —— 三星的多帧合成同时承担自动 HDR / 暗光提亮，关掉后
-        // 室外大光比单帧保高光压暗部、室内单帧直出更暗，是否主因待此定量。
-        val abOff = runCatching {
+        val rawPixels = runCatching {
             java.io.File(context.getExternalFilesDir(null), "capture_ab_off.txt").exists()
         }.getOrDefault(false)
-        if (abOff) {
-            android.util.Log.i("CaptureTuning", "A/B 探针生效：本次按 HAL 默认加工")
-            return
+        if (rawPixels) {
+            android.util.Log.i("CaptureTuning", "A/B 探针生效：本次回到生像素模式（全关）")
+            if (canDisableNr) {
+                runCatching {
+                    builder.set(
+                        CaptureRequest.NOISE_REDUCTION_MODE,
+                        android.hardware.camera2.CameraMetadata.NOISE_REDUCTION_MODE_OFF
+                    )
+                }
+            }
+            if (canDisableZsl) {
+                runCatching { builder.set(CaptureRequest.CONTROL_ENABLE_ZSL, false) }
+            }
         }
         if (canDisableEdge) {
             runCatching {
@@ -717,28 +728,9 @@ class Camera2Controller(private val context: Context) {
                 )
             }
         }
-        if (canDisableNr) {
-            runCatching {
-                builder.set(
-                    CaptureRequest.NOISE_REDUCTION_MODE,
-                    android.hardware.camera2.CameraMetadata.NOISE_REDUCTION_MODE_OFF
-                )
-            }
-        } else if (canDisableNrMinimal) {
-            runCatching {
-                builder.set(
-                    CaptureRequest.NOISE_REDUCTION_MODE,
-                    android.hardware.camera2.CameraMetadata.NOISE_REDUCTION_MODE_MINIMAL
-                )
-            }
-        }
-        if (canDisableZsl) {
-            // 关掉零快门延迟：避免 HAL 从缓冲里挑一张已经多帧合成过的帧
-            runCatching { builder.set(CaptureRequest.CONTROL_ENABLE_ZSL, false) }
-        }
         android.util.Log.i(
             "CaptureTuning",
-            "edgeOff=$canDisableEdge nrOff=$canDisableNr nrMin=$canDisableNrMinimal zslOff=$canDisableZsl"
+            "edgeOff=$canDisableEdge nrOff=${rawPixels && canDisableNr} zslOff=${rawPixels && canDisableZsl}"
         )
     }
 
