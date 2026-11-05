@@ -698,6 +698,17 @@ class Camera2Controller(private val context: Context) {
      * 能力不支持的机型逐项跳过，不影响正常拍摄。
      */
     private fun applyCaptureTuning(builder: CaptureRequest.Builder) {
+        // A/B 探针：外部私有目录存在 capture_ab_off.txt 时本次回 HAL 默认加工
+        // （不关降噪/锐化/ZSL）。同场景拍两张对比入卷 JPEG，分离「采集端不加工」
+        // 对亮度的影响 —— 三星的多帧合成同时承担自动 HDR / 暗光提亮，关掉后
+        // 室外大光比单帧保高光压暗部、室内单帧直出更暗，是否主因待此定量。
+        val abOff = runCatching {
+            java.io.File(context.getExternalFilesDir(null), "capture_ab_off.txt").exists()
+        }.getOrDefault(false)
+        if (abOff) {
+            android.util.Log.i("CaptureTuning", "A/B 探针生效：本次按 HAL 默认加工")
+            return
+        }
         if (canDisableEdge) {
             runCatching {
                 builder.set(
