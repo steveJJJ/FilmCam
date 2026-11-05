@@ -138,8 +138,10 @@
             android:progressBackgroundTint="#3A3A40"
             android:thumbTint="#F0F0F4" />
 
-        <!-- 滤色强度：滤色片太弱（±1.0 只挪 ~1.6 个色阶），要真挪动肤色靠它放大 -->
+        <!-- 滤色强度：滤色片太弱（±1.0 只挪 ~1.6 个色阶），要真挪动肤色靠它放大。
+             店扫校色不用它（强度属于店扫签名自己的标定），整块由代码 GONE -->
         <LinearLayout
+            android:id="@+id/rowCcScaleBlock"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:gravity="center_vertical"

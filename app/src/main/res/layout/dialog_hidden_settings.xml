@@ -60,6 +60,16 @@
             layout="@layout/item_setting_row" />
 
         <View
+            android:id="@+id/dividerEngColor"
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="#26262A" />
+
+        <include
+            android:id="@+id/rowEngColor"
+            layout="@layout/item_setting_row" />
+
+        <View
             android:layout_width="match_parent"
             android:layout_height="1dp"
             android:background="#26262A" />
@@ -75,15 +85,6 @@
 
         <include
             android:id="@+id/rowEngLens"
-            layout="@layout/item_setting_row" />
-
-        <View
-            android:layout_width="match_parent"
-            android:layout_height="1dp"
-            android:background="#26262A" />
-
-        <include
-            android:id="@+id/rowEngColor"
             layout="@layout/item_setting_row" />
 
         <View
