@@ -371,22 +371,52 @@ object SpektraProcessor {
      * 或 DNG 没有 ActiveArea 标签时原样返回，交给引擎自带的兜底链处理。
      */
     internal fun prepareGateDng(dngPath: String, cacheDir: java.io.File, paramsJson: String): String {
-        val aspectL = gateAspectFromParams(paramsJson) ?: return dngPath
         val geo = runCatching {
             java.io.File(dngPath).inputStream().use { ins ->
                 val head = ByteArray(8)
                 if (ins.read(head) == 8) tiffGeometry(ins, head) else null
             }
         }.getOrNull() ?: return dngPath
-        // 竖拍走竖置片门（画面在底片上本来就是竖的）：片门比取倒数
-        val aspect = if (geo.height > geo.width) 1f / aspectL else aspectL
-        val crop = FilmStockMapper.gateCrop(geo.width, geo.height, aspect)
-        if (!crop.cropped) return dngPath
         val off = geo.activeAreaOffset ?: run {
-            Log.w(TAG, "DNG 无 ActiveArea 标签，跳过片门预裁: $dngPath")
+            Log.w(TAG, "DNG 无 ActiveArea 标签，跳过预裁: $dngPath")
             return dngPath
         }
         val a = geo.activeArea!!   // activeAreaOffset 非 null 时必有
+        // ① T3 35mm 视角对齐：采集端 JPEG/预览由 HAL 按 CONTROL_ZOOM_RATIO（=
+        //    [FilmStockMapper.T3_ZOOM_RATIO]）中心裁切，RAW_SENSOR 是全幅 Bayer 不被裁
+        //    （真机实锤：RAW 成片比 JPEG 广 1.52 倍）——冲洗端自己补同样的裁切。
+        //    原点偶对齐：CFAPattern 从 ActiveArea 左上角起排，偶偏移不改 Bayer 相位。
+        //    片框开关都裁（视角是机身属性，与片框无关）
+        val z = zoomCrop(geo.width, geo.height)
+        var cx = z[0]
+        var cy = z[1]
+        var cw = z[2]
+        var ch = z[3]
+        // ② 片门预裁（片框开 135 时）叠在变焦裁切上；竖拍取倒数片门比。
+        //    3:2 在偶原点下取精确比例的偶尺寸对：横 w=3k/h=2k、竖 w=2k/h=3k（k 取偶），
+        //    引擎片门校验吃得稳（gateCrop 的近似取整在偶数对下可能差 1px）
+        val aspectL = gateAspectFromParams(paramsJson)
+        if (aspectL != null) {
+            val aspect = if (geo.height > geo.width) 1f / aspectL else aspectL
+            val c = FilmStockMapper.gateCrop(cw, ch, aspect)
+            if (c.cropped) {
+                var k = if (aspect >= 1f) c.h / 2 else c.w / 2
+                if (k % 2 == 1) k -= 1
+                if (k >= 2) {
+                    val gw = if (aspect >= 1f) 3 * k else 2 * k
+                    val gh = if (aspect >= 1f) 2 * k else 3 * k
+                    if (gw <= z[2] && gh <= z[3]) {
+                        cw = gw
+                        ch = gh
+                        cx = z[0] + (z[2] - gw) / 2
+                        cy = z[1] + (z[3] - gh) / 2
+                    }
+                }
+            }
+        }
+        if (cx % 2 == 1) cx -= 1
+        if (cy % 2 == 1) cy -= 1
+        if (cx == 0 && cy == 0 && cw == geo.width && ch == geo.height) return dngPath
         val work = java.io.File(cacheDir, "gate_" + java.io.File(dngPath).name)
         val ok = runCatching {
             java.io.File(dngPath).inputStream().use { ins -> work.outputStream().use { ins.copyTo(it) } }
@@ -395,21 +425,36 @@ object SpektraProcessor {
                 val order = java.nio.ByteOrder.LITTLE_ENDIAN.takeIf { geo.littleEndian }
                     ?: java.nio.ByteOrder.BIG_ENDIAN
                 val bb = java.nio.ByteBuffer.allocate(16).order(order)
-                bb.putInt(a[0] + crop.y)             // top
-                bb.putInt(a[1] + crop.x)             // left
-                bb.putInt(a[0] + crop.y + crop.h)    // bottom
-                bb.putInt(a[1] + crop.x + crop.w)    // right
+                bb.putInt(a[0] + cy)              // top
+                bb.putInt(a[1] + cx)              // left
+                bb.putInt(a[0] + cy + ch)         // bottom
+                bb.putInt(a[1] + cx + cw)         // right
                 raf.write(bb.array())
             }
             true
         }.getOrDefault(false)
         if (!ok) {
             runCatching { work.delete() }
-            Log.w(TAG, "片门预裁改写失败，用原底片冲: $dngPath")
+            Log.w(TAG, "预裁改写失败，用原底片冲: $dngPath")
             return dngPath
         }
-        Log.i(TAG, "RAW 片门预裁：源 ${geo.width}x${geo.height} → $aspect（已改写 ActiveArea）")
+        Log.i(TAG, "RAW 预裁：源 ${geo.width}x${geo.height} → ${cw}x${ch}（变焦对齐 1/${FilmStockMapper.T3_ZOOM_RATIO} + 片门，已改写 ActiveArea）")
         return work.absolutePath
+    }
+
+    /**
+     * T3 35mm 视角的中心裁切（1/[FilmStockMapper.T3_ZOOM_RATIO]，即 23mm→35mm 等效）。
+     * 返回 [x, y, w, h]；原点偶对齐（CFAPattern 相位不变），尺寸不钳偶（起始相位才影响解码）。
+     */
+    internal fun zoomCrop(w: Int, h: Int): IntArray {
+        val f = 1f / FilmStockMapper.T3_ZOOM_RATIO
+        val cw = (w * f).toInt().coerceIn(2, w)
+        val ch = (h * f).toInt().coerceIn(2, h)
+        var x = (w - cw) / 2
+        var y = (h - ch) / 2
+        if (x % 2 == 1) x -= 1
+        if (y % 2 == 1) y -= 1
+        return intArrayOf(x, y, cw, ch)
     }
 
     /** 参数里片框开着且版式是 135 时返回片门宽高比（3:2）；其余返回 null（交给后处理裁）。 */

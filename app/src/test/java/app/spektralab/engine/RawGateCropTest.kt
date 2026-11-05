@@ -154,32 +154,37 @@ class RawGateCropTest {
     }
 
     @Test
-    fun `prepareGateDng 横拍改写 ActiveArea 为 3比2`() {
+    fun `prepareGateDng 横拍变焦对齐加片门改写 ActiveArea`() {
         val dir = createTempDir("gate")
         val src = java.io.File(dir, "frame_01.dng").apply { writeBytes(dng160x120(intArrayOf(0, 0, 120, 160))) }
         val params = """{"overscan_active":true,"overscan_format":"135"}"""
         val work = SpektraProcessor.prepareGateDng(src.absolutePath, dir, params)
         assertTrue(work != src.absolutePath)          // 动了刀 → 缓存副本
         val geo = geometry(java.io.File(work).readBytes())!!
-        // 160x120 裁 3:2 → 160x106，上下各 (120-106)/2 = 7
-        assertEquals(160 to 106, geo.width to geo.height)
-        assertEquals(intArrayOf(7, 0, 113, 160).toList(), geo.activeArea!!.toList())
+        // 160x120 先裁 1/1.52（→105x78，原点偶对齐 26,20）再裁 3:2（102=3*34, 68=2*34），
+        // 中心组合偏移 (24,26)（偶对齐后）——视角与 JPEG(35mm 裁切) 一致
+        assertEquals(102 to 68, geo.width to geo.height)
+        assertEquals(intArrayOf(24, 26, 92, 128).toList(), geo.activeArea!!.toList())
         // 原底片保持原样
         assertEquals(160 to 120, geometry(src.readBytes())!!.let { it.width to it.height })
     }
 
     @Test
-    fun `prepareGateDng 竖拍走竖置片门`() {
+    fun `prepareGateDng 竖拍变焦对齐加竖置片门`() {
         val dir = createTempDir("gate")
-        // 竖的画面 120x160（高>宽），竖置片门 2:3 → 不裁（0.75 = 24/36 正好）
-        val src = java.io.File(dir, "portrait.dng").apply { writeBytes(dng160x120(intArrayOf(0, 0, 160, 120))) }
+        // TIFF 尺寸自洽的竖画面 120x160（旧用例的 AA(0,0,160,120) 配 160x120 标签越界，
+        // 被 tiffGeometry 静默拒掉，测的其实是「无 AA」拒绝路径——这里换成真竖 DNG）
+        val base = tiff(listOf(0x0100 to 120, 0x0101 to 160, 0xc68d to 0) to emptyList())
+        val (out, aaOff) = withActiveArea(base, intArrayOf(0, 0, 160, 120))
+        out.writeTagValue(0xc68d, aaOff)
+        val src = java.io.File(dir, "portrait.dng").apply { writeBytes(out) }
         val params = """{"overscan_active":true,"overscan_format":"135"}"""
         val work = SpektraProcessor.prepareGateDng(src.absolutePath, dir, params)
-        assertEquals(src.absolutePath, work)          // 已是竖置片门形状，不动刀
-        // 横的片门比套竖画面会被裁烂：明确验证取了倒数
-        val wide = java.io.File(dir, "wide.dng").apply { writeBytes(dng160x120(intArrayOf(0, 0, 120, 160))) }
-        // 160x120 在横片门下源比 1.333 < 1.5 → 裁高；竖置下 0.75 → 不裁（上面已验）
-        assertTrue(wide.exists())
+        assertTrue(work != src.absolutePath)
+        val geo = geometry(java.io.File(work).readBytes())!!
+        // 120x160 先裁 1/1.52（→78x105）再裁竖置 2:3（68=2*34, 102=3*34）
+        assertEquals(68 to 102, geo.width to geo.height)
+        assertEquals(intArrayOf(26, 24, 128, 92).toList(), geo.activeArea!!.toList())
     }
 
     @Test
@@ -193,11 +198,16 @@ class RawGateCropTest {
     }
 
     @Test
-    fun `prepareGateDng 没开片框不动刀`() {
+    fun `prepareGateDng 没开片框仍做变焦对齐`() {
         val dir = createTempDir("gate")
         val src = java.io.File(dir, "off.dng").apply { writeBytes(dng160x120(intArrayOf(0, 0, 120, 160))) }
         val params = """{"overscan_active":false,"overscan_format":"135"}"""
-        assertEquals(src.absolutePath, SpektraProcessor.prepareGateDng(src.absolutePath, dir, params))
+        // 片框关时只裁变焦（35mm 视角对齐）：160x120 → 105x78，原点 (20,26)
+        val work = SpektraProcessor.prepareGateDng(src.absolutePath, dir, params)
+        assertTrue(work != src.absolutePath)
+        val geo = geometry(java.io.File(work).readBytes())!!
+        assertEquals(105 to 78, geo.width to geo.height)
+        assertEquals(intArrayOf(20, 26, 98, 131).toList(), geo.activeArea!!.toList())
     }
 
     @Test
@@ -221,14 +231,16 @@ class RawGateCropTest {
             val geo = SpektraProcessor.tiffGeometry(ins, head)
             assertEquals(4080 to 3060, geo!!.let { it.width to it.height })
         }
-        // 真机标定：改写 ActiveArea 后引擎解码即 4080x2720
+        // 真机标定：变焦对齐 + 片门后引擎解码即 2682x1788（35mm 视角 3:2）
         val dir = createTempDir("gate")
         val params = """{"overscan_active":true,"overscan_format":"135"}"""
         val work = SpektraProcessor.prepareGateDng(f.absolutePath, dir, params)
         assertTrue(work != f.absolutePath)
         val geo = geometry(java.io.File(work).readBytes())!!
-        assertEquals(4080 to 2720, geo.width to geo.height)
-        assertEquals(intArrayOf(170, 0, 2890, 4080).toList(), geo.activeArea!!.toList())
+        // 4080x3060 先 1/1.52 变焦对齐（→2684x2013）再 3:2（2682=3*894, 1788=2*894），
+        // 与 JPEG 通路（HAL 裁 1.52 后再片门裁）最终覆盖的传感器区域一致
+        assertEquals(2682 to 1788, geo.width to geo.height)
+        assertEquals(intArrayOf(634, 698, 2422, 3380).toList(), geo.activeArea!!.toList())
     }
 
     @Test

@@ -325,8 +325,8 @@ class Camera2Controller(private val context: Context) {
     @Volatile private var lastAeSec = 0f
     @Volatile private var lastAeIso = 0
 
-    // 复刻康泰时 T3 35mm 视角：主摄等效约23mm，裁切至35mm ≈ 1.52x
-    private var zoomRatio = 1.52f
+    // 复刻康泰时 T3 35mm 视角：主摄等效约23mm，裁切至35mm ≈ 1.52x（常量与 RAW 冲洗端共享）
+    private var zoomRatio = app.spektralab.engine.FilmStockMapper.T3_ZOOM_RATIO
 
     /** 预览流实际尺寸（start 时确定），点屏对焦坐标映射用 */
     private var previewSize: Size = Size(1920, 1440)

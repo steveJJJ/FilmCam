@@ -745,6 +745,14 @@ object FilmStockMapper {
      */
     const val LENS_BLUR_UM = 12.0f
 
+    /**
+     * **T3 35mm 视角**：主摄等效约 23mm，裁切 1.52x ≈ 35mm（复刻 T3 的定焦镜头）。
+     * 采集端 JPEG/预览经 `CONTROL_ZOOM_RATIO` 由 HAL 裁；RAW_SENSOR 是全幅 Bayer
+     * 不被 HAL 裁（真机实锤 RAW 比 JPEG 广 1.52 倍）——RAW 冲洗端
+     * `SpektraProcessor.zoomCrop` 用同一常量补裁，两条通路视角才能一致。
+     */
+    const val T3_ZOOM_RATIO = 1.52f
+
     /** 镜头柔度上限：引擎真机实测 0~35 都收、50000 被拒，超出区间由引擎硬校验兜底 */
     const val LENS_BLUR_MAX_UM = 35.0f
 
