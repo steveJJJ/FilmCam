@@ -290,10 +290,16 @@ object SpektraProcessor {
         return try {
             val eng = ensureEngine(context)
             val maxPx = eng.maxFramePixels()
+            // RAW 输入是引擎内 LibRaw 解码出的**线性**场景光（DNG 不带 sRGB cctf 编码），
+            // 而共享参数里的 input_cctf_decoding=true 是按 JPEG 通路写的（HAL 出的 JPEG
+            // 是 sRGB 编码）。对线性数据再反一次 gamma，中灰 0.18 掉到 0.027（≈ -2.7EV）、
+            // 暗部 0.05 掉到 0.004 —— 真机观感就是「RAW 成片比 JPEG 暗一大截、黑位发死」。
+            // 所以 RAW 会话按线性输入，关掉 cctf 解码；兜底档保留原样，宁可偏暗也要能出图。
+            val primaryJson = asLinearInput(paramsJson)
             // 主参数 + 兜底链（去重，与 processFrame 同规则）
             val chain = ArrayList<String>(fallbackParamsJsons.size + 1)
-            chain.add(paramsJson)
-            for (p in fallbackParamsJsons) if (p != paramsJson && p !in chain) chain.add(p)
+            chain.add(primaryJson)
+            for (p in fallbackParamsJsons) if (p != primaryJson && p !in chain) chain.add(p)
             // 片门预裁：改写缓存副本的 ActiveArea（见 prepareGateDng），原底片不动
             val workPath = prepareGateDng(dngPath, context.cacheDir, paramsJson)
 
@@ -329,6 +335,24 @@ object SpektraProcessor {
     }
 
     // ---------- P3 RAW 片门预裁（ActiveArea 改写方案） ----------
+
+    /**
+     * 把参数里的 `input_cctf_decoding` 改成 false —— RAW 会话专用。
+     *
+     * 引擎内 LibRaw 解出来的 DNG 像素是**线性**场景光，不带 sRGB 传输函数；
+     * 共享参数里那个 `true` 是给 JPEG 通路的（HAL 出的 JPEG 是 sRGB 编码）。
+     * 对线性数据再反 gamma = 中灰 -2.7EV、暗部直接压死（真机观感「RAW 偏暗」）。
+     * 参数里没有该键、JSON 解析失败时原样返回（交给引擎默认行为）。
+     */
+    internal fun asLinearInput(paramsJson: String): String = runCatching {
+        val o = org.json.JSONObject(paramsJson)
+        if (!o.has("input_cctf_decoding")) return@runCatching paramsJson
+        if (!o.optBoolean("input_cctf_decoding", true)) return@runCatching paramsJson
+        o.put("input_cctf_decoding", false)
+        val out = o.toString()
+        Log.i(TAG, "RAW 线性输入：input_cctf_decoding true → false（避免对线性底片二次反 gamma）")
+        out
+    }.getOrDefault(paramsJson)
 
     /**
      * RAW 通路的片门预裁：引擎在渲染前拿输入尺寸对片门形状校验（差一点都不行），
@@ -557,7 +581,8 @@ object SpektraProcessor {
     ): Pair<Int, Int>? {
         return try {
             val eng = ensureEngine(context.applicationContext)
-            renderRawOne(eng, context, dngPath, paramsJson, outJpegPath, 0, maxLongEdge)
+            // 预览同样是 RAW 解码出来的线性数据，同样不能二次反 gamma
+            renderRawOne(eng, context, dngPath, asLinearInput(paramsJson), outJpegPath, 0, maxLongEdge)
         } catch (e: Throwable) {
             Log.e(TAG, "renderRawPreview 失败: ${e.message} | dng=$dngPath", e)
             null
