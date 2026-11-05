@@ -64,6 +64,23 @@
             android:layout_height="1dp"
             android:background="#26262A" />
 
+        <!-- 色彩微调：印相档专属（选了店扫整组隐藏，店扫档色彩由店扫签名决定） -->
+        <LinearLayout
+            android:id="@+id/groupEngColor"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+                <include
+            android:id="@+id/rowEngColor"
+            layout="@layout/item_setting_row" />
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="#26262A" />
+        </LinearLayout>
+
         <include
             android:id="@+id/rowEngDev"
             layout="@layout/item_setting_row" />
@@ -75,15 +92,6 @@
 
         <include
             android:id="@+id/rowEngLens"
-            layout="@layout/item_setting_row" />
-
-        <View
-            android:layout_width="match_parent"
-            android:layout_height="1dp"
-            android:background="#26262A" />
-
-        <include
-            android:id="@+id/rowEngColor"
             layout="@layout/item_setting_row" />
 
         <View

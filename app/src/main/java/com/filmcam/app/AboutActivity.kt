@@ -446,8 +446,17 @@ class AboutActivity : AppCompatActivity() {
                 else -> getString(R.string.style_print)
             }
         }
+
+        // 色彩微调跟输出风格走：印相档才有（家里暗房的放大机滤色片校色）；
+        // 选了店扫整组隐藏——店扫档的色彩由店扫自己的滤色片签名决定
+        fun refreshColorRow() {
+            val isScan = app.spektralab.engine.FilmStockMapper.readOutputStyle(this).isScan
+            view.findViewById<View>(R.id.groupEngColor).visibility =
+                if (isScan) View.GONE else View.VISIBLE
+        }
         saveSlow(slowMode())
         saveStyleName()
+        refreshColorRow()
         // 镜头柔度：机身属性，全局一个值（不按胶卷存）
         tvLens.text = "${prefs.getFloat(
             "filmcam_dev_lens_blur", app.spektralab.engine.FilmStockMapper.LENS_BLUR_UM
@@ -484,6 +493,7 @@ class AboutActivity : AppCompatActivity() {
         rowStyle.setOnClickListener {
             app.spektralab.engine.FilmStockMapper.cycleOutputStyle(this)
             saveStyleName()
+            refreshColorRow()
         }
         // 冲洗参数：另开一层（颗粒/辉光/眩光/印相曝光/相纸），关掉后回到本控制台
         rowDev.setOnClickListener {
@@ -497,7 +507,7 @@ class AboutActivity : AppCompatActivity() {
             consoleRef?.dismiss()
             showLensBlurDialog { showEngineerConsole() }
         }
-        // 色彩微调：整体成色（肤色偏黄这类），同样全局存、单独一层
+        // 色彩微调（印相档专属）：整体成色（肤色偏黄这类），同样全局存、单独一层
         rowColor.setOnClickListener {
             consoleRef?.dismiss()
             showColorBalanceDialog { showEngineerConsole() }
