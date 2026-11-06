@@ -130,7 +130,7 @@ object FilmStockMapper {
         "input_color_space", "input_cctf_decoding", "output_color_space",
         // 曝光 / 预览
         "print_exposure", "preview_long_edge", "exposure_compensation_ev",
-        "auto_exposure_method", "lens_blur_um",
+        "auto_exposure", "auto_exposure_method", "lens_blur_um",
         // 胶片质感
         "grain_amount", "halation_amount", "glare_amount", "glare_active",
         // 放大机（滤色片 / 预闪）：店扫档用滤色片表达扫描仪校色的冷暖
@@ -842,6 +842,13 @@ object FilmStockMapper {
      * 直闪底片和自然光底片在暗房里就是两种东西：反差大、主体密、背景薄，
      * 印相时店员有一套针对性的处理。这里把其中可参数化的部分搬过来：
      *
+     *  - `auto_exposure=false`：直闪帧的曝光量在拍摄时就由 EI + 闪光指数定死了
+     *    （EXTERNAL 档 HAL 已 `AE_OFF` + 固定 ISO/快门），引擎不该再按画面亮度
+     *    评估一次。11-07 真机定量（同参数链只关 AE）：meanL 61.8→92.1、
+     *    暗部占比 49.4%→40.4%、高频 0.86→0.94、高光无新增溢出。
+     *    之前 center_weighted 把被闪光照亮的底片判成「太亮」压暗，正是
+     *    「闪光灯拍了却没有闪光味」的根因。**只作用于直闪帧**，不违反
+     *    「别把 auto_exposure=false 全局落默认（白天大光比会爆高光）」的约束。
      *  - `preflash_exposure`：放大机预闪 —— 印正像前给相纸一次均匀的弱曝光，
      *    把黑位抬起来、反差压一点。直闪帧的背景被闪光甩进黑暗，预一点闪
      *    避免印出来背景死黑一片（店扫处理直闪卷的常规操作）。
@@ -849,6 +856,7 @@ object FilmStockMapper {
      *    小图试这个值，引擎不收就整键剔除，只会丢这一味、不炸整帧。
      */
     fun flashFinishEntries(): List<Pair<String, String>> = listOf(
+        "auto_exposure" to "false",
         "preflash_exposure" to "0.08",
     )
 

@@ -183,6 +183,7 @@ class FilmStockMapperTest {
             FilmStockMapper.buildParamsJson("kodak_portra_400", "kodak_portra_endura")
         )
         assertFalse("非闪光帧不应带 preflash_exposure", plain.has("preflash_exposure"))
+        assertFalse("非闪光帧不应关引擎自动曝光", plain.has("auto_exposure"))
         assertEquals(1.0, plain.optDouble("halation_amount"), 1e-6)
 
         // 直闪帧：辉光 ×1.5，追加预闪（暗房处理直闪底片的常规操作）
@@ -197,6 +198,8 @@ class FilmStockMapperTest {
         )
         assertEquals(1.5, flash.optDouble("halation_amount"), 1e-6)
         assertEquals(0.08, flash.optDouble("preflash_exposure"), 1e-9)
+        assertTrue("直闪帧必须显式下发 auto_exposure", flash.has("auto_exposure"))
+        assertFalse("直闪帧曝光已知，引擎不得再自动评估", flash.getBoolean("auto_exposure"))
         // 直闪键必须在引擎白名单里（否则预检必拒，白搭）
         FilmStockMapper.flashFinishEntries().forEach { (k, _) ->
             assertTrue("直闪键 $k 不在引擎白名单", FilmStockMapper.ENGINE_KNOWN_KEYS.contains(k))
