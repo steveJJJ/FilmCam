@@ -44,12 +44,26 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:screenOrientation="fullSensor">
+            android:screenOrientation="fullSensor" />
+
+        <!-- 启动图标：Contax T3 银色实拍图（项目定调基线 ic_launcher.png），单一静态入口。
+             保留 .LauncherBlack 这个组件名只为兼容：v24/v25 已放上桌面的快捷方式
+             指向它，改名字会让图标直接失效——名字是历史遗留，与图标颜色无关。
+             动态切换/钛银别名已撤掉（setComponentEnabledSetting 后三星桌面不重建
+             图标，真机上表现为「图标没变」）。不声明 roundIcon / adaptive icon：
+             让完整实拍图交给 Launcher 裁形状，避免 66% 安全区把相机四角切掉。
+             application:icon 与 alias:icon 指向同一张图，桌面与应用信息一致。 -->
+        <activity-alias
+            android:name=".LauncherBlack"
+            android:enabled="true"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:targetActivity=".MainActivity">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-        </activity>
+        </activity-alias>
         <!-- 取景器之外一律跟随传感器：折叠屏（Mate X5）展开后本来就是横向视界，
              锁死竖屏会让人横着拿手机、看一个竖着的页面。相册的网格列数按宽度算，
              横屏会自动排得更宽（见 GalleryActivity 的 spanCount）。 -->

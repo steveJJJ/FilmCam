@@ -746,12 +746,54 @@ object FilmStockMapper {
     const val LENS_BLUR_UM = 12.0f
 
     /**
-     * **T3 35mm 视角**：主摄等效约 23mm，裁切 1.52x ≈ 35mm（复刻 T3 的定焦镜头）。
+     * **T3 35mm 视角**：动态裁切比 = 35 / 本机主摄等效焦距。
+     *
      * 采集端 JPEG/预览经 `CONTROL_ZOOM_RATIO` 由 HAL 裁；RAW_SENSOR 是全幅 Bayer
-     * 不被 HAL 裁（真机实锤 RAW 比 JPEG 广 1.52 倍）——RAW 冲洗端
-     * `SpektraProcessor.zoomCrop` 用同一常量补裁，两条通路视角才能一致。
+     * 不被 HAL 裁（真机实锤 RAW 比 JPEG 广）——RAW 冲洗端
+     * `SpektraProcessor.zoomCrop` 用同一值补裁，两条通路视角才能一致。
+     *
+     * **2026-11-05 起动态化**：不同手机主摄等效焦距不同（23mm/24mm/26mm/28mm…），
+     * 硬编码 1.52 只对 23mm 机型正确。现在由 [Camera2Controller] 在 `start()` 时
+     * 读 `SENSOR_INFO_PHYSICAL_SIZE` + `LENS_INFO_AVAILABLE_FOCAL_LENGTHS` 算出
+     * 本机等效焦距，调 [setT3ZoomRatio] 更新此值。读取不到时保持默认 1.52（23mm），
+     * 不会比之前差。
      */
-    const val T3_ZOOM_RATIO = 1.52f
+    @Volatile
+    var T3_ZOOM_RATIO: Float = 1.52f
+        private set
+
+    /** 目标等效焦距（T3 定焦 35mm）。 */
+    private const val TARGET_EQUIV_FOCAL_MM = 35f
+
+    /**
+     * 由 Camera2Controller 在初始化时调用：根据本机传感器物理尺寸 + 镜头实际焦距
+     * 算出等效 35mm 焦距，再算裁切比。
+     *
+     * 等效焦距 = 实际焦距 × (43.27 / 传感器对角线)，其中 43.27 是全画幅对角线。
+     * 裁切比 = 目标等效 / 本机等效。
+     *
+     * - 本机等效 23mm → 35/23 ≈ 1.52（与旧硬编码一致）
+     * - 本机等效 26mm → 35/26 ≈ 1.35
+     * - 本机等效 28mm → 35/28 ≈ 1.25
+     */
+    fun setT3ZoomRatio(sensorPhysicalSizeMm: Float, actualFocalLengthMm: Float) {
+        if (sensorPhysicalSizeMm <= 0f || actualFocalLengthMm <= 0f) {
+            android.util.Log.w("FilmStockMapper", "setT3ZoomRatio 参数无效: sensor=$sensorPhysicalSizeMm focal=$actualFocalLengthMm，保持默认 $T3_ZOOM_RATIO")
+            return
+        }
+        // 传感器对角线
+        // sensorPhysicalSize 是 SizeF（宽×高），传入的是对角线长度
+        val diag = sensorPhysicalSizeMm
+        val equivFocal = actualFocalLengthMm * (43.27f / diag)
+        val ratio = TARGET_EQUIV_FOCAL_MM / equivFocal
+        // 合理范围：1.0~3.0。超出说明读到了异常值（如 telephoto 或超广）
+        if (ratio in 1.0f..3.0f) {
+            T3_ZOOM_RATIO = ratio
+            android.util.Log.i("FilmStockMapper", "T3 裁切比动态化: sensor=${diag}mm focal=${actualFocalLengthMm}mm equiv=${equivFocal}mm ratio=$ratio")
+        } else {
+            android.util.Log.w("FilmStockMapper", "T3 裁切比超出合理范围: ratio=$ratio（equiv=${equivFocal}mm），保持 $T3_ZOOM_RATIO")
+        }
+    }
 
     /** 镜头柔度上限：引擎真机实测 0~35 都收、50000 被拒，超出区间由引擎硬校验兜底 */
     const val LENS_BLUR_MAX_UM = 35.0f

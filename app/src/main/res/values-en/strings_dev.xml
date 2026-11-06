@@ -81,5 +81,6 @@
     <string name="lcd_notice_slide_no_print">Slide film, no printing</string>
     <string name="lcd_notice_develop_before_reload">Develop the roll before reloading</string>
     <string name="lcd_notice_dev_done">Developed %1$d prints</string>
+    <string name="lcd_notice_raw_unavailable">No RAW support, using JPEG</string>
 
 </resources>

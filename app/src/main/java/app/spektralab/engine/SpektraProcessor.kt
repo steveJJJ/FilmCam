@@ -421,7 +421,6 @@ object SpektraProcessor {
         val ok = runCatching {
             java.io.File(dngPath).inputStream().use { ins -> work.outputStream().use { ins.copyTo(it) } }
             java.io.RandomAccessFile(work, "rw").use { raf ->
-                raf.seek(off.toLong())
                 val order = java.nio.ByteOrder.LITTLE_ENDIAN.takeIf { geo.littleEndian }
                     ?: java.nio.ByteOrder.BIG_ENDIAN
                 val bb = java.nio.ByteBuffer.allocate(16).order(order)
@@ -429,7 +428,25 @@ object SpektraProcessor {
                 bb.putInt(a[1] + cx)              // left
                 bb.putInt(a[0] + cy + ch)         // bottom
                 bb.putInt(a[1] + cx + cw)         // right
+                raf.seek(off.toLong())
                 raf.write(bb.array())
+
+                // ---- 固定日光 WB（D55 / 5500K）----
+                // 日光胶卷本身就是日光平衡，DNG 的 AsShotNeutral 带的是厂商 AWB 倾向
+                // （混合光源 / 自动白平衡估算的结果），与真机 T3 用日光卷 + 固定 WB 不符。
+                // 覆盖 AsShotWhiteXY 为 D55 色度坐标 (x=0.3457, y=0.3585)，
+                // LibRaw 解码就会用日光白平衡，不再受 AsShotNeutral 的厂商倾向影响。
+                geo.whiteXYOffset?.let { wxyOff ->
+                    val wxyBuf = java.nio.ByteBuffer.allocate(16).order(order)
+                    // RATIONAL = 两个 LONG：分子 + 分母
+                    // x = 0.3457 → 3457/10000
+                    wxyBuf.putInt(3457).putInt(10000)
+                    // y = 0.3585 → 3585/10000
+                    wxyBuf.putInt(3585).putInt(10000)
+                    raf.seek(wxyOff.toLong())
+                    raf.write(wxyBuf.array())
+                    Log.i(TAG, "RAW 日光 WB：AsShotWhiteXY 已覆写为 D55 (0.3457, 0.3585)")
+                }
             }
             true
         }.getOrDefault(false)
@@ -438,7 +455,8 @@ object SpektraProcessor {
             Log.w(TAG, "预裁改写失败，用原底片冲: $dngPath")
             return dngPath
         }
-        Log.i(TAG, "RAW 预裁：源 ${geo.width}x${geo.height} → ${cw}x${ch}（变焦对齐 1/${FilmStockMapper.T3_ZOOM_RATIO} + 片门，已改写 ActiveArea）")
+        val wxyNote = if (geo.whiteXYOffset != null) " + 日光WB(D55)" else ""
+        Log.i(TAG, "RAW 预裁：源 ${geo.width}x${geo.height} → ${cw}x${ch}（变焦对齐 1/${FilmStockMapper.T3_ZOOM_RATIO} + 片门$wxyNote，已改写 ActiveArea）")
         return work.absolutePath
     }
 
@@ -475,6 +493,11 @@ object SpektraProcessor {
         val activeArea: IntArray?,
         /** ActiveArea 值域在文件内的偏移（外存 LONG×4），改写用；内联或无标签为 null */
         val activeAreaOffset: Int?,
+        /**
+         * AsShotWhiteXY 的值域在文件内的偏移（外存 RATIONAL×2 = 16 字节），改写用。
+         * null = 该 DNG 没有此标签（LibRaw 会回退到 AsShotNeutral 或相机默认）。
+         */
+        val whiteXYOffset: Int?,
         val littleEndian: Boolean,
     )
 
@@ -504,6 +527,7 @@ object SpektraProcessor {
             var bestArea = 0
             var aa: IntArray? = null
             var aaOff: Int? = null
+            var wxyOff: Int? = null
             val ifdQueue = ArrayDeque<Int>()
             ifdQueue.add(u32(head, 4))
             val seen = mutableSetOf<Int>()
@@ -543,6 +567,15 @@ object SpektraProcessor {
                                 }
                             }
                         }
+                        0xc625 -> {           // AsShotWhiteXY：x,y 各一个 RATIONAL(8B)，外存 16B
+                            // RATIONAL type=5，count=2；2×8=16B > 4B → 外存
+                            if (type == 5 && cnt == 2) {
+                                val base = u32(buf, p + 8)
+                                if (base > 0 && base + 16 <= buf.size) {
+                                    wxyOff = base
+                                }
+                            }
+                        }
                     }
                     p += 12
                 }
@@ -562,9 +595,9 @@ object SpektraProcessor {
             if (a != null && a[3] > a[1] && a[2] > a[0] &&
                 a[3] <= dims.first && a[2] <= dims.second
             ) {
-                TiffGeometry(a[3] - a[1], a[2] - a[0], a, aaOff, le)
+                TiffGeometry(a[3] - a[1], a[2] - a[0], a, aaOff, wxyOff, le)
             } else {
-                TiffGeometry(dims.first, dims.second, null, null, le)
+                TiffGeometry(dims.first, dims.second, null, null, wxyOff, le)
             }
         }.getOrNull()
     }

@@ -34,11 +34,15 @@ class FlashController(
     var onBuiltInFlash: ((Boolean) -> Unit)? = null
 
     override fun startScan() {
-        if (mode == FlashMode.EXTERNAL) {
-            bleFlash = FotorGearFlash(context).also {
-                it.onStatusChange = { s -> onStatusChange?.invoke(s) }
-                it.startScan()
-            }
+        if (mode != FlashMode.EXTERNAL) return
+        // restoreSettings / cycleFlashMode /「拍摄同款」三条路都会调到这里。
+        // 以前每次都 new 一个 FotorGearFlash，旧 GATT 不关 → 同一台灯被反复注册
+        // client_if（真机日志里能看到成串 GATT_Register / 连接互相顶掉）。
+        // 一次 EXTERNAL 会话只建一条 GATT，连接状态由 FotorGearFlash 自己维护。
+        if (bleFlash != null) return
+        bleFlash = FotorGearFlash(context).also {
+            it.onStatusChange = { s -> onStatusChange?.invoke(s) }
+            it.startScan()
         }
     }
 

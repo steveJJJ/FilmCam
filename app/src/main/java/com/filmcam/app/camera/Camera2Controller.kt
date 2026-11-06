@@ -15,6 +15,7 @@ import android.util.Size
 import android.graphics.SurfaceTexture
 import android.view.Surface
 import android.widget.Toast
+import app.spektralab.engine.FilmStockMapper
 import java.io.File
 import java.lang.Exception
 
@@ -27,6 +28,43 @@ class Camera2Controller(private val context: Context) {
     /** internal 供单测访问（pickRawSize 是纯函数） */
     internal companion object {
         const val FLASH_PRECAPTURE_TIMEOUT_MS = 700L
+
+        /**
+         * 外置闪光的**固定**曝光量（以 100ms 同步快门下的 ISO 表示）。
+         *
+         * 闪光是独立光源，强度不随环境光变化，所以绝不能跟着 AE 基线缩放：
+         * 那样换个稍亮的房间 ISO 会被算到设备下限，闪光立刻欠曝成黑片。
+         * 真机闪光灯也是固定光圈/ISO/同步快门，只靠闪光补偿拨盘调。
+         *
+         * 真机逐档扫描（暗场、灯距固定）：ISO 57 @100ms → RAW 净信号 284、
+         * p90=562、p99=966、饱和 1.68%（不过曝的直闪片）；ISO 289 时 68% 饱和。
+         * `flash_sync_gain.txt` 是倍率（默认 1.0），EV 拨盘按标准档位 2^EV 调。
+         */
+        private const val FLASH_SYNC_ISO_AT_100MS = 57f
+        private const val FLASH_SYNC_GAIN_DEFAULT = 4.0f
+
+        /**
+         * 灯的固件固有延迟：从收到 05 xx 到 COB 真正出光约 200ms（官方所谓
+         * 「预闪 → 同步触发」序列）。真机逐档扫描（RAW 净信号）证实：
+         *   提前 250/200/150ms → 953/957/956（闪光进画面）
+         *   曝光开始 / +50 / +100ms → ~11（完全没进）
+         * 所以必须相对曝光开始提前 200ms 发指令。
+         */
+        private const val DEFAULT_FLASH_SYNC_OFFSET_MS = -200L
+        /**
+         * 外置闪光的曝光窗口。BLE 写入要等连接间隔（约 20–50ms），COB 灯脉冲
+         * 又是几十到上百毫秒，窗口太窄会漏掉闪光。100ms 足够兜住，同时按
+         * 同一曝光量把 ISO 折低，环境光不会因此过曝 —— 出来的就是慢速同步直闪。
+         * 设备上限 0.176s（S25U 实测），100ms 留了余量。
+         */
+        private const val FLASH_SYNC_SHUTTER_NS = 100_000_000L
+
+        /**
+         * 三星 HAL 从提交 capture 到真正开曝光的延迟（S25U 三次实测
+         * 369 / 383 / 405ms）。负偏移的「提前触发」以此为基准，再由
+         * `flash_sync_offset.txt` 热调补偿。
+         */
+        private const val FLASH_HAL_LATENCY_MS = 385L
 
         /**
          * RAW 图 / 快门结果到达的最大等待。JPEG 与 RAW 出自同一次快门，
@@ -158,6 +196,29 @@ class Camera2Controller(private val context: Context) {
      */
     private val stillCaptureCallback =
         object : android.hardware.camera2.CameraCaptureSession.CaptureCallback() {
+            override fun onCaptureStarted(
+                session: android.hardware.camera2.CameraCaptureSession,
+                request: CaptureRequest,
+                timestamp: Long,
+                frameNumber: Long
+            ) {
+                // 负偏移走 submitStillCapture 的预触发；这里只负责 0 / 正偏移。
+                if (externalFlashSync && flashTriggerOffsetMs >= 0) {
+                    android.util.Log.i(
+                        "FlashSync",
+                        "曝光开始 frame=$frameNumber ts=$timestamp"
+                    )
+                    if (flashTriggerOffsetMs == 0L) {
+                        fireExternalFlashOnce("曝光开始")
+                    } else {
+                        val off = flashTriggerOffsetMs
+                        backgroundHandler?.postDelayed({
+                            if (externalFlashSync) fireExternalFlashOnce("曝光开始+${off}ms")
+                        }, off)
+                    }
+                }
+            }
+
             override fun onCaptureCompleted(
                 session: android.hardware.camera2.CameraCaptureSession,
                 request: CaptureRequest,
@@ -168,7 +229,9 @@ class Camera2Controller(private val context: Context) {
                     val p = pendingShot ?: PendingShot().also { pendingShot = it }
                     if (!p.completed) p.result = result
                 }
-                // 原闪光状态日志原样保留
+                // 原闪光状态日志原样保留，补上这一帧真正用到的曝光参数：
+                // 外置闪光黑片排查时不用再拉 DNG 读 EXIF，logcat 里就能看出
+                // 「AE 有没有收敛 / 手动参数有没有生效 / HAL 闪光有没有开」。
                 val st = result.get(android.hardware.camera2.CaptureResult.FLASH_STATE)
                 val ae = result.get(android.hardware.camera2.CaptureResult.CONTROL_AE_STATE)
                 android.util.Log.i(
@@ -182,7 +245,10 @@ class Camera2Controller(private val context: Context) {
                             android.hardware.camera2.CameraMetadata.FLASH_STATE_PARTIAL -> "PARTIAL"
                             else -> "$st"
                         }
-                    } aeState=$ae"
+                    } aeState=$ae" +
+                        " iso=${result.get(android.hardware.camera2.CaptureResult.SENSOR_SENSITIVITY)}" +
+                        " expNs=${result.get(android.hardware.camera2.CaptureResult.SENSOR_EXPOSURE_TIME)}" +
+                        " flashEnabled=$flashEnabled manualIso=$manualIso manualExp=$manualExposure ev=$exposureComp"
                 )
             }
         }
@@ -325,6 +391,68 @@ class Camera2Controller(private val context: Context) {
     @Volatile private var lastAeSec = 0f
     @Volatile private var lastAeIso = 0
 
+    /**
+     * 外置闪光同步用的「环境光测光基线」。
+     *
+     * 真机 11-06 实测：外接 COB 灯闪起来时，AE 会在闪光峰值上重新测光，把
+     * ISO 从 2649 砍到 272、快门从 1/33 砍到 1/50（曝光量 -14.6 倍），但 RAW
+     * 归一化后场景其实只亮了 2.88 倍 —— 净欠曝约 2.3 档，成片就是黑的。
+     * 所以只在 AE 收敛（CONVERGED/LOCKED）时更新基线；闪光一来 AE 进 SEARCHING，
+     * 基线自然停留在闪光前的环境光读数，不会被峰值带跑。
+     */
+    @Volatile private var aeBaselineSec = 0f
+    @Volatile private var aeBaselineIso = 0
+
+    /** 外置闪光档：快门帧改用锁定的环境光基线，不让 HAL 在闪光峰值重新测光 */
+    @Volatile private var externalFlashSync = false
+
+    /**
+     * 传感器真正开始曝光的回调。外接灯的 BLE 触发指令必须**在这一刻**发出：
+     * 按快门时发的话，灯在 t+0 就闪完，而三星 HAL 要 ~240ms 后才开曝光，
+     * 闪光根本进不了画面（真机 11-06 实测）。
+     */
+    @Volatile var onExposureStarted: (() -> Unit)? = null
+
+    /**
+     * 外置闪光触发偏移（ms，相对曝光开始）。负值 = 提前发指令，用来补偿
+     * 「BLE 传输 + 灯固件预闪序列 + COB 起辉」的固有延迟。
+     * 每次拍照从外部私有目录 `flash_sync_offset.txt` 重读，方便 adb push 热调，
+     * 不用重新编译就能扫出最佳时机。范围 [-250, +100]。
+     */
+    @Volatile private var flashTriggerOffsetMs: Long = DEFAULT_FLASH_SYNC_OFFSET_MS
+    @Volatile private var flashSyncGain: Float = FLASH_SYNC_GAIN_DEFAULT
+    private var flashTriggerPosted = false
+
+    /** 每次拍照重读两个热调文件，方便 adb push 扫参，不用重新编译。 */
+    private fun readFlashSyncConfig() {
+        val dir = runCatching { context.getExternalFilesDir(null) }.getOrNull()
+        flashTriggerOffsetMs = if (dir == null) DEFAULT_FLASH_SYNC_OFFSET_MS else runCatching {
+            val f = java.io.File(dir, "flash_sync_offset.txt")
+            if (!f.exists()) DEFAULT_FLASH_SYNC_OFFSET_MS
+            else f.readText().substringBefore("//").trim().toLongOrNull()
+                ?: DEFAULT_FLASH_SYNC_OFFSET_MS
+        }.getOrDefault(DEFAULT_FLASH_SYNC_OFFSET_MS).coerceIn(-250L, 100L)
+        flashSyncGain = if (dir == null) FLASH_SYNC_GAIN_DEFAULT else runCatching {
+            val f = java.io.File(dir, "flash_sync_gain.txt")
+            if (!f.exists()) FLASH_SYNC_GAIN_DEFAULT
+            else f.readText().substringBefore("//").trim().toFloatOrNull()
+                ?: FLASH_SYNC_GAIN_DEFAULT
+        }.getOrDefault(FLASH_SYNC_GAIN_DEFAULT).coerceIn(0.05f, 10.0f)
+        flashTriggerPosted = false
+    }
+
+    /** 真正发一次 BLE 触发，并防重（预触发与 onCaptureStarted 只会走一条）。 */
+    private fun fireExternalFlashOnce(where: String) {
+        if (flashTriggerPosted) return
+        flashTriggerPosted = true
+        android.util.Log.i(
+            "FlashSync",
+            "触发外接灯 @ $where offset=${flashTriggerOffsetMs}ms" +
+                " t=${android.os.SystemClock.elapsedRealtime()}"
+        )
+        onExposureStarted?.invoke()
+    }
+
     // 复刻康泰时 T3 35mm 视角：主摄等效约23mm，裁切至35mm ≈ 1.52x（常量与 RAW 冲洗端共享）
     private var zoomRatio = app.spektralab.engine.FilmStockMapper.T3_ZOOM_RATIO
 
@@ -416,6 +544,26 @@ class Camera2Controller(private val context: Context) {
         val chars = manager.getCameraCharacteristics(cameraId)
         val map = chars.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
         minFocusDistance = chars.get(CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE) ?: 0f
+
+        // ---- T3 35mm 视角动态化：读传感器物理尺寸 + 镜头实际焦距，算出本机等效焦距 ----
+        // 等效焦距 = 实际焦距 × (43.27 / 传感器对角线mm)
+        // 裁切比 = 35 / 本机等效焦距
+        // 读不到时保持默认 1.52（23mm），不会比之前差
+        runCatching {
+            val sensorSize = chars.get(CameraCharacteristics.SENSOR_INFO_PHYSICAL_SIZE)
+            val focalLengths = chars.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)
+            if (sensorSize != null && focalLengths != null && focalLengths.isNotEmpty()) {
+                // 传感器对角线 = sqrt(w² + h²)
+                val diag = kotlin.math.hypot(sensorSize.width.toDouble(), sensorSize.height.toDouble()).toFloat()
+                // 取第一个（主摄通常只有一个焦距）
+                val focal = focalLengths[0]
+                if (diag > 0f && focal > 0f) {
+                    FilmStockMapper.setT3ZoomRatio(diag, focal)
+                    // 同步本地 zoomRatio（预览/拍照请求要用）
+                    zoomRatio = FilmStockMapper.T3_ZOOM_RATIO
+                }
+            }
+        }.onFailure { android.util.Log.w("Camera2", "读取传感器物理尺寸失败，使用默认裁切比 $zoomRatio", it) }
 
         // 读设备真实的 AE 补偿范围（缺失时保留默认 -2..2 这个最保守区间）
         chars.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_RANGE)?.let { r ->
@@ -653,6 +801,7 @@ class Camera2Controller(private val context: Context) {
      */
     fun takePicture(defocus: Boolean = false, slowExposureNs: Long = 0L, slowIso: Int = 0) {
         try {
+            readFlashSyncConfig()
             val camera = cameraDevice ?: return
             val readerSurface = imageReader!!.surface
             val slow = slowExposureNs > 0L && slowIso > 0
@@ -680,6 +829,9 @@ class Camera2Controller(private val context: Context) {
                 // 直闪帧的专属调优（AWB 钉日光 / 线性色调曲线 / 负 EV），
                 // 内部自带条件判断，非直闪帧直接返回
                 applyFlashCaptureTuning(this, slow)
+                // 外置闪光：把这一帧锁到「闪光前的环境光读数」，不让 HAL 在闪光
+                // 峰值上重新测光（那样会把曝光砍掉十几倍，成片发黑）。
+                if (externalFlashSync && !slow) applyExternalFlashSync(this)
                 // 必须放在最后：慢门要覆盖 AE 模式，也要压过上面闪光分支的 ALWAYS_FLASH
                 if (slow) applySlowShutter(this, slowExposureNs, slowIso)
             }
@@ -801,6 +953,65 @@ class Camera2Controller(private val context: Context) {
         )
     }
 
+    /** 切进/切出外置闪光档：基线只在档位变化时重置，避免每次拨 EV 都清零。 */
+    fun setExternalFlashSync(enabled: Boolean) {
+        if (externalFlashSync != enabled) {
+            externalFlashSync = enabled
+            aeBaselineIso = 0
+            aeBaselineSec = 0f
+        }
+    }
+
+    /**
+     * 外置闪光档的快门帧：**固定曝光量**，不看环境光测光。
+     *
+     * 为什么不能跟 AE 基线走：闪光是独立光源，强度只取决于灯距，与环境光无关。
+     * 之前按「环境光 ISO × t × 系数」折算，换个稍亮的房间 ISO 就被压到设备下限，
+     * 闪光直接欠曝成黑片（用户 01:48 那张净信号只有 13.6）。真机闪光灯也是
+     * 固定光圈/ISO/同步快门，靠闪光补偿拨盘调 —— 这里同理。
+     *
+     * 固定 [FLASH_SYNC_ISO_AT_100MS]（57）@ 100ms 同步快门，由真机逐档扫描标定；
+     * EV 拨盘按标准档位 2^EV 调整，[flashSyncGain] 是热调倍率。
+     * 只关 AE、不动 CONTROL_MODE —— AF / AWB 仍然自动（和慢门那套同理）。
+     */
+    private fun applyExternalFlashSync(builder: CaptureRequest.Builder) {
+        val evGain = Math.pow(2.0, exposureComp.toDouble()).toFloat()
+        val gain = flashSyncGain * evGain
+        var shutterNs = FLASH_SYNC_SHUTTER_NS
+        var isoF = FLASH_SYNC_ISO_AT_100MS * gain
+        val minIso = deviceIsoRange.first.toFloat()
+        val maxIso = deviceIsoRange.last.toFloat()
+        if (isoF < minIso) {
+            shutterNs = (shutterNs * isoF / minIso).toLong()
+                .coerceIn(8_000_000L, FLASH_SYNC_SHUTTER_NS)
+            isoF = minIso
+        } else if (isoF > maxIso) {
+            shutterNs = (shutterNs * isoF / maxIso).toLong()
+                .coerceIn(FLASH_SYNC_SHUTTER_NS, 150_000_000L)
+            isoF = maxIso
+        }
+        val iso = isoF.toInt().coerceIn(deviceIsoRange.first, deviceIsoRange.last)
+        builder.set(
+            CaptureRequest.CONTROL_MODE,
+            android.hardware.camera2.CameraMetadata.CONTROL_MODE_AUTO
+        )
+        builder.set(
+            CaptureRequest.CONTROL_AE_MODE,
+            android.hardware.camera2.CameraMetadata.CONTROL_AE_MODE_OFF
+        )
+        builder.set(CaptureRequest.SENSOR_EXPOSURE_TIME, shutterNs)
+        builder.set(CaptureRequest.SENSOR_SENSITIVITY, iso)
+        builder.set(
+            CaptureRequest.SENSOR_FRAME_DURATION,
+            maxOf(shutterNs, 33_000_000L)
+        )
+        android.util.Log.i(
+            "FlashSync",
+            "闪光固定曝光 iso=$iso t=${shutterNs / 1_000_000}ms gain=$gain ev=$exposureComp" +
+                " (环境基线 iso=$aeBaselineIso t=${(aeBaselineSec * 1000).toInt()}ms)"
+        )
+    }
+
     /**
      * 本次拍照强制一段长曝光（胶片慢门）。
      *
@@ -871,6 +1082,16 @@ class Camera2Controller(private val context: Context) {
         if (!flashEnabled || slowShutter || manualIso != null || manualExposure != null || surface == null) {
             // 未开闪光 / 手动曝光（HAL 不会闪）→ 直接拍
             session.capture(captureBuilder.build(), stillCaptureCallback, handler)
+            // 外置闪光负偏移：BLE 传输 + 灯固件预闪序列要花时间，必须赶在
+            // HAL 真正开曝光之前发。基准是实测的 [FLASH_HAL_LATENCY_MS]。
+            if (externalFlashSync && flashTriggerOffsetMs < 0) {
+                val delay = (FLASH_HAL_LATENCY_MS + flashTriggerOffsetMs).coerceAtLeast(0L)
+                handler.postDelayed({
+                    if (externalFlashSync) {
+                        fireExternalFlashOnce("预触发 ${flashTriggerOffsetMs}ms")
+                    }
+                }, delay)
+            }
             return
         }
 
@@ -1158,9 +1379,24 @@ class Camera2Controller(private val context: Context) {
 
             // 慢门决策要用同一对 (t, ISO)：只存曝光时间不够，亮度是两者的乘积
             val isoAe = result.get(android.hardware.camera2.CaptureResult.SENSOR_SENSITIVITY) ?: 0
+            val aeState = result.get(android.hardware.camera2.CaptureResult.CONTROL_AE_STATE)
             if (exposureSec > 0f && isoAe > 0) {
                 lastAeSec = exposureSec
                 lastAeIso = isoAe
+                // 外置闪光的「环境光基线」只在 AE 收敛时更新。灯一闪 AE 会立刻
+                // 进 SEARCHING（真机 01:15 那张 aeState=1），基线就停在闪光前的
+                // 读数，不会被闪光峰值污染 —— 这是黑片修复的关键。
+                if (aeState == android.hardware.camera2.CaptureResult.CONTROL_AE_STATE_CONVERGED ||
+                    aeState == android.hardware.camera2.CaptureResult.CONTROL_AE_STATE_LOCKED
+                ) {
+                    if (aeBaselineIso <= 0) {
+                        aeBaselineSec = exposureSec
+                        aeBaselineIso = isoAe
+                    } else {
+                        aeBaselineSec = aeBaselineSec * 0.9f + exposureSec * 0.1f
+                        aeBaselineIso = (aeBaselineIso * 0.9f + isoAe * 0.1f).toInt()
+                    }
+                }
             }
 
             // 指标上报（限流 150ms，避免每帧刷 UI）

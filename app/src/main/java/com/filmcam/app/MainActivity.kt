@@ -145,6 +145,11 @@ class MainActivity : AppCompatActivity() {
                 // 只在外置闪光模式时显示 BLE 状态
                 if (flash.mode == FlashMode.EXTERNAL) {
                     binding.tvFlashStatus.text = getString(R.string.main_external_status, status)
+                    // 逆向轮转：每按一次快门换一条候选指令，编号从机顶 LCD 出来。
+                    // 用户盯着外接灯，哪次亮了报编号，就能定位 0xFFE1 的触发字节。
+                    if (status.startsWith("TRIG ")) {
+                        showLcdNotice(status.removePrefix("TRIG "))
+                    }
                 }
             }
         }
@@ -480,6 +485,10 @@ class MainActivity : AppCompatActivity() {
             // 上次退出时开着内置闪光：相机建好会话后补挂（会话未建立时由 startCamera 兜底）
             cameraController?.setFlashEnabled(true)
         }
+        // 上次退出时停在外置闪光档：以前只有「切档」和「拍摄同款」会去连灯，
+        // 冷启动恢复的 EXTERNAL 只是 LCD 上写着 EXT，bleFlash 根本没建，
+        // flash.trigger() 全程空转。startScan 已做幂等，这里补一次即可。
+        if (flash.mode == FlashMode.EXTERNAL) flash.startScan()
         val rollIndex = prefs.getInt("rollIndex", 0).coerceIn(0, FilmRollRepository.rolls.size - 1)
         // 上次选中的若是反转片（本版不支持），回退到第一支可用胶卷，避免带着禁用卷启动
         val restored = FilmRollRepository.rolls[rollIndex].takeIf { it.available }
@@ -543,6 +552,9 @@ class MainActivity : AppCompatActivity() {
             if (theme.isTitan) R.drawable.ic_t3_logo_ink else R.drawable.ic_t3_logo
         )
         theme.applySystemBars(window)
+        // 桌面图标固定为 Contax T3 银色实拍图（AndroidManifest 单一静态入口），不跟机身配色联动。
+        // 试过 activity-alias 动态切换：三星桌面在 setComponentEnabledSetting 后
+        // 不重建图标，覆盖安装又常保留旧图缓存，真机上表现为「图标没变」。
     }
 
     /**
@@ -980,33 +992,33 @@ class MainActivity : AppCompatActivity() {
     // 真机 T3 取景器里也没有浮层，多点一处反而与取景框线条打架。
 
     /**
-     * 应用曝光设置。
-     * 外置闪光灯（瞬时闪光、无常亮）：改用手动曝光 + 慢快门。
-     * 好处：① 绕开 AE 自动测光的等待（AE 会等光线稳定，拖慢拍照，错过闪光）
-     *       ② 慢快门窗口大（1/60≈16ms），提高覆盖到灯闪瞬间的概率。
-     * 非外置闪光时，用相机 AE 曝光补偿。
+     * 应用曝光设置（2026-11-06 修订：外置闪光不再钉死手动曝光）。
+     *
+     * 旧逻辑把 EXTERNAL 档锁成 ISO200 / 1/60，前提是「灯闪那一瞬间快门正好开着」。
+     * 但 FotorGear 的灯是灯身物理按键触发 + BLE HID 遥控快门：手机从收到
+     * Volume Down 到真正开曝光还要约 270–330ms（真机 00:29 日志：09.931 按键 →
+     * 10.270 拍照完成），16ms 的窗口根本套不住闪光脉冲，暗场里这档必然出黑片。
+     *
+     * 更糟的是这套手动参数因为相机重启丢设置（见 startCamera）从未真正生效过：
+     * 三张原始 DNG 的 EXIF 是 ISO12/1/55、ISO90/1/32、ISO239/1/100，
+     * 没有一张是 ISO200/1/60。00:29 那张黑片就是旋转重启后 AE 还在 SEARCHING
+     * 时按了外接灯按键，AE 交出一组没收敛的欠曝参数。
+     *
+     * 现在三个档位统一走 AE + EV 补偿：不管外接灯有没有同步上，环境光那份曝光
+     * 都由相机测光兜住，不会再出「AE 没收敛就硬拍」的黑片。
+     *
+     * EXTERNAL 档再叠一层：快门帧交给 [Camera2Controller.setExternalFlashSync] 锁到
+     * 「闪光前的环境光基线」。真机 RAW 归一化证实灯的光**确实进了画面**，是 AE 在
+     * 闪光峰值重新测光把曝光砍了 14.6 倍（场景只亮 2.88 倍）才压成黑片的 ——
+     * 锁住测光后，闪光就是画面里那一记高光，而不是把整帧拖黑。
+     * 冲洗侧仍按 ShotMeta.flash=EXTERNAL 走直闪变体（辉光/预闪），味道不丢。
      */
     private fun applyExposure() {
         try {
-            if (flash.mode == FlashMode.EXTERNAL) {
-                // 外置闪光：手动 ISO + 慢快门（EV0 = ISO200, 1/60）
-                val (iso, ns) = when (exposureComp) {
-                    3 -> 1600 to 16_666_667L   // ISO1600, 1/60
-                    2 -> 800 to 16_666_667L    // ISO800, 1/60
-                    1 -> 400 to 16_666_667L    // ISO400, 1/60
-                    0 -> 200 to 16_666_667L    // ISO200, 1/60
-                    -1 -> 200 to 8_000_000L    // ISO200, 1/125
-                    -2 -> 100 to 8_000_000L    // ISO100, 1/125
-                    else -> 100 to 4_000_000L  // -3: ISO100, 1/250
-                }
-                cameraController?.setManualIso(iso)
-                cameraController?.setManualExposure(ns)
-            } else {
-                // 非外置：相机自动测光 + AE 曝光补偿
-                cameraController?.setManualIso(null)
-                cameraController?.setManualExposure(null)
-                cameraController?.setExposureComp(exposureComp)
-            }
+            cameraController?.setManualIso(null)
+            cameraController?.setManualExposure(null)
+            cameraController?.setExposureComp(exposureComp)
+            cameraController?.setExternalFlashSync(flash.mode == FlashMode.EXTERNAL)
         } catch (_: Exception) {}
     }
 
@@ -1314,6 +1326,10 @@ class MainActivity : AppCompatActivity() {
         // RAW 负片开关同理：控制台里刚拨的，回到取景器就要生效
         rawNegativeEnabled = prefs.getBoolean("filmcam_dev_raw", false)
         cameraController?.rawNegativeEnabled = rawNegativeEnabled
+        // onResume 回前台时相机可能已经在跑：同样检查 RAW 能力并从 LCD 告知
+        if (rawNegativeEnabled && cameraController?.rawCapable == false) {
+            showLcdNotice(getString(R.string.lcd_notice_raw_unavailable))
+        }
         val newTrigger = FilmExposure.Trigger.fromPrefs(
             prefs.getInt("slowTrigger", FilmExposure.Trigger.PROBABILITY.prefs)
         )
@@ -1373,6 +1389,21 @@ class MainActivity : AppCompatActivity() {
         android.util.Log.i("FilmCam", "startCamera: rawNegativeEnabled=$rawNegativeEnabled")
         cameraController?.rawNegativeEnabled = rawNegativeEnabled
         cameraController?.start(surfaceTexture)
+        // ⚠️ 相机每次重建（旋转 / 切后台回来 / GL Surface 重建）都会 new 一个
+        // Camera2Controller，所有拨盘状态都活在旧对象里。restoreSettings() 早于
+        // startCamera 执行，那时 controller 还是 null，里面的 setAwbMode /
+        // applyExposure 全是空操作。这里必须把机身状态重新压回新控制器，否则
+        // 设置悄悄退回「AE 自动 + EV0 / AUTO 白平衡」：真机 00:29 那张外置闪光
+        // 黑片就是旋转后 AE 未收敛造成的（EXIF ISO239 1/100）。
+        // 顺序不能反：setFlashEnabled 在后面，ALWAYS_FLASH 才不会被 AE_ON 覆盖。
+        cameraController?.setAwbMode(wbPresets[wbIndex].awbMode)
+        applyExposure()
+        // RAW 能力检测 + UI 明示：用户开了 RAW 负片但本机不支持时，
+        // 从机顶 LCD 告知「已用 JPEG」——这和 T3 机身上的状态屏一致，
+        // 不是弹个 Toast，是机身自己在说话。
+        if (rawNegativeEnabled && cameraController?.rawCapable == false) {
+            showLcdNotice(getString(R.string.lcd_notice_raw_unavailable))
+        }
         // 桥接 FlashController → Camera2Controller：内置闪光交给相机 HAL（拍照闪光模式）
         flash.onBuiltInFlash = { enabled ->
             cameraController?.setFlashEnabled(enabled)
@@ -1382,6 +1413,13 @@ class MainActivity : AppCompatActivity() {
         // 实时元数据 → 取景器内的 T3 指示灯（合焦灯 / 快门档位）
         cameraController?.onViewfinderMeta = { afState, exposureSec, isoAe ->
             updateViewfinderIndicators(afState, exposureSec, isoAe)
+        }
+        // 外置闪光：传感器开始曝光的那一刻才通过 BLE 让灯闪（0xFFE1: 05 xx）。
+        // 提前发会错过曝光窗口；这一回调由 Camera2Controller 在 onCaptureStarted 触发。
+        cameraController?.onExposureStarted = {
+            // 不 post 回主线程：BLE 写入本身是异步提交，多一次队列就多几十毫秒，
+            // 而曝光窗口只有 100ms。这里只发字节，不碰任何 View。
+            if (flash.mode == FlashMode.EXTERNAL) flash.trigger()
         }
         // 全分辨率拍照回调：后台把原帧 JPEG 存入未冲洗胶卷（零处理，不做 LUT/日期戳/EXIF——那些在冲洗侧做）
         cameraController?.onPhotoCaptured = { bytes, rotation, rawDng ->
@@ -1603,6 +1641,13 @@ class MainActivity : AppCompatActivity() {
         isCapturing = true
         val seq = ++captureSeq
         captureStartMs = SystemClock.elapsedRealtime()
+        // 外置闪光时序排查：灯是物理按键触发，HID 事件到真正开曝光还有几百毫秒。
+        // 把按键时刻打出来，才能和 FlashNotify / 拍照完成对齐，判断灯落在窗口内外。
+        android.util.Log.i(
+            "FlashDiag",
+            "shutterDown seq=$seq mode=${flash.mode} ev=$exposureComp raw=$rawNegativeEnabled " +
+                "at=$captureStartMs"
+        )
 
         // 慢门决策：按胶卷曝光模型掷骰，命中才真的把这张拍糊
         val slow = planSlowShutter()
@@ -1617,7 +1662,9 @@ class MainActivity : AppCompatActivity() {
         captureRitualMs = timeline.ritualMs
 
         playShutterFeedback()  // 开帘：快门声音 + 振动
-        flash.trigger()
+        // 外置灯的 BLE 触发不再放在这里：灯会在 t+0 闪完，而 HAL 要 ~240ms
+        // 后才真正开曝光，闪光根本进不了画面。改由 Camera2Controller 的
+        // onExposureStarted 在传感器开始积分那一刻发指令（见 startCamera）。
         binding.btnShutter.animate().scaleX(0.85f).scaleY(0.85f).setDuration(80)
             .withEndAction {
                 binding.btnShutter.animate().scaleX(1f).scaleY(1f).duration = 80
