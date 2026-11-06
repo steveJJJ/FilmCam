@@ -296,12 +296,13 @@ object SpektraProcessor {
             // 而共享参数里的 input_cctf_decoding=true 是按 JPEG 通路写的（HAL 出的 JPEG
             // 是 sRGB 编码）。对线性数据再反一次 gamma，中灰 0.18 掉到 0.027（≈ -2.7EV）、
             // 暗部 0.05 掉到 0.004 —— 真机观感就是「RAW 成片比 JPEG 暗一大截、黑位发死」。
-            // 所以 RAW 会话按线性输入，关掉 cctf 解码；兜底档保留原样，宁可偏暗也要能出图。
+            // 所以 RAW 会话按线性输入，关掉 cctf 解码（主参数与所有兜底档一视同仁）。
             val primaryJson = asLinearInput(paramsJson)
-            // 主参数 + 兜底链（去重，与 processFrame 同规则）
-            val chain = ArrayList<String>(fallbackParamsJsons.size + 1)
-            chain.add(primaryJson)
-            for (p in fallbackParamsJsons) if (p != primaryJson && p !in chain) chain.add(p)
+            // 主参数 + 兜底链（去重）。兜底档也必须按线性输入：RAW 输入是线性 DNG，
+            // 这一物理事实与用哪一档参数无关；兜底档若留着 input_cctf_decoding=true
+            // 就会二次反 gamma（中灰 0.18→0.027，≈ -2.7EV）——主参数一旦被拒掉兜底，
+            // 成片立刻「暗、闷、黑位死」，正是这次用户反馈的现象。
+            val chain = buildRawParamChain(primaryJson, fallbackParamsJsons)
             // 片门预裁：改写缓存副本的 ActiveArea（见 prepareGateDng），原底片不动。
             // zoomRatio 来自帧记录（ShotMeta.zoom），不用进程内的全局动态值——冲洗可能
             // 发生在另一个进程、冷启动后直接进暗房，那时相机还没初始化，全局值不准。
@@ -327,9 +328,12 @@ object SpektraProcessor {
             val dims = rendered
                 ?: throw IllegalStateException("RAW 冲洗失败（${chain.size} 档参数全部未被引擎接受）")
             val src = runCatching { SpektraLabEngine.rawSourceSize() }.getOrDefault(null)
+            val outKb = runCatching { java.io.File(outJpegPath).length() / 1024 }.getOrDefault(0)
             Log.i(
                 TAG,
-                "RAW 底片 ${java.io.File(dngPath).name} 源尺寸=${src?.joinToString("x")} 出图 ${dims.first}x${dims.second}"
+                "RAW 底片 ${java.io.File(dngPath).name} 源尺寸=${src?.joinToString("x")} " +
+                    "出图 ${dims.first}x${dims.second} 文件=${outKb}KB 兜底=$fellBack " +
+                    "帧变焦=$zoomRatio→${effectiveZoomRatio(zoomRatio)}"
             )
             ProcessResult(true, dims.first, dims.second, false, "", fellBack)
         } catch (e: Throwable) {
@@ -357,6 +361,23 @@ object SpektraProcessor {
         Log.i(TAG, "RAW 线性输入：input_cctf_decoding true → false（避免对线性底片二次反 gamma）")
         out
     }.getOrDefault(paramsJson)
+
+    /**
+     * RAW 会话的参数档链：主参数 + 去重后的兜底档，**每一档都按线性输入**。
+     *
+     * 抽成纯函数是为了可单测：兜底档若留着 `input_cctf_decoding=true`，主参数
+     * 一被引擎拒就掉兜底、RAW 被二次反 gamma（≈ -2.7EV）——真机反馈「RAW 成片
+     * 偏暗」的直接来源。RAW 输入是线性 DNG，这跟用哪一档参数无关。
+     */
+    internal fun buildRawParamChain(primaryJson: String, fallbacks: List<String>): List<String> {
+        val chain = ArrayList<String>(fallbacks.size + 1)
+        chain.add(primaryJson)
+        for (p in fallbacks) {
+            val q = asLinearInput(p)
+            if (q != primaryJson && q !in chain) chain.add(q)
+        }
+        return chain
+    }
 
     /**
      * RAW 通路的片门预裁：引擎在渲染前拿输入尺寸对片门形状校验（差一点都不行），
@@ -440,23 +461,10 @@ object SpektraProcessor {
                 bb.putInt(a[1] + cx + cw)         // right
                 raf.seek(off.toLong())
                 raf.write(bb.array())
-
-                // ---- 固定日光 WB（D55 / 5500K）----
-                // 日光胶卷本身就是日光平衡，DNG 的 AsShotNeutral 带的是厂商 AWB 倾向
-                // （混合光源 / 自动白平衡估算的结果），与真机 T3 用日光卷 + 固定 WB 不符。
-                // 覆盖 AsShotWhiteXY 为 D55 色度坐标 (x=0.3457, y=0.3585)，
-                // LibRaw 解码就会用日光白平衡，不再受 AsShotNeutral 的厂商倾向影响。
-                geo.whiteXYOffset?.let { wxyOff ->
-                    val wxyBuf = java.nio.ByteBuffer.allocate(16).order(order)
-                    // RATIONAL = 两个 LONG：分子 + 分母
-                    // x = 0.3457 → 3457/10000
-                    wxyBuf.putInt(3457).putInt(10000)
-                    // y = 0.3585 → 3585/10000
-                    wxyBuf.putInt(3585).putInt(10000)
-                    raf.seek(wxyOff.toLong())
-                    raf.write(wxyBuf.array())
-                    Log.i(TAG, "RAW 日光 WB：AsShotWhiteXY 已覆写为 D55 (0.3457, 0.3585)")
-                }
+                // 固定日光 WB 覆写已撤回：tag 号写错（0xC625 实为 CameraCalibration2，
+                // AsShotWhiteXY 是 0xC629）、只改 WhiteXY 不改 AsShotNeutral 无效、
+                // 未经真机 A/B 确认，且可能写坏 DNG 标定数据导致 RAW 会话失败掉兜底档。
+                // 现回到「按 DNG 原始白平衡解码」的中性基线。
             }
             true
         }.getOrDefault(false)
@@ -465,8 +473,7 @@ object SpektraProcessor {
             Log.w(TAG, "预裁改写失败，用原底片冲: $dngPath")
             return dngPath
         }
-        val wxyNote = if (geo.whiteXYOffset != null) " + 日光WB(D55)" else ""
-        Log.i(TAG, "RAW 预裁：源 ${geo.width}x${geo.height} → ${cw}x${ch}（变焦对齐 1/${effectiveZoomRatio(zoomRatio)} + 片门$wxyNote，已改写 ActiveArea）")
+        Log.i(TAG, "RAW 预裁：源 ${geo.width}x${geo.height} → ${cw}x${ch}（变焦对齐 1/${effectiveZoomRatio(zoomRatio)} + 片门，已改写 ActiveArea）")
         return work.absolutePath
     }
 
@@ -478,11 +485,12 @@ object SpektraProcessor {
      * 进程、冷启动后直接进暗房、或换了设备导入，都不会读到错的全局默认值。
      *
      * 0 / 越界 = 老帧（升级前拍的、没有该字段）或坏数据 → 回落到当前设备的
-     * 动态默认值 [FilmStockMapper.T3_ZOOM_RATIO]。范围 1..4 覆盖常见 HAL
-     * CONTROL_ZOOM_RATIO_RANGE，超出说明元数据坏了，别拿它裁坏底片。
+     * 动态默认值 [FilmStockMapper.T3_ZOOM_RATIO]。上限收到 2.0：35mm 定焦相对
+     * 主摄等效 18~28mm 最多裁 1.94x，再大只可能是坏元数据或动态公式读错了焦距，
+     * 会把 ActiveArea 裁到极小（成片分辨率塌成几百 KB）——宁可回落也不裁坏底片。
      */
     internal fun effectiveZoomRatio(zoomRatio: Float): Float =
-        if (zoomRatio in 1.0f..4.0f) zoomRatio else FilmStockMapper.T3_ZOOM_RATIO
+        if (zoomRatio in 1.0f..2.0f) zoomRatio else FilmStockMapper.T3_ZOOM_RATIO
 
     /**
      * T3 35mm 视角的中心裁切（1/[effectiveZoomRatio]）。
@@ -517,11 +525,6 @@ object SpektraProcessor {
         val activeArea: IntArray?,
         /** ActiveArea 值域在文件内的偏移（外存 LONG×4），改写用；内联或无标签为 null */
         val activeAreaOffset: Int?,
-        /**
-         * AsShotWhiteXY 的值域在文件内的偏移（外存 RATIONAL×2 = 16 字节），改写用。
-         * null = 该 DNG 没有此标签（LibRaw 会回退到 AsShotNeutral 或相机默认）。
-         */
-        val whiteXYOffset: Int?,
         val littleEndian: Boolean,
     )
 
@@ -551,7 +554,10 @@ object SpektraProcessor {
             var bestArea = 0
             var aa: IntArray? = null
             var aaOff: Int? = null
-            var wxyOff: Int? = null
+            // 固定日光 WB 覆写已撤回，不再解析/改写 DNG 白平衡标签：外部 AI 那版把
+            // AsShotWhiteXY 的 tag 写成 0xC625（实为 CameraCalibration2，正确是 0xC629），
+            // 且只改 WhiteXY 不改 AsShotNeutral（LibRaw 优先读后者）→ 要么无效、要么写坏
+            // 相机标定数据让 RAW 会话失败掉兜底档。回到「按 DNG 原始 WB 解码」的中性基线。
             val ifdQueue = ArrayDeque<Int>()
             ifdQueue.add(u32(head, 4))
             val seen = mutableSetOf<Int>()
@@ -591,15 +597,7 @@ object SpektraProcessor {
                                 }
                             }
                         }
-                        0xc625 -> {           // AsShotWhiteXY：x,y 各一个 RATIONAL(8B)，外存 16B
-                            // RATIONAL type=5，count=2；2×8=16B > 4B → 外存
-                            if (type == 5 && cnt == 2) {
-                                val base = u32(buf, p + 8)
-                                if (base > 0 && base + 16 <= buf.size) {
-                                    wxyOff = base
-                                }
-                            }
-                        }
+                        // 不再扫描 AsShotWhiteXY（固定日光 WB 已撤回，见上）
                     }
                     p += 12
                 }
@@ -619,9 +617,9 @@ object SpektraProcessor {
             if (a != null && a[3] > a[1] && a[2] > a[0] &&
                 a[3] <= dims.first && a[2] <= dims.second
             ) {
-                TiffGeometry(a[3] - a[1], a[2] - a[0], a, aaOff, wxyOff, le)
+                TiffGeometry(a[3] - a[1], a[2] - a[0], a, aaOff, le)
             } else {
-                TiffGeometry(dims.first, dims.second, null, null, wxyOff, le)
+                TiffGeometry(dims.first, dims.second, null, null, le)
             }
         }.getOrNull()
     }

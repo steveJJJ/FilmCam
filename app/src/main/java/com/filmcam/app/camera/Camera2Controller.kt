@@ -568,6 +568,20 @@ class Camera2Controller(private val context: Context) {
                     FilmStockMapper.setT3ZoomRatio(diag, focal)
                     // 同步本地 zoomRatio（预览/拍照请求要用）
                     zoomRatio = FilmStockMapper.T3_ZOOM_RATIO
+                    // 诊断：把 HAL 自报的 zoom 范围一起打出来。若 ratio 超出 upper，
+                    // HAL 会悄悄钳制而帧记录仍写未钳值 → 采集端与冲洗端裁切比不一致，
+                    // 也是「RAW 成片变小、视角对不上」的可能来源，真机日志一查便知。
+                    // 这里只记录、不钳制：S25U 的 1.52 已由 HAL ROI 实证，贸然钳到某些
+                    // 机型上报的 [1.0,1.0] 反而会破坏已验证的 35mm 视角。
+                    val halRange = if (android.os.Build.VERSION.SDK_INT >= 30) {
+                        runCatching { chars.get(CameraCharacteristics.CONTROL_ZOOM_RATIO_RANGE) }
+                            .getOrNull()
+                    } else null
+                    android.util.Log.i(
+                        "Camera2",
+                        "T3 视角裁切比 sensorDiag=${diag}mm focal=${focal}mm " +
+                            "ratio=$zoomRatio halZoomRange=$halRange"
+                    )
                 }
             }
         }.onFailure { android.util.Log.w("Camera2", "读取传感器物理尺寸失败，使用默认裁切比 $zoomRatio", it) }

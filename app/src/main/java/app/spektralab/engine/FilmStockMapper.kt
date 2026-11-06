@@ -786,8 +786,10 @@ object FilmStockMapper {
         val diag = sensorPhysicalSizeMm
         val equivFocal = actualFocalLengthMm * (43.27f / diag)
         val ratio = TARGET_EQUIV_FOCAL_MM / equivFocal
-        // 合理范围：1.0~3.0。超出说明读到了异常值（如 telephoto 或超广）
-        if (ratio in 1.0f..3.0f) {
+        // 合理范围：1.0~2.0（35mm / 主摄等效 18~28mm = 1.25~1.94）。超过 2.0
+        // 多半是读到了副摄焦距或异常物理尺寸，会让 RAW 冲洗把 ActiveArea 裁到极小
+        // （成片分辨率塌成几百 KB），宁可保持默认值也不冒险。
+        if (ratio in 1.0f..2.0f) {
             T3_ZOOM_RATIO = ratio
             android.util.Log.i("FilmStockMapper", "T3 裁切比动态化: sensor=${diag}mm focal=${actualFocalLengthMm}mm equiv=${equivFocal}mm ratio=$ratio")
         } else {

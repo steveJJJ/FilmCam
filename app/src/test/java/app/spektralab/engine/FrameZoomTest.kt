@@ -14,7 +14,7 @@ class FrameZoomTest {
     fun `帧记录值优先`() {
         assertEquals(1.35f, SpektraProcessor.effectiveZoomRatio(1.35f), 1e-6f)
         assertEquals(1.0f, SpektraProcessor.effectiveZoomRatio(1.0f), 1e-6f)
-        assertEquals(4.0f, SpektraProcessor.effectiveZoomRatio(4.0f), 1e-6f)
+        assertEquals(2.0f, SpektraProcessor.effectiveZoomRatio(2.0f), 1e-6f)
     }
 
     @Test
@@ -22,6 +22,10 @@ class FrameZoomTest {
         val def = FilmStockMapper.T3_ZOOM_RATIO
         assertEquals(def, SpektraProcessor.effectiveZoomRatio(0f), 1e-6f)
         assertEquals(def, SpektraProcessor.effectiveZoomRatio(-1f), 1e-6f)
+        assertEquals(def, SpektraProcessor.effectiveZoomRatio(2.01f), 1e-6f)
+        // 异常大的值（旧上限 4.0 会采信）必须回落：否则 ActiveArea 被裁到极小，
+        // 成片分辨率塌成几百 KB —— 真机反馈「RAW 成片很小」的防线
+        assertEquals(def, SpektraProcessor.effectiveZoomRatio(3.0f), 1e-6f)
         assertEquals(def, SpektraProcessor.effectiveZoomRatio(4.01f), 1e-6f)
         assertEquals(def, SpektraProcessor.effectiveZoomRatio(Float.NaN), 1e-6f)
     }

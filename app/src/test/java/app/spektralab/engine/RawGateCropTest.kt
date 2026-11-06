@@ -230,6 +230,30 @@ class RawGateCropTest {
     }
 
     @Test
+    fun `prepareGateDng 只改写 ActiveArea 不动其它 DNG 标签`() {
+        // 撤回「固定日光 WB」的守护：那份实现按错误 tag（0xC625，实为
+        // CameraCalibration2）覆写了 DNG 的 16 字节，可能写坏相机标定数据、
+        // 让 RAW 会话失败掉兜底档。现在除 ActiveArea 的 LONG×4 外，
+        // 文件其余字节必须一个都不变。
+        val dir = createTempDir("gate_wb")
+        val base = tiff(listOf(0x0100 to 160, 0x0101 to 120, 0xc68d to 0) to emptyList())
+        val (bytes, aaOff) = withActiveArea(base, intArrayOf(0, 0, 120, 160))
+        bytes.writeTagValue(0xc68d, aaOff)
+        val src = java.io.File(dir, "frame.dng").apply { writeBytes(bytes) }
+        val params = """{"overscan_active":true,"overscan_format":"135"}"""
+        val work = SpektraProcessor.prepareGateDng(src.absolutePath, dir, params)
+        assertTrue(work != src.absolutePath)
+        assertEquals("原底片必须保持原样", bytes.toList(), src.readBytes().toList())
+        val after = java.io.File(work).readBytes()
+        assertEquals(bytes.size, after.size)
+        val changed = (bytes.indices).filter { bytes[it] != after[it] }
+        assertTrue(
+            "只应改 ActiveArea 的 16 字节，实际改动位置=$changed",
+            changed.all { it in aaOff until aaOff + 16 }
+        )
+    }
+
+    @Test
     fun `无 ActiveArea 的普通 TIFF 不炸`() {
         val dir = createTempDir("gate")
         val bytes = tiff(listOf(0x0100 to 160, 0x0101 to 120) to emptyList())

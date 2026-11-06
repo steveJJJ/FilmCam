@@ -48,4 +48,26 @@ class RawLinearInputTest {
         val src = "{not json"
         assertEquals(src, SpektraProcessor.asLinearInput(src))
     }
+
+    @Test
+    fun `兜底档也必须按线性输入且去重`() {
+        // 主参数一旦被引擎拒就会掉兜底；兜底档留着 input_cctf_decoding=true
+        // 就会二次反 gamma（≈ -2.7EV）→ 用户看到的「RAW 成片偏暗」。
+        val primary = """{"film":"a","input_cctf_decoding":true}"""
+        val fb = """{"film":"b","input_cctf_decoding":true}"""
+        val chain = SpektraProcessor.buildRawParamChain(
+            SpektraProcessor.asLinearInput(primary),
+            listOf(
+                fb,
+                primary,   // 线性化后与主参数逐字节相同 → 应被去重
+            )
+        )
+        assertEquals(2, chain.size)
+        for (p in chain) {
+            assertFalse(
+                "RAW 链里每一档都必须按线性输入: $p",
+                org.json.JSONObject(p).optBoolean("input_cctf_decoding", true)
+            )
+        }
+    }
 }
