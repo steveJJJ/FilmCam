@@ -211,6 +211,25 @@ class RawGateCropTest {
     }
 
     @Test
+    fun `prepareGateDng 按帧记录的变焦比补裁`() {
+        val dir = createTempDir("gate")
+        val src = java.io.File(dir, "frame_zoom.dng").apply { writeBytes(dng160x120(intArrayOf(0, 0, 120, 160))) }
+        val params = """{"overscan_active":false,"overscan_format":"135"}"""
+        // 帧记录 1.35（另一台机主摄等效焦距更长）→ 保留更多画面，与设备默认 1.52 不同。
+        // 这正是「冲洗不能依赖进程内全局变量」的意义：同一卷里可能有别处拍的帧。
+        val work = SpektraProcessor.prepareGateDng(src.absolutePath, dir, params, 1.35f)
+        assertTrue(work != src.absolutePath)
+        val geo = geometry(java.io.File(work).readBytes())!!
+        // 160x120 中心裁 1/1.35 → 118x88，原点偶对齐 (20,16)
+        assertEquals(118 to 88, geo.width to geo.height)
+        assertEquals(intArrayOf(16, 20, 104, 138).toList(), geo.activeArea!!.toList())
+        // 同一份底片按「老帧」（zoom=0）冲 → 回落设备默认 1.52 → 105x78
+        val legacy = SpektraProcessor.prepareGateDng(src.absolutePath, dir, params, 0f)
+        val geo2 = geometry(java.io.File(legacy).readBytes())!!
+        assertEquals(105 to 78, geo2.width to geo2.height)
+    }
+
+    @Test
     fun `无 ActiveArea 的普通 TIFF 不炸`() {
         val dir = createTempDir("gate")
         val bytes = tiff(listOf(0x0100 to 160, 0x0101 to 120) to emptyList())

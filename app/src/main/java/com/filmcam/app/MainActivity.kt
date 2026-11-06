@@ -1694,7 +1694,10 @@ class MainActivity : AppCompatActivity() {
                     ev = exposureComp,
                     shutterSec = if (slowNs > 0L) (slow?.filmSec ?: 0f) else 0f,
                     slow = slowNs > 0L,
-                    defocus = defocus
+                    defocus = defocus,
+                    // 这一张实际用的 35mm 视角裁切比：冲洗端按帧取它补裁 RAW，
+                    // 不依赖「相机是否刚在这台机上初始化过」
+                    zoom = cameraController?.currentZoomRatio ?: 0f
                 ).toJson()
                 cameraController?.takePicture(defocus, slowNs, slowIso)
                 android.util.Log.i(

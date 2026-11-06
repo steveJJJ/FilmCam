@@ -52,4 +52,21 @@ class ShotMetaTest {
         assertFalse(back.slow)
         assertFalse(back.defocus)
     }
+
+    @Test
+    fun `变焦比随帧落盘并往返`() {
+        // 这一张实际下发的 CONTROL_ZOOM_RATIO：冲洗端按帧补裁 RAW 的 ActiveArea，
+        // 不能依赖「相机是否刚在这个进程里初始化过」
+        val json = ShotMeta(flash = "OFF", awbMode = 1, zoom = 1.35f).toJson()
+        assertTrue(json.contains("\"zoom\""))
+        assertEquals(1.35f, ShotMeta.fromJson(json)!!.zoom, 1e-6f)
+    }
+
+    @Test
+    fun `老帧没有 zoom 键时读成 0 且不写空键`() {
+        val legacy = """{"flash":"OFF","wb":1,"ev":0,"slow":false,"defocus":false}"""
+        assertEquals(0f, ShotMeta.fromJson(legacy)!!.zoom, 0f)
+        // 0 = 未记录：不往新帧里写这个键，省得把「不知道」和「1.0」混淆
+        assertFalse(ShotMeta(zoom = 0f).toJson().contains("\"zoom\""))
+    }
 }

@@ -765,9 +765,11 @@ class DevelopmentService : Service() {
         val shotJson = UndevelopedFilmStore.frameShot(roll.rollId, index)
         val rotation = UndevelopedFilmStore.frameOrientation(roll.rollId, index)
 
-        // 参数选择与 JPEG 通路同一套规则（片框/直闪/竖片门），portrait 由帧记录的方向推
-        val isFlash = com.filmcam.app.film.ShotMeta.fromJson(shotJson)
-            ?.flash?.let { it != "OFF" } == true
+        // 参数选择与 JPEG 通路同一套规则（片框/直闪/竖片门），portrait 由帧记录的方向推。
+        // 顺带取出这一帧的变焦比：拍摄时随帧落盘，冲洗按帧补裁 RAW（老帧 = 0，回落设备默认）。
+        val shotMeta = com.filmcam.app.film.ShotMeta.fromJson(shotJson)
+        val isFlash = shotMeta?.flash?.let { it != "OFF" } == true
+        val frameZoom = shotMeta?.zoom ?: 0f
         val portrait = rotation == 90 || rotation == 270
         val useFrame = frameParamsJson != null && (!portrait || frameOkPortrait)
         val baseJson = when {
@@ -789,9 +791,11 @@ class DevelopmentService : Service() {
         // 竖拍帧全部掉兜底档（冲洗完成页报「有帧未按要求出图」）。已撤回，见
         // FilmStockMapper 白名单注释。
         // 引擎 RAW 会话出图（主参数 + 兜底链；主参数失败整个会话重开）
+        Log.d(TAG, "帧 $index [RAW] 帧记录变焦比=$frameZoom（0=老帧回落设备默认）")
         val result = SpektraProcessor.processRawFrame(
             applicationContext, dngPath, frameParamsJsonOrNull, tmpJpeg.absolutePath,
-            fallbackParamsJsons = effectiveFallbacks
+            fallbackParamsJsons = effectiveFallbacks,
+            zoomRatio = frameZoom
         )
         check(result.ok) { "processRawFrame 失败: ${result.message}" }
 

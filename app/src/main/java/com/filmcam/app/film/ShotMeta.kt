@@ -25,6 +25,15 @@ data class ShotMeta(
     val slow: Boolean = false,
     /** 这一张是否故意失焦 */
     val defocus: Boolean = false,
+    /**
+     * 这一张实际下发给 HAL 的 CONTROL_ZOOM_RATIO（T3 35mm 视角裁切比）。
+     *
+     * **冲洗端按帧取它补裁 RAW 的 ActiveArea**：zoom 是按机型传感器算出来的，
+     * 只存在内存里的话，冲洗在另一个进程 / 冷启动后直接进暗房 / 换设备导入时
+     * 就会读到错的默认值，RAW 与 JPEG 视角又会对不上。
+     * 0 = 未记录（升级前拍的老帧），冲洗端回落到当前设备的默认裁切比。
+     */
+    val zoom: Float = 0f,
 ) {
 
     fun toJson(): String = JSONObject().apply {
@@ -34,6 +43,7 @@ data class ShotMeta(
         if (shutterSec > 0f) put("sec", shutterSec.toDouble())
         put("slow", slow)
         put("defocus", defocus)
+        if (zoom > 0f) put("zoom", zoom.toDouble())
     }.toString()
 
     companion object {
@@ -48,6 +58,7 @@ data class ShotMeta(
                     shutterSec = o.optDouble("sec", 0.0).toFloat(),
                     slow = o.optBoolean("slow", false),
                     defocus = o.optBoolean("defocus", false),
+                    zoom = o.optDouble("zoom", 0.0).toFloat(),
                 )
             } catch (_: Exception) {
                 null

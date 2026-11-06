@@ -286,6 +286,8 @@ object SpektraProcessor {
         paramsJson: String,
         outJpegPath: String,
         fallbackParamsJsons: List<String> = emptyList(),
+        /** 这一帧拍摄时实际下发的 CONTROL_ZOOM_RATIO（ShotMeta.zoom）；0 = 老帧，回落到设备默认值 */
+        zoomRatio: Float = 0f,
     ): ProcessResult {
         return try {
             val eng = ensureEngine(context)
@@ -300,8 +302,10 @@ object SpektraProcessor {
             val chain = ArrayList<String>(fallbackParamsJsons.size + 1)
             chain.add(primaryJson)
             for (p in fallbackParamsJsons) if (p != primaryJson && p !in chain) chain.add(p)
-            // 片门预裁：改写缓存副本的 ActiveArea（见 prepareGateDng），原底片不动
-            val workPath = prepareGateDng(dngPath, context.cacheDir, paramsJson)
+            // 片门预裁：改写缓存副本的 ActiveArea（见 prepareGateDng），原底片不动。
+            // zoomRatio 来自帧记录（ShotMeta.zoom），不用进程内的全局动态值——冲洗可能
+            // 发生在另一个进程、冷启动后直接进暗房，那时相机还没初始化，全局值不准。
+            val workPath = prepareGateDng(dngPath, context.cacheDir, paramsJson, zoomRatio)
 
             var rendered: Pair<Int, Int>? = null
             var fellBack = false
@@ -370,7 +374,13 @@ object SpektraProcessor {
      * [cacheDir] 传 context.cacheDir。画面已是片门形状、参数没开片框、解析不动
      * 或 DNG 没有 ActiveArea 标签时原样返回，交给引擎自带的兜底链处理。
      */
-    internal fun prepareGateDng(dngPath: String, cacheDir: java.io.File, paramsJson: String): String {
+    internal fun prepareGateDng(
+        dngPath: String,
+        cacheDir: java.io.File,
+        paramsJson: String,
+        /** 帧记录的变焦比；0 / 越界 = 老帧或异常值，回落到设备默认 */
+        zoomRatio: Float = 0f,
+    ): String {
         val geo = runCatching {
             java.io.File(dngPath).inputStream().use { ins ->
                 val head = ByteArray(8)
@@ -387,7 +397,7 @@ object SpektraProcessor {
         //    （真机实锤：RAW 成片比 JPEG 广 1.52 倍）——冲洗端自己补同样的裁切。
         //    原点偶对齐：CFAPattern 从 ActiveArea 左上角起排，偶偏移不改 Bayer 相位。
         //    片框开关都裁（视角是机身属性，与片框无关）
-        val z = zoomCrop(geo.width, geo.height)
+        val z = zoomCrop(geo.width, geo.height, zoomRatio)
         var cx = z[0]
         var cy = z[1]
         var cw = z[2]
@@ -456,16 +466,30 @@ object SpektraProcessor {
             return dngPath
         }
         val wxyNote = if (geo.whiteXYOffset != null) " + 日光WB(D55)" else ""
-        Log.i(TAG, "RAW 预裁：源 ${geo.width}x${geo.height} → ${cw}x${ch}（变焦对齐 1/${FilmStockMapper.T3_ZOOM_RATIO} + 片门$wxyNote，已改写 ActiveArea）")
+        Log.i(TAG, "RAW 预裁：源 ${geo.width}x${geo.height} → ${cw}x${ch}（变焦对齐 1/${effectiveZoomRatio(zoomRatio)} + 片门$wxyNote，已改写 ActiveArea）")
         return work.absolutePath
     }
 
     /**
-     * T3 35mm 视角的中心裁切（1/[FilmStockMapper.T3_ZOOM_RATIO]，即 23mm→35mm 等效）。
+     * 这一帧真正用于补裁的变焦比。
+     *
+     * 帧记录（[com.filmcam.app.film.ShotMeta.zoom]）是权威：拍摄时把实际下发给
+     * CONTROL_ZOOM_RATIO 的值随帧落盘，冲洗时按帧取值。这样冲洗发生在另一个
+     * 进程、冷启动后直接进暗房、或换了设备导入，都不会读到错的全局默认值。
+     *
+     * 0 / 越界 = 老帧（升级前拍的、没有该字段）或坏数据 → 回落到当前设备的
+     * 动态默认值 [FilmStockMapper.T3_ZOOM_RATIO]。范围 1..4 覆盖常见 HAL
+     * CONTROL_ZOOM_RATIO_RANGE，超出说明元数据坏了，别拿它裁坏底片。
+     */
+    internal fun effectiveZoomRatio(zoomRatio: Float): Float =
+        if (zoomRatio in 1.0f..4.0f) zoomRatio else FilmStockMapper.T3_ZOOM_RATIO
+
+    /**
+     * T3 35mm 视角的中心裁切（1/[effectiveZoomRatio]）。
      * 返回 [x, y, w, h]；原点偶对齐（CFAPattern 相位不变），尺寸不钳偶（起始相位才影响解码）。
      */
-    internal fun zoomCrop(w: Int, h: Int): IntArray {
-        val f = 1f / FilmStockMapper.T3_ZOOM_RATIO
+    internal fun zoomCrop(w: Int, h: Int, zoomRatio: Float = 0f): IntArray {
+        val f = 1f / effectiveZoomRatio(zoomRatio)
         val cw = (w * f).toInt().coerceIn(2, w)
         val ch = (h * f).toInt().coerceIn(2, h)
         var x = (w - cw) / 2
