@@ -786,6 +786,11 @@ class DevelopmentService : Service() {
                 FilmStockMapper.withFrameNumber(baseJson, frameNumber)
             } else baseJson
 
+        // RAW 影调 A/B 探针：只在外部私有目录放了 raw_tone_ab.json 且是第一帧时跑，
+        // 全程吞异常、不影响本帧正常冲洗。渲完的小图靠 adb pull 回来做像素统计。
+        runCatching { runRawToneProbe(dngPath, frameParamsJsonOrNull, index, frameZoom) }
+            .onFailure { Log.w(TAG, "RAW 影调探针异常（不影响冲洗）", it) }
+
         // RAW 竖拍方向：试过 io.geometry.quarter_turns（让引擎解码后先转画面再按
         // 竖置片门渲染，齿孔就能落上下）——真机实测被拒：与 crop_* 同组整组不收，
         // 竖拍帧全部掉兜底档（冲洗完成页报「有帧未按要求出图」）。已撤回，见
@@ -875,6 +880,68 @@ class DevelopmentService : Service() {
      * [{"name":"y_plus","extra":{"y_filter_shift":"1.0"}}, ...]
      * ```
      */
+    /**
+     * RAW 影调 A/B 探针：外部私有目录存在 `raw_tone_ab.json` 时，用同一张 DNG
+     * 逐组参数各渲一张小图到 `raw_tone_out/`，拉回来做像素统计即可定量选出
+     * RAW 通路该用的曝光 / 影调 / 调色值。跑一次即删配置，默认路径零影响。
+     *
+     * 配置格式与 spektra_matrix.json 相同（extra 的值是 JSON 字面量）：
+     * `[{"name":"base","extra":{},"long_edge":640}, ...]`
+     *
+     * 为什么非做不可：RAW 是线性 scene-referred 输入，而所有胶片参数都是对着
+     * 「三星 ISP 渲染过的 JPEG」标定的；v22 取消冻结校色后 RAW 连补偿都没有，
+     * 成片冷、硬、平。正确值只能靠真机 A/B 定量，凭观感猜必翻车。
+     */
+    private fun runRawToneProbe(dngPath: String, baseJson: String?, index: Int, zoomRatio: Float) {
+        if (baseJson == null || index != 1) return
+        val dir = getExternalFilesDir(null) ?: return
+        val spec = java.io.File(dir, "raw_tone_ab.json")
+        if (!spec.exists()) return
+        val cases = runCatching {
+            val arr = org.json.JSONArray(spec.readText())
+            (0 until arr.length()).map { i ->
+                val o = arr.getJSONObject(i)
+                val ex = o.optJSONObject("extra")
+                val map = LinkedHashMap<String, String>()
+                if (ex != null) {
+                    val keys = ex.keys()
+                    while (keys.hasNext()) {
+                        val k = keys.next()
+                        map[k] = ex.get(k).toString()   // 数字/布尔/字符串都吃
+                    }
+                }
+                Triple(o.getString("name"), map, o.optInt("long_edge", 640).coerceIn(320, 2048))
+            }
+        }.onFailure { Log.w(TAG, "RAW 影调探针配置解析失败", it) }.getOrNull()
+        if (cases.isNullOrEmpty()) {
+            runCatching { spec.delete() }
+            return
+        }
+        val outDir = java.io.File(dir, "raw_tone_out")
+        runCatching { outDir.deleteRecursively() }
+        outDir.mkdirs()
+        val report = StringBuilder()
+        try {
+            for ((name, extra, longEdge) in cases) {
+                val json = SpektraProcessor.mergeParams(baseJson, extra)
+                val out = java.io.File(outDir, "$name.jpg")
+                val dims = runCatching {
+                    SpektraProcessor.renderRawProbeFrame(
+                        applicationContext, dngPath, json, out.absolutePath, longEdge, zoomRatio
+                    )
+                }.onFailure { Log.w(TAG, "RAW 影调探针 $name 失败", it) }.getOrNull()
+                val label = dims?.let { "${it.first}x${it.second}" } ?: "FAIL"
+                val kb = if (out.exists()) out.length() / 1024 else 0
+                report.append(name).append(' ').append(label).append(' ').append(kb).append("KB\n")
+                Log.i(TAG, "RAW 影调探针 $name -> $label ${kb}KB")
+            }
+        } finally {
+            runCatching { java.io.File(dir, "raw_tone_ab_report.txt").writeText(report.toString()) }
+            runCatching { spec.delete() }   // 跑一次就删，别每卷都来一遍
+        }
+        Log.i(TAG, "RAW 影调探针完成: ${outDir.absolutePath} (${cases.size} 张)")
+    }
+
     private fun runMatrixProbe(bmp: Bitmap, baseJson: String?) {
         if (baseJson == null) return
         val dir = getExternalFilesDir(null) ?: return

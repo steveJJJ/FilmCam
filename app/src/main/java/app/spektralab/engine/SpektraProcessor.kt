@@ -690,6 +690,47 @@ object SpektraProcessor {
     }
 
     /**
+     * 覆盖语义的参数合并：基线里已有的同名键必须被**替换**，直接追加会写出重复键，
+     * 引擎取第一个 → 那组实验等于没跑（矩阵实验里 max_lift / print_exposure 踩过）。
+     */
+    internal fun mergeParams(baseJson: String, extra: Map<String, String>): String = runCatching {
+        val o = org.json.JSONObject(baseJson)
+        extra.forEach { (k, v) -> o.put(k, org.json.JSONTokener(v).nextValue()) }
+        o.toString()
+    }.getOrDefault(baseJson)
+
+    /**
+     * RAW 影调 A/B 探针的单组渲染：同一张 DNG、同一套基线参数，覆盖 extra 后渲一张
+     * 小图。只由 DevelopmentService.runRawToneProbe 调用（外部配置文件触发），
+     * 默认冲洗路径完全不碰它。
+     *
+     * 为什么要这个：RAW 是线性 scene-referred 输入，而所有胶片参数都是对着
+     * 「三星 ISP 渲染过的 JPEG」标定的；取消冻结校色后 RAW 连补偿都没有，成片
+     * 冷、硬、平。曝光/影调/调色的正确值只能靠真机定量 A/B 选，不能凭观感猜。
+     */
+    fun renderRawProbeFrame(
+        context: Context,
+        dngPath: String,
+        paramsJson: String,
+        outJpegPath: String,
+        longEdge: Int = 640,
+        zoomRatio: Float = 0f,
+    ): Pair<Int, Int>? {
+        return try {
+            val eng = ensureEngine(context.applicationContext)
+            val workPath = prepareGateDng(dngPath, context.cacheDir, paramsJson, zoomRatio)
+            try {
+                renderRawOne(eng, context, workPath, asLinearInput(paramsJson), outJpegPath, 0, longEdge)
+            } finally {
+                if (workPath != dngPath) runCatching { java.io.File(workPath).delete() }
+            }
+        } catch (e: Throwable) {
+            Log.e(TAG, "RAW 影调探针渲染失败: ${e.message} | dng=$dngPath", e)
+            null
+        }
+    }
+
+    /**
      * 参数预检：逐个候选键单独开一个小 session 试 setParams，返回引擎**不接受**的键。
      *
      * 为什么要有这一步：引擎对未知键 / 越界值都是硬失败，而且**只有真下发才会暴露** ——
