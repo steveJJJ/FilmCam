@@ -786,9 +786,17 @@ class DevelopmentService : Service() {
                 FilmStockMapper.withFrameNumber(baseJson, frameNumber)
             } else baseJson
 
+        // RAW 专属默认测光方式（v32 / 11-07 两场景定量标定）：只改本通路的参数链，
+        // 主参数与所有兜底档统一注入，避免主参数失败掉兜底时又退回 center_weighted。
+        // 绝不碰 buildParamsJson 基础串 —— JPEG/RAW 共用，改了会破坏「JPEG 回归旧水平」。
+        val rawParamsJson = SpektraProcessor.withRawExposureMethod(frameParamsJsonOrNull, isFlash)
+        val rawFallbacks = effectiveFallbacks.map {
+            SpektraProcessor.withRawExposureMethod(it, isFlash)
+        }
+
         // RAW 影调 A/B 探针：只在外部私有目录放了 raw_tone_ab.json 且是第一帧时跑，
         // 全程吞异常、不影响本帧正常冲洗。渲完的小图靠 adb pull 回来做像素统计。
-        runCatching { runRawToneProbe(dngPath, frameParamsJsonOrNull, index, frameZoom) }
+        runCatching { runRawToneProbe(dngPath, rawParamsJson, index, frameZoom) }
             .onFailure { Log.w(TAG, "RAW 影调探针异常（不影响冲洗）", it) }
 
         // RAW 竖拍方向：试过 io.geometry.quarter_turns（让引擎解码后先转画面再按
@@ -798,8 +806,8 @@ class DevelopmentService : Service() {
         // 引擎 RAW 会话出图（主参数 + 兜底链；主参数失败整个会话重开）
         Log.d(TAG, "帧 $index [RAW] 帧记录变焦比=$frameZoom（0=老帧回落设备默认）")
         val result = SpektraProcessor.processRawFrame(
-            applicationContext, dngPath, frameParamsJsonOrNull, tmpJpeg.absolutePath,
-            fallbackParamsJsons = effectiveFallbacks,
+            applicationContext, dngPath, rawParamsJson, tmpJpeg.absolutePath,
+            fallbackParamsJsons = rawFallbacks,
             zoomRatio = frameZoom
         )
         check(result.ok) { "processRawFrame 失败: ${result.message}" }

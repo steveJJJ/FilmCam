@@ -700,6 +700,23 @@ object SpektraProcessor {
     }.getOrDefault(baseJson)
 
     /**
+     * RAW 通路默认测光方式。11-07 白天大光比（中央亮）+ 中央中灰两张完全不同
+     * 场景的真机定量 A/B 选出：center_weighted 两次都把画面压暗（meanL 64.2 / 75.6，
+     * 暗部 48~64%），balanced 稳定回到 101.8 / 111.3、暗部细节恢复、无硬溢出。
+     * median / center 各有胜负，balanced 的提亮幅度最可预测（+37.6 / +35.6）。
+     *
+     * ⚠️只作用于 RAW 帧的参数链，**绝不能写进 [FilmStockMapper.buildParamsJson]
+     * 基础串** —— 那是 JPEG/RAW 共用的，改了会破坏「JPEG 回归旧水平」的定调。
+     * 直闪帧（v31）已 auto_exposure=false，曝光量在拍摄时就由 EI + 闪光指数定死，
+     * 再发测光方式没有意义，故原样返回。
+     */
+    const val RAW_DEFAULT_EXPOSURE_METHOD = "balanced"
+
+    internal fun withRawExposureMethod(baseJson: String, flashShot: Boolean): String =
+        if (flashShot) baseJson
+        else mergeParams(baseJson, mapOf("auto_exposure_method" to "\"$RAW_DEFAULT_EXPOSURE_METHOD\""))
+
+    /**
      * RAW 影调 A/B 探针的单组渲染：同一张 DNG、同一套基线参数，覆盖 extra 后渲一张
      * 小图。只由 DevelopmentService.runRawToneProbe 调用（外部配置文件触发），
      * 默认冲洗路径完全不碰它。

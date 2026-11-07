@@ -60,4 +60,32 @@ class RawToneProbeTest {
         assertFalse(linear.getBoolean("input_cctf_decoding"))
         assertEquals(0.8, linear.getDouble("print_exposure"), 1e-9)
     }
+
+    @Test
+    fun `RAW 默认测光方式只发给非直闪帧`() {
+        val out = org.json.JSONObject(SpektraProcessor.withRawExposureMethod(base, false))
+        assertEquals("balanced", out.getString("auto_exposure_method"))
+        assertEquals("kodak_gold_200", out.getString("film_stock"))
+        assertTrue(FilmStockMapper.ENGINE_KNOWN_KEYS.contains("auto_exposure_method"))
+        // 直闪帧已 auto_exposure=false，曝光量拍摄时定死，不该再发测光方式
+        assertEquals(base, SpektraProcessor.withRawExposureMethod(base, true))
+    }
+
+    @Test
+    fun `RAW 默认测光方式重复注入不产生重复键`() {
+        val once = SpektraProcessor.withRawExposureMethod(base, false)
+        val twice = SpektraProcessor.withRawExposureMethod(once, false)
+        assertEquals(1, Regex("\"auto_exposure_method\"").findAll(twice).count())
+        assertEquals("balanced", org.json.JSONObject(twice).getString("auto_exposure_method"))
+    }
+
+    @Test
+    fun `JPEG 共用的基础参数不带 RAW 专属测光方式`() {
+        // v32 的 whole point：只改 RAW 分支参数链，不能动 buildParamsJson 基础串，
+        // 否则 JPEG 通路观感会被一起改掉，违反「JPEG 回归旧水平」定调
+        val json = FilmStockMapper.buildParamsJson("kodak_gold_200", "kodak_endura_premier")
+        val o = org.json.JSONObject(json)
+        assertFalse(o.has("auto_exposure_method"))
+        assertFalse(o.has("auto_exposure"))
+    }
 }
