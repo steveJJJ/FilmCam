@@ -97,7 +97,7 @@
             <TextView
                 android:id="@+id/tvEngine"
                 style="@style/InfoRow"
-                tools:text="FilmCam + SpektraLab Engine · kodak_portra_400" />
+                tools:text="Relic Cam + SpektraLab Engine · kodak_portra_400" />
 
             <TextView
                 android:id="@+id/tvDims"

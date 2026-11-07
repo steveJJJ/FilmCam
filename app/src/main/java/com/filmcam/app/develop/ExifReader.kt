@@ -40,7 +40,11 @@ object ExifReader {
 
     /** 冲洗参数（从 UserComment 的 JSON 解析）。 */
     data class DevParams(
-        val printExposure: Float?,
+        /**
+         * 输入层曝光补偿（EV，正 = 更亮）。v46 起记 `exposure_ev`；
+         * 旧成片没有这个字段（那时曝光写在 `print_exposure` 上），为 null 就不显示。
+         */
+        val exposureEv: Float?,
         val grainAmount: Float?,
         val halationAmount: Float?,
         val glareAmount: Float?,
@@ -111,7 +115,9 @@ object ExifReader {
         val obj = parseJson(userComment) ?: return DevParams(null, null, null, null, null)
         return try {
             DevParams(
-                printExposure = obj.optDouble("print_exposure", Double.NaN).takeIf { !it.isNaN() }?.toFloat(),
+                exposureEv = obj.optDouble(
+                    app.spektralab.engine.FilmStockMapper.MARK_EXPOSURE_EV, Double.NaN
+                ).takeIf { !it.isNaN() }?.toFloat(),
                 grainAmount = obj.optDouble("grain_amount", Double.NaN).takeIf { !it.isNaN() }?.toFloat(),
                 halationAmount = obj.optDouble("halation_amount", Double.NaN).takeIf { !it.isNaN() }?.toFloat(),
                 glareAmount = obj.optDouble("glare_amount", Double.NaN).takeIf { !it.isNaN() }?.toFloat(),

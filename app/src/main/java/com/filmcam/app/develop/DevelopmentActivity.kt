@@ -132,6 +132,10 @@ class DevelopmentActivity : AppCompatActivity(), SensorEventListener {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_development)
 
+        // 边到边：暗房内容顶部/底部让出状态栏与导航栏
+        val dRoot = com.filmcam.app.ui.EdgeToEdge.contentRoot(this)
+        com.filmcam.app.ui.EdgeToEdge.setup(this, dRoot, dRoot)
+
         tvTitle = findViewById(R.id.tvTitle)
         tvStockName = findViewById(R.id.tvStockName)
         tvCount = findViewById(R.id.tvCount)

@@ -53,6 +53,33 @@ class IspGuideTest {
     }
 
     @Test
+    fun `v40 固定放大机曝光不随输入增益变`() {
+        val a = org.json.JSONObject(SpektraProcessor.withFixedPrintExposure(base))
+        assertFalse(a.getBoolean("auto_exposure"))
+        assertEquals(0.83, a.getDouble("print_exposure"), 1e-9)
+        // 实测无效的拍摄层 EV 显式归零，避免脏值
+        assertEquals(0.0, a.getDouble("exposure_compensation_ev"), 1e-9)
+        assertEquals("balanced", a.getString("auto_exposure_method"))
+    }
+
+    @Test
+    fun `输入层增益按黑位线性缩放并受白位钳制`() {
+        // Black64 / White1023：gain=2 → 净信号翻倍，黑位不动
+        assertEquals(64, SpektraProcessor.gainSample(64, 64, 1023, 2.0))
+        assertEquals(114, SpektraProcessor.gainSample(89, 64, 1023, 2.0))
+        assertEquals(1023, SpektraProcessor.gainSample(900, 64, 1023, 4.0))
+        assertEquals(64, SpektraProcessor.gainSample(64, 64, 1023, 0.5))
+    }
+
+    @Test
+    fun `候选增益覆盖 0 到加二档 EV`() {
+        val g = SpektraProcessor.ISP_GUIDE_GAIN_EVS
+        assertEquals(0.0, g.first(), 1e-9)
+        assertTrue(g.last() <= 2.0)
+        for (i in 1 until g.size) assertTrue(g[i] > g[i - 1])
+    }
+
+    @Test
     fun `候选全渲染失败时返回 null 让调用侧回落 v32`() {
         assertNull(SpektraProcessor.pickIspGuideEv(100.0 to 180.0, emptyList()))
     }
@@ -64,11 +91,13 @@ class IspGuideTest {
     }
 
     @Test
-    fun `定标参数固定引擎曝光并只写一次 print_exposure`() {
+    fun `v39 定标把 ΔEV 放拍摄层且 print_exposure 恒定`() {
         val out = SpektraProcessor.withIspGuidedExposure(base, -0.25)
         val o = org.json.JSONObject(out)
         assertFalse(o.getBoolean("auto_exposure"))
-        assertEquals(0.58, o.getDouble("print_exposure"), 1e-9)
+        // 放大机曝光恒定 → 印相阶段叠上去的片框颜色不随逐帧 ΔEV 变
+        assertEquals(0.83, o.getDouble("print_exposure"), 1e-9)
+        assertEquals(0.25, o.getDouble("exposure_compensation_ev"), 1e-9)
         assertEquals(1, Regex("\"print_exposure\"").findAll(out).count())
         assertEquals(1, Regex("\"auto_exposure\"(?!_)").findAll(out).count())
         // v32 的测光方式保留（AE 关掉时不生效），原基础串其它键不动
@@ -78,12 +107,23 @@ class IspGuideTest {
     }
 
     @Test
-    fun `EV 偏移被钳制在引擎接受的正值范围内`() {
+    fun `热回退走回 v34 的 print_exposure 路径`() {
+        val o = org.json.JSONObject(
+            SpektraProcessor.withIspGuidedExposure(base, -0.25, useEc = false)
+        )
+        assertEquals(0.58, o.getDouble("print_exposure"), 1e-9)
+        assertEquals(0.0, o.getDouble("exposure_compensation_ev"), 1e-9)
+    }
+
+    @Test
+    fun `拍摄层 EV 被钳在 ±3EV 且放大机曝光恒定`() {
         val hi = org.json.JSONObject(SpektraProcessor.withIspGuidedExposure(base, 100.0))
         val lo = org.json.JSONObject(SpektraProcessor.withIspGuidedExposure(base, -100.0))
-        assertEquals(6.0, hi.getDouble("print_exposure"), 1e-9)
-        // v33 的 FAIL 根因：print_exposure 为负会被引擎整帧拒掉
-        assertEquals(0.05, lo.getDouble("print_exposure"), 1e-9)
+        assertEquals(-3.0, hi.getDouble("exposure_compensation_ev"), 1e-9)
+        assertEquals(3.0, lo.getDouble("exposure_compensation_ev"), 1e-9)
+        // 无论 ΔEV 多大，印相层的旋钮都不动 → 片框浓度恒定
+        assertEquals(0.83, hi.getDouble("print_exposure"), 1e-9)
+        assertEquals(0.83, lo.getDouble("print_exposure"), 1e-9)
     }
 
     @Test

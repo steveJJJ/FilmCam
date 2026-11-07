@@ -68,7 +68,7 @@
     <string name="pf_shot_at">拍摄于 %1$s</string>
     <string name="pf_paper">相纸 %1$s</string>
     <string name="pf_paper_default">默认</string>
-    <string name="pf_exposure">曝光 %.2f</string>
+    <string name="pf_exposure">曝光 %+.2f EV</string>
     <string name="pf_grain">颗粒 %.2f</string>
     <string name="pf_halation">辉光 %.2f</string>
     <string name="pf_glare">眩光 %.2f</string>

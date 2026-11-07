@@ -189,7 +189,7 @@
             android:textStyle="bold"
             android:letterSpacing="0.22" />
 
-        <!-- 放大机曝光 -->
+        <!-- 曝光补偿（输入层 EV：正 = 更亮） -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -209,7 +209,7 @@
                 android:id="@+id/tvDevExposureValue"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="1.00"
+                android:text="+0.00"
                 android:textColor="#FFC100"
                 android:textSize="14sp"
                 android:fontFamily="monospace" />
@@ -220,7 +220,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="2dp"
-            android:max="150"
+            android:max="300"
             android:progressTint="#FFC100"
             android:progressBackgroundTint="#3A3A40"
             android:thumbTint="#F0F0F4" />

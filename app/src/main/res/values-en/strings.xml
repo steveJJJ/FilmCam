@@ -1,14 +1,14 @@
 <resources>
-    <string name="app_name">FilmCam</string>
+    <string name="app_name">Relic Cam</string>
 
     <!-- About page -->
     <string name="about_intro">Turn your phone into a Contax T3.\n\nThe viewfinder shows the real optical world; each press of the shutter advances a 36-frame roll; when the roll is done you send it to the darkroom, and the film engine develops every frame with that roll\'s recipe.\n\nUntil it is developed, nobody knows what you got — that is the fun of film.</string>
     <string name="percent_fmt">%1$d%%</string>
-    <string name="about_self_title">FILMCAM is distributed under GNU GPL-3.0-or-later</string>
+    <string name="about_self_title">RELIC CAM is distributed under GNU GPL-3.0-or-later</string>
     <string name="about_self_body">This project uses the GPL-3.0 SpektraLab film simulation engine and is therefore distributed under GPL-3.0-or-later as well: you may freely use, modify and redistribute it, provided you release your source under the same license and keep the notices.\nThe repository is not public yet; per the license, the source is provided on request.</string>
     <string name="about_paypal">Tip via PayPal</string>
     <string name="about_feedback">Report a problem</string>
-    <string name="feedback_subject">FILMCAM issue report %1$s / device %2$s %3$s / Android %4$s (API %5$d)</string>
+    <string name="feedback_subject">RELIC CAM issue report %1$s / device %2$s %3$s / Android %4$s (API %5$d)</string>
     <string name="feedback_body">What happened:
 (short description, e.g. "developing stuck at frame 12", "shutter does not respond", "viewfinder frame misaligned")
 
@@ -35,7 +35,7 @@ Memory available: %10$d MB / %11$d MB total
 </string>
     <string name="feedback_email_missing">No support email configured</string>
     <string name="feedback_no_mail_app">No mail app available</string>
-    <string name="about_oss_summary">FILMCAM stands on the work of these open source projects and asset authors — thanks for sharing so generously.\nThe developing engine code is used under GPL-3.0-or-later; the film/paper recipes and engine assets under CC BY-SA 4.0. Tap to see each license and source.</string>
+    <string name="about_oss_summary">RELIC CAM stands on the work of these open source projects and asset authors — thanks for sharing so generously.\nThe developing engine code is used under GPL-3.0-or-later; the film/paper recipes and engine assets under CC BY-SA 4.0. Tap to see each license and source.</string>
 
     <!-- Credits: name | author/org | license | link | modification note (optional) -->
     <string-array name="oss_credits">
@@ -75,7 +75,7 @@ Memory available: %10$d MB / %11$d MB total
     <string name="set_language">Language</string>
     <string name="set_quality">Develop quality</string>
     <string name="set_dev">Development params</string>
-    <string name="set_about">About FILMCAM</string>
+    <string name="set_about">About RELIC CAM</string>
     <string name="quality_full">Full</string>
     <string name="quality_standard">Standard</string>
     <string name="set_style">Output</string>
@@ -206,7 +206,7 @@ Memory available: %10$d MB / %11$d MB total
     <string name="main_dev_halation">Halation</string>
     <string name="main_dev_glare">Glare</string>
     <string name="main_dev_group_print">PRINT</string>
-    <string name="main_dev_enlarger_exposure">Enlarger exposure</string>
+    <string name="main_dev_enlarger_exposure">Exposure offset (image only)</string>
     <string name="main_dev_paper_row">Paper</string>
     <string name="main_dev_paper_hint">Auto pairs each stock with its maker\'s recommended paper (Kodak negatives on Portra Endura, cine film on Kodak 2383). Tap above to pick one yourself.</string>
 
@@ -253,7 +253,7 @@ Memory available: %10$d MB / %11$d MB total
     <string name="about_wechat_id_label">WeChat ID</string>
     <string name="about_wechat_copied">WeChat ID %1$s copied — search it in WeChat to join</string>
     <string name="about_source_request">Request source: %1$s</string>
-    <string name="about_source_subject">FILMCAM source request</string>
+    <string name="about_source_subject">RELIC CAM source request</string>
     <string name="about_gpl_full">GNU GPL-3.0 full text</string>
     <string name="hidden_title">Engineer mode</string>
     <string name="eng_mode_title">Engineer mode</string>
@@ -280,7 +280,7 @@ Memory available: %10$d MB / %11$d MB total
     <string name="eng_cc_note">Yellowish skin: drag warmth toward cool/fair; add a touch of magenta if still yellow. The two filters alone are very weak (full scale moves only a level or two) — raise filter strength to see real change. Defaults +1.00/+0.10, strength 15; strength 0 = off. Print output only (lab-scan styles keep their own signature); takes effect on the next development.</string>
     <string name="eng_cc_off">Off</string>
     <string name="eng_style_hint">Enlarged onto paper, or the lab scanning the negative</string>
-    <string name="eng_dev_hint">Grain · halation · glare · print exposure · paper (saved per film stock)</string>
+    <string name="eng_dev_hint">Grain · halation · glare · exposure offset · paper (saved per film stock)</string>
     <string name="hidden_slow_trigger">Slow shutter trigger</string>
     <string name="hidden_slow_prob">Pure chance: sometimes blurred, sometimes sharp</string>
     <string name="hidden_slow_real">Pure faithful: always slow in low light</string>

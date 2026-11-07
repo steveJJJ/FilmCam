@@ -60,23 +60,41 @@ class Camera2Controller(private val context: Context) {
         private const val FLASH_SYNC_SHUTTER_NS = 100_000_000L
 
         /**
-         * 三星 HAL 从提交 capture 到真正开曝光的延迟（S25U 三次实测
-         * 369 / 383 / 405ms）。负偏移的「提前触发」以此为基准，再由
-         * `flash_sync_offset.txt` 热调补偿。
+         * 三星 HAL 从提交 capture 到真正开曝光的延迟，**按通路分开**：
+         *  - JPG 直提交（EXTERNAL 档 AE_OFF）：11-07 18:44 七帧实测
+         *    39 / 42 / 41 / 26 / 37 / 31 / 14ms，中位 ~35ms；
+         *  - RAW 多挂一路 RAW_SENSOR surface：v30 实测 265~274ms。
+         * 两套样本混在一个中位数里会把触发时机整体带偏，所以首次兜底
+         * 值按当前通路选（见 [flashLatencyFallbackMs]）。
          */
-        private const val FLASH_HAL_LATENCY_MS = 385L
+        private const val FLASH_HAL_LATENCY_MS_JPEG = 40L
+        private const val FLASH_HAL_LATENCY_MS_RAW = 270L
 
         /**
          * 触发调度（纯函数，供单测）：相对「提交拍照请求」的延迟 =
          * 实测的 HAL 延迟 + 灯的起辉补偿。offset 为负表示提前发；
          * 结果下限 0 —— 不可能比提交时刻更早发指令。
          *
-         * 旧实现写死 `FLASH_HAL_LATENCY_MS + offset`，而 385ms 是在带
-         * precapture / ALWAYS_FLASH 的路径上标定的；EXTERNAL 档是 AE_OFF
-         * 手动曝光直提交，延迟短得多，写死就会把闪光推到 100ms 曝光窗口外。
+         * 只有 halLatency ≥ |offset|（RAW 通路）才走这条：提交后延迟
+         * 几十毫秒发指令。JPG 通路 halLatency 只有 30 几毫秒，
+         * 这里恒等于 0，改由 [flashPreRollMs] 反向延后快门。
          */
         fun flashTriggerDelayMs(halLatencyMs: Long, offsetMs: Long): Long =
             (halLatencyMs + offsetMs).coerceAtLeast(0L)
+
+        /**
+         * 快门前置量（纯函数，供单测）：先点灯，再把拍照请求延后这么多毫秒提交。
+         *
+         * 灯的固件从收到 05 00 到 COB 出光约 |offset| 毫秒（默认 200），而 JPG
+         * 通路提交后只要 ~35ms 就开曝光 —— 「曝光开始前 200ms 发指令」物理上
+         * 做不到（那时快门还没按）。反着来才成立：
+         *   t=0 发 BLE 指令 → t=(|offset| − halLatency) 提交 → t=|offset| 曝光开始
+         * 正好与灯出光对齐。代价是约 160ms 快门时滞，与真实机身闪光的观感一致。
+         *
+         * 返回 0 表示无需前置（halLatency ≥ |offset|，RAW 通路），走原路径。
+         */
+        fun flashPreRollMs(halLatencyMs: Long, offsetMs: Long): Long =
+            (-offsetMs - halLatencyMs).coerceAtLeast(0L)
 
         /**
          * 最近 N 次实测延迟的中位数，抵消单次抖动；空样本回落到首帧兜底值。
@@ -153,6 +171,17 @@ class Camera2Controller(private val context: Context) {
      * 设备不支持 RAW_SENSOR 时开了也没用（rawImageReader 为 null，按纯 JPEG 帧）。
      */
     @Volatile var rawNegativeEnabled: Boolean = false
+        set(value) {
+            if (field == value) return
+            field = value
+            // JPG 直提交延迟 ~35ms、RAW 多挂一路 surface 要 265~274ms。两套样本混在
+            // 一个中位数里会让下一帧的触发时机整体跑偏（JPG 变「晚到」），切通路即清零。
+            val reset = Runnable {
+                flashHalLatencySamples.clear()
+                flashHalLatencyMs = flashLatencyFallbackMs()
+            }
+            (backgroundHandler?.post(reset) ?: false).let { if (!it) reset.run() }
+        }
 
     /** 设备是否支持 RAW_SENSOR 输出（拍照前就探好） */
     val rawCapable: Boolean get() = rawImageReader != null
@@ -225,9 +254,9 @@ class Camera2Controller(private val context: Context) {
                 frameNumber: Long
             ) {
                 // 自适应触发时机：这是 HAL 唯一明确告知「曝光已开始」的事件，
-                // 用它实测「提交 → 曝光开始」的延迟，供下一帧调度。
-                // 此处不能发灯 —— 灯起辉约 200ms 远大于 100ms 曝光窗口，
-                // 所以只测量，触发仍由 submitStillCapture 按实测值提前调度。
+                // 用它实测「提交 → 曝光开始」的延迟，供下一帧算前置量。
+                // 此处不发灯 —— 灯起辉约 200ms 远大于 100ms 曝光窗口，
+                // 所以只测量，触发由 submitStillCapture 在提交前完成（见 flashPreRollMs）。
                 if (externalFlashSync && flashSubmitRealtimeMs > 0L) {
                     val latency = android.os.SystemClock.elapsedRealtime() - flashSubmitRealtimeMs
                     flashSubmitRealtimeMs = 0L
@@ -235,7 +264,7 @@ class Camera2Controller(private val context: Context) {
                         flashHalLatencySamples.addLast(latency)
                         while (flashHalLatencySamples.size > 3) flashHalLatencySamples.removeFirst()
                         flashHalLatencyMs = Camera2Controller.medianLatencyMs(
-                            flashHalLatencySamples.toList(), FLASH_HAL_LATENCY_MS
+                            flashHalLatencySamples.toList(), flashLatencyFallbackMs()
                         )
                     }
                     android.util.Log.i(
@@ -472,8 +501,12 @@ class Camera2Controller(private val context: Context) {
     @Volatile private var flashSubmitRealtimeMs = 0L
     /** 最近 3 次实测延迟（只在 backgroundHandler 线程访问），取中位数抗抖动。 */
     private val flashHalLatencySamples = java.util.ArrayDeque<Long>()
-    /** 本帧采用的 HAL 延迟：首帧用 385ms 兜底，之后由实测中位数替换。 */
-    @Volatile private var flashHalLatencyMs = FLASH_HAL_LATENCY_MS
+    /** 本帧采用的 HAL 延迟：首帧按当前通路兜底，之后由实测中位数替换。 */
+    @Volatile private var flashHalLatencyMs = FLASH_HAL_LATENCY_MS_JPEG
+
+    /** 当前通路的 HAL 延迟兜底值（JPG 直提交 ~40ms / RAW 多挂 surface ~270ms）。 */
+    private fun flashLatencyFallbackMs(): Long =
+        if (rawNegativeEnabled) FLASH_HAL_LATENCY_MS_RAW else FLASH_HAL_LATENCY_MS_JPEG
 
     /** 每次拍照重读两个热调文件，方便 adb push 扫参，不用重新编译。
      *  实测样本刻意不重置 —— 它要跨帧累积才能做中位数。 */
@@ -1137,19 +1170,13 @@ class Camera2Controller(private val context: Context) {
     }
 
     /**
-     * 把拍照请求真正下发。
-     *
-     * 开闪光灯时先跑一次 AE 预闪（precapture）：HAL 借这一步完成闪光测光与充电，
-     * 等 AE 收敛（或超时兜底）再开快门，否则第一张常常曝光过亮/过暗、甚至错过闪。
-     * 关闪光时走原路径，不加任何等待。
-     */
-    /**
      * 按**实测** HAL 延迟调度一次提前触发（负偏移专用）。
-     * 两条提交分支共用，保证无论走不走 AE precapture，锚点都是「真正提交拍照请求」；
-     * 不再写死 385ms —— 那个常数只在带 precapture / ALWAYS_FLASH 的路径成立。
+     * 只在 `halLatency ≥ |offset|` 的通路生效（RAW 265~274ms）；JPG 通路
+     * 已由 [submitStillCapture] 的「先点灯、延后快门」处理，这里直接跳过。
      */
     private fun scheduleFlashPreTrigger(handler: Handler) {
-        if (!externalFlashSync || flashTriggerOffsetMs >= 0) return
+        // 已在「快门前置」阶段发过指令（JPG 通路），这里不再补发
+        if (!externalFlashSync || flashTriggerOffsetMs >= 0 || flashTriggerPosted) return
         val delay = flashTriggerDelayMs(flashHalLatencyMs, flashTriggerOffsetMs)
         android.util.Log.i(
             "FlashSync",
@@ -1162,7 +1189,50 @@ class Camera2Controller(private val context: Context) {
         }, delay)
     }
 
+    /**
+     * 外置闪光：**先点灯，再把快门延后提交**。
+     *
+     * 11-07 18:44 七帧真机日志坐实了时序方向是反的：
+     *  - 灯收到 `05 00` 后约 200ms 才出光（`flash_sync_offset` 的绝对值就是这个起辉量）；
+     *  - JPG 直提交路径 HAL 只要 26~42ms 就开曝光，曝光窗口只有 100ms。
+     *
+     * 所以「曝光开始前 200ms 发指令」物理上做不到 —— 那时快门还没按。旧实现把
+     * `halLatency + offset` 钳到 0，等于「按下快门的同时发指令」，灯永远晚 60~90ms
+     * 出光，七帧里六帧全黑、一帧只蹭到一点。
+     *
+     * 反过来才成立：按下快门立刻发 BLE 指令，把拍照请求延后
+     * `|offset| − halLatency`（默认 200 − 35 ≈ 165ms）再提交，让「灯出光」
+     * 与「曝光开始」对齐。代价是约 165ms 快门时滞，与真实机身闪光同步的观感一致。
+     *
+     * RAW 通路实测 halLatency 265~274ms ≥ |offset|，前置量为 0，退回原路径
+     * （提交后按实测延迟提前触发），行为不变。
+     */
     private fun submitStillCapture(captureBuilder: CaptureRequest.Builder, slowShutter: Boolean = false) {
+        val handler = backgroundHandler
+        if (externalFlashSync && !slowShutter && handler != null) {
+            val preRoll = flashPreRollMs(flashHalLatencyMs, flashTriggerOffsetMs)
+            if (preRoll > 0L && !flashTriggerPosted) {
+                android.util.Log.i(
+                    "FlashSync",
+                    "外置闪光：先点灯，快门延后 ${preRoll}ms 提交" +
+                        "（起辉 ${-flashTriggerOffsetMs}ms − HAL ${flashHalLatencyMs}ms）"
+                )
+                fireExternalFlashOnce("快门前置")
+                handler.postDelayed({ submitStillCaptureNow(captureBuilder, slowShutter) }, preRoll)
+                return
+            }
+        }
+        submitStillCaptureNow(captureBuilder, slowShutter)
+    }
+
+    /**
+     * 把拍照请求真正下发（不含外置闪光的前置延后，见 [submitStillCapture]）。
+     *
+     * 开闪光灯时先跑一次 AE 预闪（precapture）：HAL 借这一步完成闪光测光与充电，
+     * 等 AE 收敛（或超时兜底）再开快门，否则第一张常常曝光过亮/过暗、甚至错过闪。
+     * 关闪光时走原路径，不加任何等待。
+     */
+    private fun submitStillCaptureNow(captureBuilder: CaptureRequest.Builder, slowShutter: Boolean = false) {
         val session = captureSession
         val camera = cameraDevice
         val surface = previewSurface

@@ -68,7 +68,7 @@
     <string name="pf_shot_at">Shot on %1$s</string>
     <string name="pf_paper">Paper %1$s</string>
     <string name="pf_paper_default">Default</string>
-    <string name="pf_exposure">Exposure %.2f</string>
+    <string name="pf_exposure">Exposure %+.2f EV</string>
     <string name="pf_grain">Grain %.2f</string>
     <string name="pf_halation">Halation %.2f</string>
     <string name="pf_glare">Glare %.2f</string>

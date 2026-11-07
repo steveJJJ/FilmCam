@@ -36,6 +36,9 @@ class PhotoViewerActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_photo_viewer)
 
+        // 边到边：照片铺满全屏，仅底部信息面板让出导航栏
+        com.filmcam.app.ui.EdgeToEdge.setup(this, null, findViewById(R.id.panelInfo))
+
         uris = intent.getStringArrayListExtra(EXTRA_URIS) ?: arrayListOf()
         val position = intent.getIntExtra(EXTRA_POSITION, 0)
 
@@ -81,7 +84,7 @@ class PhotoViewerActivity : AppCompatActivity() {
             info.params.grainAmount?.let { putExtra(MainActivity.EXTRA_SAME_GRAIN, it) }
             info.params.halationAmount?.let { putExtra(MainActivity.EXTRA_SAME_HALATION, it) }
             info.params.glareAmount?.let { putExtra(MainActivity.EXTRA_SAME_GLARE, it) }
-            info.params.printExposure?.let { putExtra(MainActivity.EXTRA_SAME_EXPOSURE, it) }
+            info.params.exposureEv?.let { putExtra(MainActivity.EXTRA_SAME_EXPOSURE, it) }
             // 输出风格也一起带回去：同一卷用 Frontier 扫的和用放大机印的，本来就是两张不同的片子
             info.params.outputStyle?.let { putExtra(MainActivity.EXTRA_SAME_STYLE, it.prefs) }
             // 拍摄参数：闪光/白平衡/曝光补偿。慢门与失焦刻意不带 —— 那是这一张的意外，
@@ -205,7 +208,7 @@ class PhotoViewerActivity : AppCompatActivity() {
 
         val p = info.params
         val devParts = mutableListOf<String>()
-        p.printExposure?.let { devParts += getString(R.string.pf_exposure, it) }
+        p.exposureEv?.let { devParts += getString(R.string.pf_exposure, it) }
         p.grainAmount?.let { devParts += getString(R.string.pf_grain, it) }
         p.halationAmount?.let { devParts += getString(R.string.pf_halation, it) }
         p.glareAmount?.let { devParts += getString(R.string.pf_glare, it) }

@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Relic Cam — Privacy Policy</title>
+<style>
+  :root {
+    --ink: #1f1d1b;
+    --muted: #6b655f;
+    --line: #e4e0da;
+    --accent: #a23a33;
+    --bg: #fbfaf8;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
+    line-height: 1.75;
+    font-size: 16px;
+  }
+  .wrap { max-width: 820px; margin: 0 auto; padding: 56px 24px 80px; }
+  h1 { font-size: 2rem; margin: 0 0 4px; letter-spacing: -0.01em; }
+  .sub { color: var(--muted); margin: 0 0 32px; font-size: 0.95rem; }
+  h2 {
+    font-size: 1.15rem;
+    margin: 36px 0 10px;
+    padding-top: 18px;
+    border-top: 1px solid var(--line);
+  }
+  h2 .num { color: var(--accent); font-weight: 700; margin-right: 8px; }
+  p { margin: 8px 0; }
+  ul { margin: 8px 0; padding-left: 22px; }
+  li { margin: 6px 0; }
+  code {
+    background: #efece7;
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 0.88em;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .lang-divider {
+    margin: 64px 0 8px;
+    text-align: center;
+    border-top: 2px solid var(--ink);
+  }
+  .lang-divider span {
+    display: inline-block;
+    padding: 0 16px;
+    background: var(--bg);
+    transform: translateY(-14px);
+    font-weight: 700;
+    letter-spacing: 0.12em;
+  }
+  .contact-box {
+    margin-top: 20px;
+    background: #f1ede7;
+    border-left: 3px solid var(--accent);
+    padding: 14px 18px;
+    border-radius: 0 6px 6px 0;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Relic Cam — Privacy Policy</h1>
+  <p class="sub">Application package: <code>com.filmcam.app</code> &nbsp;|&nbsp; Effective date: November 7, 2026</p>
+
+  <h2><span class="num">1.</span>Introduction</h2>
+  <p>Relic Cam is a film/CCD-style camera application. This policy explains what data the app uses, how it is handled, and the permissions it requests. Relic Cam is designed to process and keep your photos on your device. We do not collect, store, upload, or sell your personal information.</p>
+
+  <h2><span class="num">2.</span>Information We Collect</h2>
+  <p>We do <strong>not</strong> collect any personal data, identifiers, location data, or usage analytics. The app contains no advertising SDK, no third-party analytics, no crash-reporting SDK, and no tracking technology. All photos and film data are processed locally and remain on your device.</p>
+
+  <h2><span class="num">3.</span>Permissions and How They Are Used</h2>
+  <ul>
+    <li><strong>Camera (<code>CAMERA</code>)</strong> — used only to capture photos. No image is transmitted off the device.</li>
+    <li><strong>Bluetooth (<code>BLUETOOTH_SCAN</code>, <code>BLUETOOTH_CONNECT</code>)</strong> — used to connect to an optional external Bluetooth flash accessory. Scanning is declared as <code>neverForLocation</code> and is never used to derive your location.</li>
+    <li><strong>Location (<code>ACCESS_FINE_LOCATION</code>, Android 11 and below only)</strong> — on older Android versions the operating system requires this permission to scan for Bluetooth devices. It is restricted to these older versions via <code>maxSdkVersion=30</code>. Location data is never collected, stored, or transmitted, and the app does not determine your physical location.</li>
+    <li><strong>Storage (<code>WRITE_EXTERNAL_STORAGE</code>, Android 9 and below only)</strong> — used only on older versions to save photos to the public DCIM directory. On Android 10 and above the app uses MediaStore and requires no storage permission.</li>
+    <li><strong>Notifications &amp; foreground service</strong> — used to run the in-app film development process and to show its progress. No data is shared through notifications.</li>
+    <li><strong>Vibration (<code>VIBRATE</code>)</strong> — provides haptic feedback for the shutter and controls. No data is involved.</li>
+  </ul>
+
+  <h2><span class="num">4.</span>How Your Photos Are Stored</h2>
+  <p>Photos are saved locally through the system MediaStore / DCIM folder. They are not uploaded to any server, and we cannot access them. System cloud backup for the application is disabled; managing and backing up your photos is entirely under your control.</p>
+
+  <h2><span class="num">5.</span>In-App Purchases</h2>
+  <p>Relic Cam may offer optional in-app purchases. Payments are processed by Google Play using Google Play Billing. We do not receive or have access to your credit card, payment credentials, or billing details. Purchase records are handled by Google under its own privacy policy.</p>
+
+  <h2><span class="num">6.</span>Data Sharing</h2>
+  <p>We do not share any data with third parties, because no personal data is collected or transmitted.</p>
+
+  <h2><span class="num">7.</span>Third-Party Services</h2>
+  <p>The only third-party service involved is Google Play (including Google Play Billing), whose handling of data is governed by Google's Privacy Policy at <a href="https://policies.google.com/privacy" target="_blank" rel="noopener">policies.google.com/privacy</a>.</p>
+
+  <h2><span class="num">8.</span>Children's Privacy</h2>
+  <p>The app does not knowingly collect any information from anyone, including children. Because all data remains on the device and no personal data is collected, the app is designed to be safe for general use.</p>
+
+  <h2><span class="num">9.</span>Data Security</h2>
+  <p>Since your data never leaves your device and no personal data is transmitted, the primary protection is the security of your own device. We recommend keeping your operating system up to date.</p>
+
+  <h2><span class="num">10.</span>Changes to This Policy</h2>
+  <p>If this policy is updated, the revised version will be published on this page with a new effective date.</p>
+
+  <h2><span class="num">11.</span>Contact Us</h2>
+  <div class="contact-box">
+    If you have any questions about this Privacy Policy, please contact:<br>
+    <strong>Email:</strong> <a href="mailto:837226902ah@gmail.com">837226902ah@gmail.com</a>
+  </div>
+
+  <div class="lang-divider"><span>中文</span></div>
+
+  <h1 style="font-size:1.6rem;">Relic Cam 隐私政策</h1>
+  <p class="sub">应用包名：<code>com.filmcam.app</code> &nbsp;|&nbsp; 生效日期：2026 年 11 月 7 日</p>
+
+  <h2><span class="num">1.</span>简介</h2>
+  <p>Relic Cam 是一款胶片 / CCD 风格的相机应用。本政策说明应用使用的数据、处理方式以及所申请的权限。Relic Cam 在设计上让你的照片在本机处理与保存，我们不会收集、存储、上传或出售你的个人信息。</p>
+
+  <h2><span class="num">2.</span>我们收集的信息</h2>
+  <p>我们<strong>不</strong>收集任何个人数据、设备标识符、位置信息或使用情况分析数据。应用不含任何广告 SDK、第三方分析 SDK、崩溃上报 SDK，也不含任何追踪技术。所有照片与胶卷数据均在本机处理并保留在你的设备上。</p>
+
+  <h2><span class="num">3.</span>权限及用途</h2>
+  <ul>
+    <li><strong>相机（<code>CAMERA</code>）</strong>：仅用于拍摄照片，不会将任何影像传出设备。</li>
+    <li><strong>蓝牙（<code>BLUETOOTH_SCAN</code>、<code>BLUETOOTH_CONNECT</code>）</strong>：用于连接可选的外置蓝牙闪光灯配件。扫描已声明为 <code>neverForLocation</code>，绝不用于推断你的位置。</li>
+    <li><strong>位置（<code>ACCESS_FINE_LOCATION</code>，仅 Android 11 及以下）</strong>：在旧版 Android 上，系统扫描蓝牙设备需要该权限。该权限通过 <code>maxSdkVersion=30</code> 限制在旧版本，我们绝不收集、存储或传输位置数据，应用也不会确定你的实际位置。</li>
+    <li><strong>存储（<code>WRITE_EXTERNAL_STORAGE</code>，仅 Android 9 及以下）</strong>：仅在旧版本用于将照片保存到公共 DCIM 目录。Android 10 及以上通过 MediaStore 保存，无需存储权限。</li>
+    <li><strong>通知与前台服务</strong>：用于运行应用内的胶卷冲洗流程并显示进度，不会通过通知共享任何数据。</li>
+    <li><strong>振动（<code>VIBRATE</code>）</strong>：为快门和操作提供触感反馈，不涉及任何数据。</li>
+  </ul>
+
+  <h2><span class="num">4.</span>照片的存储方式</h2>
+  <p>照片通过系统 MediaStore / DCIM 文件夹保存在本机，不会上传到任何服务器，我们也无法访问。应用的系统云备份已关闭，照片的管理与备份完全由你掌控。</p>
+
+  <h2><span class="num">5.</span>应用内购买</h2>
+  <p>Relic Cam 可能提供可选的应用内购买。支付通过 Google Play Billing 由 Google Play 处理，我们不会收到、也无法访问你的信用卡、支付凭证或账单信息。购买记录由 Google 依据其自身隐私政策处理。</p>
+
+  <h2><span class="num">6.</span>数据共享</h2>
+  <p>我们不会与任何第三方共享数据，因为应用不收集、也不传输任何个人数据。</p>
+
+  <h2><span class="num">7.</span>第三方服务</h2>
+  <p>涉及的唯一第三方服务是 Google Play（含 Google Play Billing），其数据处理受 Google 隐私政策约束，详见 <a href="https://policies.google.com/privacy" target="_blank" rel="noopener">policies.google.com/privacy</a>。</p>
+
+  <h2><span class="num">8.</span>儿童隐私</h2>
+  <p>本应用不会有意收集任何人（包括儿童）的信息。由于所有数据均保留在设备上且不收集个人数据，应用在设计上可供一般用户安全使用。</p>
+
+  <h2><span class="num">9.</span>数据安全</h2>
+  <p>你的数据不会离开设备，也不传输任何个人数据，因此主要的安全保障来自你设备本身的安全性。建议保持操作系统为最新版本。</p>
+
+  <h2><span class="num">10.</span>政策更新</h2>
+  <p>本政策如有更新，修订版本将在本页面发布并注明新的生效日期。</p>
+
+  <h2><span class="num">11.</span>联系我们</h2>
+  <div class="contact-box">
+    如对本隐私政策有任何疑问，请联系：<br>
+    <strong>邮箱：</strong><a href="mailto:837226902ah@gmail.com">837226902ah@gmail.com</a>
+  </div>
+
+</div>
+</body>
+</html>

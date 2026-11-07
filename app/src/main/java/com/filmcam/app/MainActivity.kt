@@ -113,6 +113,11 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        // 边到边：顶栏/底栏推出状态栏与导航栏（相机预览保持全屏）
+        com.filmcam.app.ui.EdgeToEdge.setup(
+            this, binding.topBar, binding.bottomBar, bottomAsMargin = true
+        )
+
         // 胶卷图标（预览不做 LUT 调色：光学取景器看不到成片效果，是产品设计）
         binding.tvFilmName.setImageResource(currentRoll.iconResId)
 
@@ -392,7 +397,7 @@ class MainActivity : AppCompatActivity() {
         putDev("grain", EXTRA_SAME_GRAIN)
         putDev("halation", EXTRA_SAME_HALATION)
         putDev("glare", EXTRA_SAME_GLARE)
-        putDev("print_exposure", EXTRA_SAME_EXPOSURE)
+        putDev("exposure_ev", EXTRA_SAME_EXPOSURE)
         intent.getStringExtra(EXTRA_SAME_PAPER)?.takeIf { it.isNotBlank() }?.let {
             editor.putString("filmcam_dev_paper_$stockId", it)
         }

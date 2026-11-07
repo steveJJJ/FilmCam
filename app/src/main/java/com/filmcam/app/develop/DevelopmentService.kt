@@ -21,6 +21,7 @@ import android.os.Looper
 import android.util.Log
 import app.spektralab.engine.EngineResources
 import app.spektralab.engine.FilmStockMapper
+import app.spektralab.engine.FrameBorderLock
 import app.spektralab.engine.SpektraProcessor
 import com.filmcam.app.GalleryActivity
 import com.filmcam.app.R
@@ -272,6 +273,13 @@ class DevelopmentService : Service() {
             // 成片片门：取景 4:3，真正落到"底片"上的只有中间那块 36×24（3:2）。
             // 片框关着也一样按这一格出片 —— 这才是"拍出来是 3:2"那件事本身。
             val gate = effective.outputGate
+            // v46 输入层曝光：曝光旋钮不再动引擎的 print_exposure（那会连片框一起冲浓），
+            // 改成进引擎之前对像素加线性增益。两条通路的绝对曝光来源不同：
+            //   RAW → 同帧 ISP JPEG 引导（逐帧自适应）；JPEG/导入 → 没有参考，用固定基准。
+            // 所以 RAW 只叠用户补偿，JPEG 还要多一个基础提亮。
+            val userInputEv = FilmStockMapper.inputEvFor(effective)
+            // 上限收到 +2EV：8bit JPEG 再往上拉只会把高光整片削平（RAW 通路的 DNG 增益同理）
+            val jpegInputEv = (userInputEv + FilmStockMapper.JPEG_INPUT_BASE_EV).coerceIn(-1.8f, 2.0f)
             val frameExtras = frameFormat?.let {
                 FilmStockMapper.frameBorderEntries(roll.filmStockId, 1, it)
             } ?: emptyList()
@@ -383,6 +391,8 @@ class DevelopmentService : Service() {
                         // 直闪帧变体（闪光的帧用它，非闪光帧不受影响）
                         flashParamsJson = flashParamsJson,
                         flashFrameParamsJson = flashFrameParamsJson,
+                        inputEv = jpegInputEv,
+                        rawInputEv = userInputEv,
                     )
                     if (usedFallback) {
                         fallbackFrames++
@@ -529,6 +539,16 @@ class DevelopmentService : Service() {
         flashParamsJson: String? = null,
         /** 直闪帧参数（带片框版）；null = 这卷没有可用的片框版式。 */
         flashFrameParamsJson: String? = null,
+        /**
+         * JPEG 通路要施加的**输入层**曝光（EV）：用户补偿 + [FilmStockMapper.JPEG_INPUT_BASE_EV]。
+         * 曝光旋钮已经不在印相层（那里会连片框一起冲浓），见 [FilmStockMapper.PRINT_EXPOSURE_LOCKED]。
+         */
+        inputEv: Float = 0f,
+        /**
+         * RAW 通路的用户曝光补偿（EV，**不含** JPEG 基础提亮）。
+         * RAW 的绝对曝光由同帧 ISP JPEG 引导决定，这里只叠用户口味偏移。
+         */
+        rawInputEv: Float = 0f,
     ): Boolean {
         val tTotal0 = android.os.SystemClock.elapsedRealtime()
 
@@ -544,6 +564,7 @@ class DevelopmentService : Service() {
                     roll, index, rawDngPath, paramsJson, exifParamsJson, filmDisplayName,
                     tmpJpeg, fallbackParamsJsons, frameNumber, gate,
                     frameParamsJson, frameOkPortrait, flashParamsJson, flashFrameParamsJson,
+                    userInputEv = rawInputEv,
                 )
             }.onFailure {
                 Log.w(TAG, "帧 $index RAW 通路失败，落回 JPEG 通路: ${it.message}", it)
@@ -628,9 +649,19 @@ class DevelopmentService : Service() {
 
             // 日期戳：直接画在进引擎的位图上，省掉一次全尺寸 decode + encode；
             // 水印会随 LUT 一起调色（等同底片曝光日期）。失败不影响整卷冲洗。
+            // v42：竖拍且片框开着时，引擎会把这张裸竖画面映射进横置 135 版式
+            // （成片画面区 x 0.17~0.85），整图右下角会落到右侧片基上 →
+            // 传等效内容区，把日期戳在裸画面上就往左收并放大，映射后右端
+            // 约 0.805（v43：v42 的 0.78 离片框太远），与 RAW 通路的带框
+            // 成片落点一致。片框关闭 / 横拍传 null。
             if (isDateStampEnabled()) {
                 try {
-                    DateStampRenderer.drawOnBitmap(applicationContext, bmp, takenAt)
+                    DateStampRenderer.drawOnBitmap(
+                        applicationContext, bmp, takenAt,
+                        DateStampRenderer.portraitFramedSource(
+                            bmp.width, bmp.height, frameParamsJson != null
+                        ),
+                    )
                 } catch (e: Throwable) {
                     Log.e(TAG, "日期戳绘制失败（跳过）: ${e.message}", e)
                 }
@@ -641,6 +672,14 @@ class DevelopmentService : Service() {
                 applySonnarVignette(bmp)
             } catch (e: Throwable) {
                 Log.e(TAG, "暗角绘制失败（跳过）: ${e.message}", e)
+            }
+
+            // 输入层曝光（v46）：曝光补偿在这里施加，引擎的 print_exposure 恒定 →
+            // 片基/齿孔/暗边印刷的浓度不随曝光变（用户 11-07 的定调）。
+            // 放在日期戳与暗角之后：日期戳是真机曝在底片上的字，该跟着底片一起变亮变暗。
+            if (kotlin.math.abs(inputEv) > 1e-3) {
+                val ok = app.spektralab.engine.InputExposure.apply(bmp, inputEv.toDouble())
+                Log.i(TAG, "帧 $index 输入曝光 ${if (inputEv >= 0) "+" else ""}$inputEv EV（${if (ok) "已施加" else "跳过"}）")
             }
 
             // 引擎冲洗到临时 JPEG（全分辨率）
@@ -757,6 +796,8 @@ class DevelopmentService : Service() {
         frameOkPortrait: Boolean,
         flashParamsJson: String?,
         flashFrameParamsJson: String?,
+        /** 用户输入层曝光补偿（EV）。RAW 的绝对曝光仍由 ISP 引导决定，这里只叠偏移。 */
+        userInputEv: Float = 0f,
     ): Boolean {
         val takenAt = try {
             UndevelopedFilmStore.frameTakenAt(roll.rollId, index)
@@ -797,22 +838,44 @@ class DevelopmentService : Service() {
         // v33：设备定标。同一次快门三星 ISP 已经渲出一张「曝光正确」的 JPEG，
         // 用它的亮度分位当目标，程序自己选放大机曝光，取代引擎逐张猜曝光。
         // 任何一步失败都回落 v32 参数链，绝不阻断冲洗；直闪帧跳过（v31 已固定曝光）。
-        val ispDeltaEv =
-            if (SpektraProcessor.shouldUseIspGuide(isFlash, ispGuideEnabled())) {
+        // v40：设备定标。同一次快门三星 ISP 已渲出「曝光正确」的 JPEG，用它的
+        // 亮度分位当目标，逐档渲不同**输入层曝光**的小图选最接近的一档。
+        // 曝光改在 DNG 线性 Bayer 上做，引擎的 print_exposure 恒定 → 片框颜色恒定。
+        // 任何一步失败都回落 v32 参数链，绝不阻断冲洗；直闪帧跳过（v31 已固定曝光）。
+        // v46：导入的 RAW 没有可信的 ISP 参考 —— 入卷时随帧存的那张 JPEG 是引擎
+        // 自己渲的兜底图（已过整条胶片链 + 印相），拿它当曝光目标等于印相两次，
+        // 成片发闷发暗（用户：「导入照片冲洗的照片也比较暗」）。这类帧跳过引导。
+        val importedRaw = shotJson.isNullOrBlank()
+        val ispGainEv =
+            if (!importedRaw && SpektraProcessor.shouldUseIspGuide(isFlash, ispGuideEnabled())) {
                 runCatching {
                     guideRawExposureByIsp(roll.rollId, index, dngPath, rawParamsJson, frameZoom)
                 }.onFailure {
-                    Log.w(TAG, "ISP 曝光定标失败，回落 v32 参数链（不影响冲洗）", it)
+                    Log.w(TAG, "ISP 输入曝光定标失败，回落 v32 参数链（不影响冲洗）", it)
                 }.getOrNull()
             } else null
-        val finalParamsJson = if (ispDeltaEv != null) {
-            SpektraProcessor.withIspGuidedExposure(rawParamsJson, ispDeltaEv)
+        // 绝对曝光：相机 RAW 由 ISP 引导定标，导入 RAW 用固定基准（没有参考可追）。
+        // 用户补偿在两支上都叠加 —— 但必须在输入层（印相层会连片框一起冲浓）。
+        val baseGainEv = if (importedRaw) {
+            FilmStockMapper.RAW_IMPORT_BASE_EV.toDouble()
+        } else ispGainEv ?: 0.0
+        val totalGainEv = (baseGainEv + userInputEv).coerceIn(-1.5, 2.5)
+        // 只要输入层承载了曝光（引导成功 / 导入 / 用户拖过旋钮），就必须关掉引擎的
+        // 自动打试条：否则 auto_exposure 会把输入层的补偿重新归一回去，旋钮等于无效。
+        val lockPrint = importedRaw || ispGainEv != null || kotlin.math.abs(userInputEv) > 1e-3
+        val finalParamsJson = if (lockPrint) {
+            SpektraProcessor.withFixedPrintExposure(rawParamsJson)
         } else rawParamsJson
-        val finalFallbacks = if (ispDeltaEv != null) {
-            rawFallbacks.map { SpektraProcessor.withIspGuidedExposure(it, ispDeltaEv) }
+        val finalFallbacks = if (lockPrint) {
+            rawFallbacks.map { SpektraProcessor.withFixedPrintExposure(it) }
         } else rawFallbacks
-        if (ispDeltaEv != null) {
-            Log.i(TAG, "帧 $index [RAW] ISP 定标 ΔEV=$ispDeltaEv（auto_exposure=false）")
+        if (lockPrint) {
+            Log.i(
+                TAG,
+                "帧 $index [RAW] 输入曝光 ${if (totalGainEv >= 0) "+" else ""}${"%.2f".format(totalGainEv)} EV" +
+                    "（ISP ${ispGainEv ?: "无"} · 导入=$importedRaw · 用户 +$userInputEv）" +
+                    " · print_exposure 恒定 ${SpektraProcessor.basePrintExposure(rawParamsJson)}"
+            )
         }
 
         // RAW 影调 A/B 探针：只在外部私有目录放了 raw_tone_ab.json 且是第一帧时跑，
@@ -829,14 +892,30 @@ class DevelopmentService : Service() {
         val result = SpektraProcessor.processRawFrame(
             applicationContext, dngPath, finalParamsJson, tmpJpeg.absolutePath,
             fallbackParamsJsons = finalFallbacks,
-            zoomRatio = frameZoom
+            zoomRatio = frameZoom,
+            gainEv = totalGainEv
         )
         check(result.ok) { "processRawFrame 失败: ${result.message}" }
 
         // ---- 后处理：旋转 / 片门 / 日期戳 / 暗角 ----
-        var bmp = BitmapFactory.decodeFile(tmpJpeg.absolutePath)
+        // v37：必须像 JPEG 通路（:578）那样显式 inMutable —— 否则 rotation=0 的横拍
+        // 拿到的是不可变 Bitmap，FrameBorderLock.setPixels 与日期戳 Canvas 都会抛
+        // IllegalStateException，被 runCatching 静默吞掉，表现为「片框校色 0 像素」
+        // 和「横拍根本没有日期戳」。竖拍因为走 rotateBitmap（createBitmap 可变）
+        // 侥幸正常，所以这个洞藏了很久。
+        val rawDecodeOpts = BitmapFactory.Options().apply {
+            inPreferredConfig = android.graphics.Bitmap.Config.ARGB_8888
+            inMutable = true
+        }
+        var bmp = BitmapFactory.decodeFile(tmpJpeg.absolutePath, rawDecodeOpts)
             ?: throw IllegalStateException("RAW 输出解码失败: $tmpJpeg")
         try {
+            // v35：先把片框颜色校回固定浓度，再旋转/裁片门。参考图是引擎原始
+            // 输出同几何的 ev=0 小图，旋转后两者坐标系就不一致了，故放在最前。
+            // 只调边框区域的暗片基/橙色印刷，画面像素与帧号文字一个不动。
+            // v40：确定性固定色表恢复印刷字颜色（不依赖 CDF / 参考图 / 统计）
+            runCatching { applyFrameBorderLock(bmp, finalParamsJson, index) }
+                .onFailure { Log.w(TAG, "片框颜色恢复异常（不影响冲洗）", it) }
             // 方向启发式：引擎的 LibRaw 解码多半不应用 DNG 的方向标签——
             // 竖拍（rotation 90/270）而输出是横的 → 按帧记录旋转；输出已是竖的 = 引擎转过了
             if ((rotation == 90 || rotation == 270) && bmp.width > bmp.height) {
@@ -867,7 +946,17 @@ class DevelopmentService : Service() {
                 }
             }
             if (isDateStampEnabled()) {
-                runCatching { DateStampRenderer.drawOnBitmap(applicationContext, bmp, takenAt) }
+                runCatching {
+                    // v36：RAW 在这里画的是「引擎输出（已含片框）」，必须把日期戳
+                    // 定位到画面区而不是整张带框成片的右下角，否则会印到片基 /
+                    // 暗边印刷带上（用户 11-07 14:49 报的「日期水印被搞到相框上」）。
+                    // 片框关闭 / gateCrop 出裸画面时 contentForAspect 返回 null，
+                    // 行为与 JPEG 通路一致（按整图定位）。
+                    DateStampRenderer.drawOnBitmap(
+                        applicationContext, bmp, takenAt,
+                        DateStampRenderer.contentForAspect(bmp.width, bmp.height),
+                    )
+                }.onFailure { Log.w(TAG, "帧 $index [RAW] 日期戳绘制失败（跳过）", it) }
             }
             runCatching { applySonnarVignette(bmp) }
             // 回写 tmpJpeg（引擎输出被后处理替换）
@@ -972,12 +1061,13 @@ class DevelopmentService : Service() {
     }
 
     /**
-     * v33 设备定标：用同快门的 ISP JPEG 给这张 RAW 选放大机曝光。
+     * v40 设备定标：用同快门的 ISP JPEG 给这张 RAW 选**输入层曝光**。
      *
      * 同一次快门 HAL 同时给了 JPEG（三星 ZSL/HDR/AE/AWB 全处理完）和 RAW_SENSOR，
      * `UndevelopedFilmStore.saveFrame` 两样都随帧落盘。JPEG 就是「设备认为曝光
-     * 正确」的参考：拿它的中心区亮度分位当目标，逐档渲 320px 小图比一次，
-     * 选最接近的 print_exposure。每帧由设备自己算，零调参、跨场景自适应。
+     * 正确」的参考：拿它的中心区亮度分位当目标，逐档对 DNG 线性 Bayer 施加
+     * 不同的 2^EV 增益并渲 320px 小图比一次，选最接近的一档。
+     * 引擎参数（尤其 print_exposure）在所有档里完全相同，片框颜色因此恒定。
      *
      * 只比亮度分位数 —— 不叠 JPEG 像素、不叠二次 tone mapper、不对齐 JPEG 风格。
      * 任何异常返回 null，调用侧回落 v32 参数链，绝不阻断冲洗。
@@ -989,6 +1079,9 @@ class DevelopmentService : Service() {
         baseJson: String,
         zoomRatio: Float,
     ): Double? {
+        // 参考图是**本帧专用**：先清掉上一帧残留，否则直闪帧 / 引导回落帧会拿
+        // 旧帧的标准浓度去校正，比不校更糟。
+        runCatching { File(cacheDir, "isp_guide/frame_border_ref.jpg").delete() }
         val targetHist = runCatching { ispJpegHistogram(rollId, index) }.getOrNull() ?: return null
         val rawTarget = SpektraProcessor.luminancePercentiles(targetHist)
         if (rawTarget.first < 8.0) return null   // 全黑 / 解码异常，别拿它定标
@@ -996,37 +1089,37 @@ class DevelopmentService : Service() {
         val target = SpektraProcessor.clampIspTarget(rawTarget.first, rawTarget.second)
 
         val outDir = File(cacheDir, "isp_guide").apply { runCatching { mkdirs() } }
-        val offsets = SpektraProcessor.ISP_GUIDE_EV_OFFSETS
-        val paramJsons = offsets.map { SpektraProcessor.withIspGuidedExposure(baseJson, it) }
-        val outFiles = offsets.map { File(outDir, "p_$it.jpg") }
-        // v34：整批只 prepareGateDng 一次，省掉 v33 的 6×25MB DNG 拷贝（12s → 目标 5s）
+        val gains = SpektraProcessor.ISP_GUIDE_GAIN_EVS
+        // v40：所有档参数完全相同（固定 print_exposure），差别只在 DNG 输入曝光
+        val paramJsons = gains.map { SpektraProcessor.withFixedPrintExposure(baseJson) }
+        val outFiles = gains.map { File(outDir, "g_$it.jpg") }
         val dims = SpektraProcessor.renderIspGuideBatch(
             applicationContext, dngPath, paramJsons,
-            outFiles.map { it.absolutePath }, 320, zoomRatio
+            outFiles.map { it.absolutePath }, 320, zoomRatio, gains.toList()
         )
         val points = ArrayList<SpektraProcessor.IspGuidePoint>()
         val report = StringBuilder(
             "帧$index rawTarget p50=${rawTarget.first} p90=${rawTarget.second} " +
                 "clamped=${target.first}/${target.second}\n"
         )
-        offsets.forEachIndexed { i, ev ->
+        gains.forEachIndexed { i, ev ->
             val out = outFiles[i]
             val hist = if (dims.getOrNull(i) != null && out.exists()) {
                 runCatching { jpegHistogram(out) }.getOrNull()
             } else null
             if (hist == null) {
-                report.append("  ev=$ev FAIL\n")
+                report.append("  gainEV=$ev FAIL\n")
             } else {
                 val st = SpektraProcessor.luminancePercentiles(hist)
                 points.add(SpektraProcessor.IspGuidePoint(ev, st.first, st.second))
-                report.append("  ev=$ev p50=${st.first} p90=${st.second}\n")
+                report.append("  gainEV=$ev p50=${st.first} p90=${st.second}\n")
             }
             runCatching { out.delete() }
         }
-        // v34：先按相邻档 p50 插值出精确 ΔEV，超范围才退回离散选优
+        // 相邻档按 p50 线性插值出精确 EV，超范围才退回离散选优
         val chosen = SpektraProcessor.interpolateIspGuideEv(target.first, points)
             ?: SpektraProcessor.pickIspGuideEv(target, points)
-        report.append("  chosen=${chosen ?: "NONE 回落 v32"}\n")
+        report.append("  chosenGainEV=${chosen ?: "NONE 回落 v32"}\n")
         runCatching {
             getExternalFilesDir(null)?.let {
                 File(it, "isp_guide_report.txt").appendText(report.toString())
@@ -1076,6 +1169,17 @@ class DevelopmentService : Service() {
     /** 热关开关：外部私有目录放 isp_guide_off 即停用，出问题不用重装。 */
     private fun ispGuideEnabled(): Boolean =
         getExternalFilesDir(null)?.let { !File(it, "isp_guide_off").exists() } ?: true
+
+    /** v35 热关开关：放 frame_lock_off 即停用片框颜色锁定（行为回到 v34）。 */
+    private fun frameLockOff(): Boolean =
+        getExternalFilesDir(null)?.let { File(it, "frame_lock_off").exists() } ?: false
+
+    /** v40：确定性固定色表恢复片框印刷字颜色，不依赖参考图或任何统计。 */
+    private fun applyFrameBorderLock(bmp: Bitmap, paramsJson: String, index: Int) {
+        if (!FrameBorderLock.shouldApply(paramsJson, frameLockOff())) return
+        val changed = FrameBorderLock.apply(bmp)
+        Log.i(TAG, "帧 $index [RAW] 片框颜色恢复：$changed 像素")
+    }
 
     private fun runMatrixProbe(bmp: Bitmap, baseJson: String?) {
         if (baseJson == null) return

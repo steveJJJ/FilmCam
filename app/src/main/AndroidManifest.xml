@@ -46,7 +46,7 @@
             android:exported="true"
             android:screenOrientation="fullSensor" />
 
-        <!-- 启动图标：Contax T3 银色实拍图（项目定调基线 ic_launcher.png），单一静态入口。
+        <!-- 启动图标：Relic Cam 银色相机图（11-07 用户指定，白底方形、已去水印），单一静态入口。
              保留 .LauncherBlack 这个组件名只为兼容：v24/v25 已放上桌面的快捷方式
              指向它，改名字会让图标直接失效——名字是历史遗留，与图标颜色无关。
              动态切换/钛银别名已撤掉（setComponentEnabledSetting 后三星桌面不重建

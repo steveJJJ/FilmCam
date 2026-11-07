@@ -51,4 +51,25 @@ class Camera2ControllerRawTest {
         // 偶数个取偏大那个（宁可稍晚，别提前太多）
         assertEquals(400L, Camera2Controller.medianLatencyMs(listOf(200L, 400L), 385L))
     }
+
+    // ---- 外置闪光「先点灯、延后快门」（v45，JPG 通路）----
+
+    @Test
+    fun `JPG 通路把快门延后到灯出光那一刻`() {
+        // 真机七帧实测 HAL 提交→曝光 14~42ms（中位 35），远小于灯起辉 200ms
+        assertEquals(160L, Camera2Controller.flashPreRollMs(40L, -200L))
+        assertEquals(165L, Camera2Controller.flashPreRollMs(35L, -200L))
+        // 关键不变量：曝光开始 = 前置量 + HAL 延迟 = |offset| = 灯出光时刻
+        assertEquals(200L, Camera2Controller.flashPreRollMs(35L, -200L) + 35L)
+        assertEquals(200L, Camera2Controller.flashPreRollMs(42L, -200L) + 42L)
+    }
+
+    @Test
+    fun `RAW 通路延迟已超过起辉量时不需要前置`() {
+        // RAW 实测 265~274ms ≥ |offset| 200ms → 前置量 0，退回「提交后提前触发」
+        assertEquals(0L, Camera2Controller.flashPreRollMs(270L, -200L))
+        assertEquals(0L, Camera2Controller.flashPreRollMs(385L, -200L))
+        // 正偏移（曝光开始后再补发）同样不需要前置
+        assertEquals(0L, Camera2Controller.flashPreRollMs(35L, 50L))
+    }
 }

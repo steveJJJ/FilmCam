@@ -11,7 +11,7 @@ import com.filmcam.app.filter.FilmRollRepository
 import kotlin.math.roundToInt
 
 /**
- * 冲洗参数（按胶卷分别存的开发用旋钮）：颗粒 / 辉光 / 眩光 / 印相曝光 / 相纸。
+ * 冲洗参数（按胶卷分别存的开发用旋钮）：颗粒 / 辉光 / 眩光 / 曝光补偿 / 相纸。
  *
  * 这几个参数是工程师模式的一部分 —— 它们会直接改引擎的输出来，普通使用不该看到，
  * 所以从设置面板搬到了工程师控制台。为了能被关于页（工程师模式入口）直接打开，
@@ -71,7 +71,9 @@ object DevParamsDialog {
         // 后缀键：filmcam_dev_<param>_<stockId>
         fun devKey(param: String) = "filmcam_dev_${param}_$selRollId"
 
-        // SeekBar progress = 值*100；grain/halation 0..2.00，glare 0..6.00；exposure 0.50..2.00（progress=(v-0.5)*100）
+        // SeekBar progress = (EV + 1.5) * 100；grain/halation 0..2.00，glare 0..6.00；
+        // exposure 是**输入层**曝光补偿 −1.50..+1.50 EV（正 = 更亮）。
+        // 老版本这里调的是放大机曝光（print_exposure），那会把片框一起冲浓冲淡，已废弃。
         fun syncUi() {
             tvRoll.text = try { FilmStockMapper.stockDisplayName(selRollId) } catch (_: Throwable) { selRollId }
             sbGrain.progress = (prefs.getFloat(devKey("grain"), 1.0f) * 100).toInt()
@@ -80,9 +82,10 @@ object DevParamsDialog {
             tvGrain.text = String.format("%.2f", sbGrain.progress / 100f)
             tvHalation.text = String.format("%.2f", sbHalation.progress / 100f)
             tvGlare.text = String.format("%.2f", sbGlare.progress / 100f)
-            val exp = prefs.getFloat(devKey("print_exposure"), 1.0f)
-            sbExposure.progress = ((exp - 0.5f) * 100f).roundToInt()
-            tvExposure.text = String.format("%.2f", exp)
+            val ev = prefs.getFloat(devKey("exposure_ev"), 0f)
+                .coerceIn(FilmStockMapper.INPUT_EV_MIN, FilmStockMapper.INPUT_EV_MAX)
+            sbExposure.progress = ((ev - FilmStockMapper.INPUT_EV_MIN) * 100f).roundToInt()
+            tvExposure.text = String.format("%+.2f", ev)
             tvPaper.text = paperDisplayName(prefs.getString(devKey("paper"), "") ?: "")
             // 反转片没有印相纸环节（引擎 scan_film 直扫正片）：相纸行置灰
             val positiveStock = FilmStockMapper.isPositive(selRollId)
@@ -144,9 +147,9 @@ object DevParamsDialog {
         })
         sbExposure.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(sb: SeekBar?, progress: Int, fromUser: Boolean) {
-                val v = 0.5f + progress / 100f
-                prefs.edit().putFloat(devKey("print_exposure"), v).apply()
-                tvExposure.text = String.format("%.2f", v)
+                val v = FilmStockMapper.INPUT_EV_MIN + progress / 100f
+                prefs.edit().putFloat(devKey("exposure_ev"), v).apply()
+                tvExposure.text = String.format("%+.2f", v)
             }
             override fun onStartTrackingTouch(sb: SeekBar?) {}
             override fun onStopTrackingTouch(sb: SeekBar?) {}
@@ -177,6 +180,8 @@ object DevParamsDialog {
                 .remove(devKey("grain"))
                 .remove(devKey("halation"))
                 .remove(devKey("glare"))
+                .remove(devKey("exposure_ev"))
+                // 旧版「放大机曝光」键一起清掉：它读出来已经不用了，留着只会误导下一次排查
                 .remove(devKey("print_exposure"))
                 .remove(devKey("paper"))
                 .apply()

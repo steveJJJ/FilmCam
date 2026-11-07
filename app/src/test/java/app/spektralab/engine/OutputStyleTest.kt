@@ -216,13 +216,34 @@ class OutputStyleTest {
 
     @Test
     fun frontierPrintsBrighterThanNoritsu() {
-        // print_exposure 是 EV 偏移：正 = 放大机照更久 = 成片更暗
-        val f = json(FilmStockMapper.OutputStyle.FRONTIER)
-        val n = json(FilmStockMapper.OutputStyle.NORITSU)
-        assertTrue(
-            "Frontier 偏亮 → EV 更小",
-            f.getDouble("print_exposure") < n.getDouble("print_exposure")
+        // v46：曝光倾向整体搬到了**输入层**（EV，正 = 更亮），引擎的 print_exposure
+        // 锁死不动 —— 它一变片框（片基/齿孔/暗边印刷）会跟着一起冲浓冲淡。
+        val f = FilmStockMapper.inputEvFor(
+            FilmStockMapper.DevSettings(outputStyle = FilmStockMapper.OutputStyle.FRONTIER)
         )
+        val n = FilmStockMapper.inputEvFor(
+            FilmStockMapper.DevSettings(outputStyle = FilmStockMapper.OutputStyle.NORITSU)
+        )
+        assertTrue("Frontier 偏亮 → 输入 EV 更大（$f vs $n）", f > n)
+    }
+
+    @Test
+    fun printExposureNeverMovesWithExposureKnob() {
+        // 用户 11-07：「加大是降低曝光…这个也不应该作用于胶片框」。
+        // 不管旋钮拧到哪、走哪个店扫档，发给引擎的 print_exposure 必须是同一个数，
+        // 否则片框浓度会跟着曝光一起变。
+        val locked = FilmStockMapper.PRINT_EXPOSURE_LOCKED.toDouble()
+        for (style in FilmStockMapper.OutputStyle.values()) {
+            for (ev in listOf(-1.5f, -0.5f, 0f, 0.7f, 1.5f)) {
+                val o = JSONObject(
+                    FilmStockMapper.buildParamsJson(
+                        "kodak_portra_400", "kodak_portra_endura",
+                        FilmStockMapper.DevSettings(exposureEv = ev, outputStyle = style),
+                    )
+                )
+                assertEquals("$style / EV=$ev 必须锁死", locked, o.getDouble("print_exposure"), 1e-6)
+            }
+        }
     }
 
     @Test

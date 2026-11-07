@@ -17,6 +17,59 @@ object FilmStockMapper {
      */
     const val DEFAULT_PRINT_FALLBACK = "kodak_portra_endura"
 
+    /**
+     * 放大机曝光（引擎 `print_exposure`）**恒等于这个值**，不再随用户旋钮变化。
+     *
+     * 为什么锁死：引擎的 135 片框（黑片基 / 橙色暗边印刷 / 白齿孔）是在**印相阶段**
+     * 跟画面一起叠上去的，`print_exposure` 一变，片框就跟着一起变浓变淡 —— 用户
+     * 11-07 明确「这个也不应该作用于胶片框」。真机上片基密度是冲洗定死的，
+     * 换印相曝光只该改变画面，所以曝光调整整体搬到**输入层**（见 [DevSettings.exposureEv]）。
+     *
+     * 0.83 = 相纸标准浓度（paper_grades.json 的 3 号档），与 v40 起 RAW 通路的恒定值一致。
+     * 注意量纲：**正 EV = 更暗**（放大机照得更久）。
+     */
+    const val PRINT_EXPOSURE_LOCKED = 0.83f
+
+    /** 输入层曝光补偿的允许区间（EV）：负 = 更暗，正 = 更亮。 */
+    const val INPUT_EV_MIN = -1.5f
+    const val INPUT_EV_MAX = 1.5f
+
+    /**
+     * JPEG / 导入通路的**基础**输入曝光（EV）。
+     *
+     * RAW 通路有「同帧 ISP JPEG 引导」逐帧追平设备的自动曝光，JPEG 通路没有参考可追，
+     * 实测成片整体比 RAW 暗一档左右（用户 11-07：「JPG 的曝光有点暗，导入照片冲洗的
+     * 照片也比较暗，暗了影响成片效果」）。这里给一个固定基准把两条通路拉到同一水平，
+     * 用户仍可在工程师面板上再叠 [DevSettings.exposureEv]。
+     */
+    const val JPEG_INPUT_BASE_EV = 0.6f
+
+    /**
+     * 导入 RAW 的固定输入曝光（EV）。
+     *
+     * 相机拍的 RAW 能用「同一次快门的 ISP JPEG」当曝光参考；导入的 RAW 没有这张参考 ——
+     * 入卷时随帧存的那张 JPEG 是**引擎自己渲的兜底图**（已经过了整条胶片链 + 印相），
+     * 拿它当目标等于把印相曝光算两遍，成片发闷发暗。所以导入 RAW 跳过引导，用固定值，
+     * 取值贴着相机 RAW 引导的中位选择。
+     */
+    const val RAW_IMPORT_BASE_EV = 1.0f
+
+    /**
+     * 这一卷实际要施加的**输入层**曝光（EV）。
+     *
+     * @param fullScanFinish 店扫档只有完整档才带曝光倾向（保守档与印相档基线一致）。
+     * 店扫的曝光倾向本来写在 `print_exposure` 上（正 = 更暗），搬到输入层要取反。
+     */
+    fun inputEvFor(
+        settings: DevSettings,
+        fullScanFinish: Boolean = true,
+    ): Float {
+        val styleEv = if (settings.outputStyle.isScan && fullScanFinish) {
+            -styleExposureOffsetEv(settings.outputStyle)
+        } else 0f
+        return (settings.exposureEv + styleEv).coerceIn(INPUT_EV_MIN - 0.3f, INPUT_EV_MAX + 0.3f)
+    }
+
     /** 该 film stock 是否为反转片。 */
     fun isPositive(filmStockId: String): Boolean = filmTypeOf(filmStockId) == "positive"
 
@@ -163,7 +216,19 @@ object FilmStockMapper {
         val grainAmount: Float = 1.0f,
         val halationAmount: Float = 1.0f,
         val glareAmount: Float = 3.0f,
-        val printExposure: Float = 1.0f,   // 预留：放大机曝光（本轮不暴露 UI，只留读取位）
+        /**
+         * 曝光补偿（EV，**作用在引擎输入层**，不是放大机曝光）。
+         *
+         * 11-07 用户定调：放大机曝光（`print_exposure`）一变，整张片基/齿孔/暗边
+         * 印刷字跟着一起变浓变淡 ——「这个不应该作用于胶片框」。物理上也对：
+         * 片基密度是冲洗出来的，不该随印相曝光改变。
+         * 所以 `print_exposure` 锁死为 [PRINT_EXPOSURE_LOCKED]，这把旋钮改成
+         * 在**进引擎之前**对像素加线性增益（RAW 走 DNG Bayer，JPEG 走 sRGB LUT），
+         * 等价于换了一档感光度/曝光时间，片框由引擎以固定浓度叠上去。
+         *
+         * 正 = 更亮（与旧的 `print_exposure` 方向相反，那个是「正 = 更暗」）。
+         */
+        val exposureEv: Float = 0f,
         val paperOverride: String? = null, // 预留：相纸 id 覆盖（null/空白 = 用胶卷映射的 print_stock）
         val outputStyle: OutputStyle = OutputStyle.PRINT, // 成片出口：印相 / Frontier / Noritsu
         /**
@@ -409,23 +474,27 @@ object FilmStockMapper {
     /**
      * 从 SharedPreferences("filmcam") 读指定胶卷的用户冲洗参数（按卷独立）。
      * 键名冻结：filmcam_dev_grain_<stockId> / filmcam_dev_halation_<stockId> /
-     *           filmcam_dev_glare_<stockId> / filmcam_dev_print_exposure_<stockId> /
+     *           filmcam_dev_glare_<stockId> / filmcam_dev_exposure_ev_<stockId> /
      *           filmcam_dev_paper_<stockId>（stockId 即引擎 film_stock id，[a-z0-9_]）。
-     * 范围钳制：grain/halation 0–2，glare 0–6，printExposure 0.25–4。
-     * 未写过的卷全部回退到 DevSettings 默认值（1.0/1.0/3.0/1.0/null）。
+     * 范围钳制：grain/halation 0–2，glare 0–6，exposureEv −1.5–+1.5 EV。
+     * 未写过的卷全部回退到 DevSettings 默认值（1.0/1.0/3.0/0.0/null）。
+     *
+     * 旧键 `filmcam_dev_print_exposure_<stockId>` 已废：那个值会同时改片框浓度，
+     * 现在曝光整体在输入层做（见 [PRINT_EXPOSURE_LOCKED]），旧值读出来就丢掉。
      */
     fun readDevSettings(context: Context, filmStockId: String): DevSettings {
         val sp = context.getSharedPreferences("filmcam", Context.MODE_PRIVATE)
         val grain = sp.getFloat("filmcam_dev_grain_$filmStockId", 1.0f).coerceIn(0f, 2f)
         val halation = sp.getFloat("filmcam_dev_halation_$filmStockId", 1.0f).coerceIn(0f, 2f)
         val glare = sp.getFloat("filmcam_dev_glare_$filmStockId", 3.0f).coerceIn(0f, 6f)
-        val exposure = sp.getFloat("filmcam_dev_print_exposure_$filmStockId", 1.0f).coerceIn(0.25f, 4f)
+        val exposureEv = sp.getFloat("filmcam_dev_exposure_ev_$filmStockId", 0f)
+            .coerceIn(INPUT_EV_MIN, INPUT_EV_MAX)
         val paper = sp.getString("filmcam_dev_paper_$filmStockId", null)?.takeIf { it.isNotBlank() }
         return DevSettings(
             grainAmount = grain,
             halationAmount = halation,
             glareAmount = glare,
-            printExposure = exposure,
+            exposureEv = exposureEv,
             paperOverride = paper,
             // 出口是整卷统一的口味，不按胶卷存；脏值回退印相
             // 片框是整卷统一的输出样式（跟出口档位一样），不按胶卷存
@@ -601,6 +670,9 @@ object FilmStockMapper {
      */
     private const val MARK_OUTPUT_STYLE = "output_style"
 
+    /** EXIF 快照里的输入层曝光补偿（EV）。与 [MARK_OUTPUT_STYLE] 一样只给我们自己读。 */
+    const val MARK_EXPOSURE_EV = "exposure_ev"
+
     /**
      * 引擎参数（严格）。任何只给自己看的标记都不在这里出现；
      * 引擎对未知键会直接报 unknown parameter 并让整帧失败。
@@ -661,11 +733,9 @@ object FilmStockMapper {
         val halationAmount =
             if (flashShot) (settings.halationAmount * FLASH_HALATION_BOOST).coerceIn(0f, 2f)
             else settings.halationAmount
-        // 店扫档的曝光倾向只在完整档生效：保守档要和可出图的基线完全一致
-        val effectiveExposure =
-            if (style.isScan && scanFinishLevel == SCAN_LEVEL_FULL)
-                settings.printExposure + styleExposureOffsetEv(style)
-            else settings.printExposure
+        // 放大机曝光**恒定**：片框（片基/齿孔/暗边印刷）是印相阶段一起叠上去的，
+        // 这个值一变片框浓度就跟着变。曝光调整全部在输入层（inputEvFor）。
+        val effectiveExposure = PRINT_EXPOSURE_LOCKED
         val sb = StringBuilder(256)
         sb.append('{')
           .append("\"film_stock\":\"").append(esc(filmStockId)).append("\",")
@@ -698,6 +768,9 @@ object FilmStockMapper {
         // 风格标记只在 EXIF 快照里出现；发给引擎会触发 unknown parameter，整卷出不了图
         if (includeStyleMark) {
             sb.append(",\"").append(MARK_OUTPUT_STYLE).append("\":\"").append(settings.outputStyle.wire).append('"')
+            // 输入层曝光同样只进 EXIF：引擎侧没有这个键（曝光在 App 里施加），
+            // 但「拍摄同款」要能把这张的曝光补偿一起还原。
+            sb.append(",\"").append(MARK_EXPOSURE_EV).append("\":").append(jsonNum(settings.exposureEv))
         }
         // 店扫味（走印相通路，靠末端参数拉开与光学印相的差别）。
         // **不叠色彩微调**：两家店的滤色片签名是独立标定过的（OutputStyleTest 守护契约），

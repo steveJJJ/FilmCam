@@ -1,10 +1,10 @@
 <resources>
-    <string name="app_name">FilmCam</string>
+    <string name="app_name">Relic Cam</string>
 
     <!-- 关于页 -->
     <string name="about_intro">把手机变成一台康泰时 T3。\n\n取景器里看到的是真实的光学世界；快门按下一卷 36 张的胶卷；拍完送进暗房冲洗，出片由胶片引擎按这一卷的配方显影。\n\n冲洗之前，谁也不知道拍到的是什么——这就是胶片的乐趣。</string>
     <string name="percent_fmt">%1$d%%</string>
-    <string name="about_self_title">FILMCAM 以 GNU GPL-3.0-or-later 开源分发</string>
+    <string name="about_self_title">RELIC CAM 以 GNU GPL-3.0-or-later 开源分发</string>
     <string name="about_self_body">本项目使用了 GPL-3.0 的 SpektraLab 胶片模拟引擎，因而同样以 GPL-3.0-or-later 分发：你可以自由使用、修改与再分发，再分发时须开放源码并保留同一许可与署名。\n源码仓库尚未公开，依据许可条款，源码在索取时提供。</string>
     <string name="about_paypal">PayPal 赞赏</string>
     <!-- PayPal 赞赏页；留空时不展示入口 -->
@@ -12,7 +12,7 @@
     <!-- 微信赞赏码为纯图片展示，无链接可跳。此字段预留作未来扩展，当前留空、代码不引用。 -->
     <string name="appreciate_wechat_url" translatable="false"></string>
     <string name="about_feedback">问题反馈</string>
-    <string name="feedback_subject">FILMCAM 问题反馈 %1$s / 设备 %2$s %3$s / 系统 Android %4$s (API %5$d)</string>
+    <string name="feedback_subject">RELIC CAM 问题反馈 %1$s / 设备 %2$s %3$s / 系统 Android %4$s (API %5$d)</string>
     <string name="feedback_body">遇到的问题：
 （简单描述，例如"冲洗到第 12 张卡住"、"点了快门没反应"、"取景框错位"）
 
@@ -40,10 +40,10 @@ App 版本：%1$s (%2$d)
     <string name="feedback_email_missing">反馈邮箱尚未配置</string>
     <string name="feedback_no_mail_app">没有可用的邮件应用</string>
     <!-- 接收问题反馈的邮箱；留空时点击会提示未配置 -->
-    <string name="app_feedback_email" translatable="false">837226902@qq.com</string>
+    <string name="app_feedback_email" translatable="false">837226902ah@gmail.com</string>
     <!-- 留空则关于页不显示索取入口；填入邮箱后自动变成可点击的 mailto 链接 -->
     <string name="app_source_email" translatable="false"></string>
-    <string name="about_oss_summary">FILMCAM 站在这些开源项目与素材作者的作品上——感谢各位开发者的慷慨分享。\n冲洗引擎代码依 GPL-3.0-or-later 使用，胶片/相纸配方与引擎资源依 CC BY-SA 4.0 使用；点击查看具体许可与来源。</string>
+    <string name="about_oss_summary">RELIC CAM 站在这些开源项目与素材作者的作品上——感谢各位开发者的慷慨分享。\n冲洗引擎代码依 GPL-3.0-or-later 使用，胶片/相纸配方与引擎资源依 CC BY-SA 4.0 使用；点击查看具体许可与来源。</string>
 
     <!-- 开源致谢：名称 | 作者/组织 | 许可证 | 链接 | 修改说明(可选) -->
     <string-array name="oss_credits">
@@ -83,7 +83,7 @@ App 版本：%1$s (%2$d)
     <string name="set_language">语言</string>
     <string name="set_quality">冲洗画质</string>
     <string name="set_dev">冲洗参数</string>
-    <string name="set_about">关于 FILMCAM</string>
+    <string name="set_about">关于 RELIC CAM</string>
     <string name="quality_full">完整</string>
     <string name="quality_standard">标准</string>
     <string name="set_style">输出风格</string>
@@ -214,7 +214,7 @@ App 版本：%1$s (%2$d)
     <string name="main_dev_halation">辉光强度</string>
     <string name="main_dev_glare">眩光强度</string>
     <string name="main_dev_group_print">放大 · PRINT</string>
-    <string name="main_dev_enlarger_exposure">放大机曝光</string>
+    <string name="main_dev_enlarger_exposure">曝光补偿（只作用于画面）</string>
     <string name="main_dev_paper_row">相纸选择</string>
     <string name="main_dev_paper_hint">自动 = 按胶卷品牌的官方推荐相纸搭配（如柯达负片印 Portra Endura、电影卷印 Kodak 2383），点上方可手动覆盖</string>
 
@@ -246,7 +246,7 @@ App 版本：%1$s (%2$d)
 
     <!-- ===== 关于页铭牌：规格表 ===== -->
     <string name="about_spec_model">型号 MODEL</string>
-    <string name="about_spec_model_value" translatable="false">FILMCAM</string>
+    <string name="about_spec_model_value" translatable="false">RELIC CAM</string>
     <string name="about_spec_lens">镜头 LENS</string>
     <string name="about_spec_lens_value" translatable="false">35mm f/2.8</string>
     <string name="about_spec_film">装片 FILM</string>
@@ -265,7 +265,7 @@ App 版本：%1$s (%2$d)
     <string name="about_wechat_id_label">微信号</string>
     <string name="about_wechat_copied">微信号 %1$s 已复制，去微信搜索加群</string>
     <string name="about_source_request">索取源码：%1$s</string>
-    <string name="about_source_subject">FILMCAM 源码索取</string>
+    <string name="about_source_subject">RELIC CAM 源码索取</string>
     <string name="about_gpl_full">GNU GPL-3.0 全文</string>
     <string name="hidden_title">工程师模式</string>
     <string name="eng_mode_title">工程师模式</string>
@@ -292,7 +292,7 @@ App 版本：%1$s (%2$d)
     <string name="eng_cc_note">肤色偏黄：冷暖往「冷·白」拖；还嫌黄再配一点洋红。两根滤色片本身很弱（拉满也只挪一两个色阶），要看到变化须调大滤色强度。默认 0/0 = 不校色（一个滤色键都不发）；拖动滑杆即生效。只影响印相出口（店扫档保持自家校色），不随胶卷换，改完下一次冲洗生效</string>
     <string name="eng_cc_off">关</string>
     <string name="eng_style_hint">放大机印成相纸，还是店里把底片扫出来</string>
-    <string name="eng_dev_hint">颗粒 · 辉光 · 眩光 · 印相曝光 · 相纸（按胶卷分别存）</string>
+    <string name="eng_dev_hint">颗粒 · 辉光 · 眩光 · 曝光补偿 · 相纸（按胶卷分别存）</string>
     <string name="hidden_slow_trigger">慢门触发机制</string>
     <string name="hidden_slow_prob">纯概率派：同一场景有时糊、有时不糊</string>
     <string name="hidden_slow_real">纯真实派：暗光必然慢门，不掷骰</string>

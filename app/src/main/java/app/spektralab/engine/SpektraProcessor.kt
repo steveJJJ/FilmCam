@@ -288,6 +288,8 @@ object SpektraProcessor {
         fallbackParamsJsons: List<String> = emptyList(),
         /** 这一帧拍摄时实际下发的 CONTROL_ZOOM_RATIO（ShotMeta.zoom）；0 = 老帧，回落到设备默认值 */
         zoomRatio: Float = 0f,
+        /** v40 输入层曝光（EV），由 ISP 引导选出，作用在 DNG 线性 Bayer 上 */
+        gainEv: Double = 0.0,
     ): ProcessResult {
         return try {
             val eng = ensureEngine(context)
@@ -306,7 +308,7 @@ object SpektraProcessor {
             // 片门预裁：改写缓存副本的 ActiveArea（见 prepareGateDng），原底片不动。
             // zoomRatio 来自帧记录（ShotMeta.zoom），不用进程内的全局动态值——冲洗可能
             // 发生在另一个进程、冷启动后直接进暗房，那时相机还没初始化，全局值不准。
-            val workPath = prepareGateDng(dngPath, context.cacheDir, paramsJson, zoomRatio)
+            val workPath = prepareGateDng(dngPath, context.cacheDir, paramsJson, zoomRatio, gainEv)
 
             var rendered: Pair<Int, Int>? = null
             var fellBack = false
@@ -401,6 +403,8 @@ object SpektraProcessor {
         paramsJson: String,
         /** 帧记录的变焦比；0 / 越界 = 老帧或异常值，回落到设备默认 */
         zoomRatio: Float = 0f,
+        /** v40 输入层曝光（EV）；0 = 不缩放。只改缓存副本，原底片不动 */
+        gainEv: Double = 0.0,
     ): String {
         val geo = runCatching {
             java.io.File(dngPath).inputStream().use { ins ->
@@ -447,7 +451,10 @@ object SpektraProcessor {
         }
         if (cx % 2 == 1) cx -= 1
         if (cy % 2 == 1) cy -= 1
-        if (cx == 0 && cy == 0 && cw == geo.width && ch == geo.height) return dngPath
+        // v40：即使不需要裁切，只要要做输入层曝光就必须走工作副本，原底片不动
+        if (cx == 0 && cy == 0 && cw == geo.width && ch == geo.height &&
+            kotlin.math.abs(gainEv) <= 1e-6
+        ) return dngPath
         val work = java.io.File(cacheDir, "gate_" + java.io.File(dngPath).name)
         val ok = runCatching {
             java.io.File(dngPath).inputStream().use { ins -> work.outputStream().use { ins.copyTo(it) } }
@@ -465,6 +472,13 @@ object SpektraProcessor {
                 // AsShotWhiteXY 是 0xC629）、只改 WhiteXY 不改 AsShotNeutral 无效、
                 // 未经真机 A/B 确认，且可能写坏 DNG 标定数据导致 RAW 会话失败掉兜底档。
                 // 现回到「按 DNG 原始白平衡解码」的中性基线。
+            }
+            // v40：输入层曝光标定 —— 在引擎看到 DNG 之前对线性 Bayer 缩放。
+            // 引擎的 print_exposure 恒定，所以片框颜色不受这档补偿影响。
+            if (kotlin.math.abs(gainEv) > 1e-6) {
+                val layout = readDngGainLayout(work)
+                if (layout != null) applyDngGain(work, layout, gainEv)
+                else Log.w(TAG, "DNG 增益布局解析失败，跳过输入曝光标定")
             }
             true
         }.getOrDefault(false)
@@ -740,6 +754,108 @@ object SpektraProcessor {
      */
     val ISP_GUIDE_EV_OFFSETS = doubleArrayOf(-0.5, -0.25, 0.0, 0.25, 0.5)
 
+    /**
+     * v40：输入层曝光候选（EV）。逐帧曝光标定改在 DNG 线性 Bayer 上做，
+     * 引擎的 `print_exposure` 恒定 → 印相阶段叠上去的片框颜色不随补偿变。
+     *
+     * 真机 DNG 实测量纲：Black=64 / White=1023，净信号 p50=25、p90=181、
+     * p99=241；gain=4 时仅 1.1% 像素饱和、gain=8 就 26%。上限取 +2EV
+     * （gain 4），足够覆盖 v34 用 `print_exposure` 0.83→0.33 那档提亮量。
+     * `exposure_compensation_ev` 已实测无效（±1EV 影像 p50 35→36），不再使用。
+     */
+    val ISP_GUIDE_GAIN_EVS = doubleArrayOf(0.0, 0.7, 1.3, 2.0)
+
+    /** 固定放大机曝光 + 关引擎自动曝光；输入曝光由 DNG 像素承载。 */
+    internal fun withFixedPrintExposure(baseJson: String): String = mergeParams(
+        baseJson,
+        mapOf(
+            "auto_exposure" to "false",
+            "print_exposure" to basePrintExposure(baseJson).toString(),
+            "exposure_compensation_ev" to "0",   // 实测无效，显式归零防脏值
+        )
+    )
+
+    /** 单样本线性曝光缩放，抽成纯函数便于 JVM 单测。 */
+    internal fun gainSample(v: Int, black: Int, white: Int, gain: Double): Int =
+        (black + (v - black) * gain).toInt().coerceIn(0, white)
+
+    /** DNG 像素布局：只解析 IFD0 头部 64KB（strip 表 / 黑位 / 白位都在文件前段）。 */
+    internal class DngGainLayout(
+        val stripOffsets: LongArray,
+        val stripCounts: LongArray,
+        val blackLevel: Int,
+        val whiteLevel: Int,
+    )
+
+    internal fun readDngGainLayout(file: java.io.File): DngGainLayout? = runCatching {
+        val head = ByteArray(65536)
+        java.io.FileInputStream(file).use { it.read(head) }
+        val le = head[0] == 'I'.code.toByte() && head[1] == 'I'.code.toByte()
+        val order = java.nio.ByteOrder.LITTLE_ENDIAN.takeIf { le }
+            ?: java.nio.ByteOrder.BIG_ENDIAN
+        fun u16(o: Int) = java.nio.ByteBuffer.wrap(head, o, 2).order(order).short.toInt() and 0xFFFF
+        fun u32(o: Int) = java.nio.ByteBuffer.wrap(head, o, 4).order(order).int
+        val ifd = u32(4)
+        require(ifd > 0 && ifd + 2 < head.size) { "IFD 偏移越界" }
+        val n = u16(ifd)
+        var strips: LongArray? = null
+        var counts: LongArray? = null
+        var black = 0
+        var white = 1023
+        fun longs(cnt: Int, inline: Int): LongArray {
+            val off = if (cnt == 1) inline else u32(inline)
+            require(off > 0 && off + 4L * cnt <= head.size) { "LONG 数组越界" }
+            return LongArray(cnt) { u32(off + 4 * it).toLong() }
+        }
+        for (i in 0 until n) {
+            val p = ifd + 2 + i * 12
+            if (p + 12 > head.size) break
+            val tag = u16(p)
+            val type = u16(p + 2)
+            val cnt = u32(p + 4)
+            if (cnt <= 0 || cnt > 20000) continue
+            when (tag) {
+                0x0111 -> if (type == 4) strips = longs(cnt, p + 8)
+                0x0117 -> if (type == 4) counts = longs(cnt, p + 8)
+                0xc61a -> {   // BlackLevel：RATIONAL 第一个 num/den
+                    val b = u32(p + 8)
+                    val den = u32(b + 4)
+                    if (den > 0) black = u32(b) / den
+                }
+                0xc61d -> if (type == 4 && cnt == 1) white = u32(p + 8)
+            }
+        }
+        val s = strips ?: return null
+        val c = counts ?: return null
+        require(s.size == c.size && s.isNotEmpty()) { "strip 表不完整" }
+        DngGainLayout(s, c, black, white)
+    }.onFailure { Log.w(TAG, "DNG 增益布局解析失败: ${it.message}") }.getOrNull()
+
+    /** 对未压缩 16bit Bayer 逐 strip 做 black+(v-black)*gain，原地改写 [file]。 */
+    internal fun applyDngGain(file: java.io.File, layout: DngGainLayout, ev: Double) {
+        val gain = java.lang.Math.pow(2.0, ev)
+        java.io.RandomAccessFile(file, "rw").use { raf ->
+            val row = ByteArray(1_000_000)
+            for (i in layout.stripOffsets.indices) {
+                val off = layout.stripOffsets[i]
+                val len = layout.stripCounts[i].toInt()
+                if (off <= 0 || len <= 1 || len > row.size) continue
+                raf.seek(off)
+                raf.readFully(row, 0, len)
+                var k = 0
+                while (k + 1 < len) {
+                    val v = (row[k].toInt() and 0xFF) or ((row[k + 1].toInt() and 0xFF) shl 8)
+                    val nv = gainSample(v, layout.blackLevel, layout.whiteLevel, gain)
+                    row[k] = (nv and 0xFF).toByte()
+                    row[k + 1] = ((nv shr 8) and 0xFF).toByte()
+                    k += 2
+                }
+                raf.seek(off)
+                raf.write(row, 0, len)
+            }
+        }
+    }
+
     /** 一档候选渲染的亮度分位（p50 / p90），ev = 相对基础 print_exposure 的偏移。 */
     data class IspGuidePoint(val ev: Double, val p50: Double, val p90: Double)
 
@@ -815,20 +931,49 @@ object SpektraProcessor {
     }.getOrDefault(0.83)
 
     /**
-     * 固定引擎曝光 + 按设备标定值设放大机曝光。
-     * auto_exposure=false 在 v31 直闪帧已真机验证可用；print_exposure 是 EV 偏移
-     * （正 = 更暗），两者都在 ENGINE_KNOWN_KEYS 白名单里，不引入新 key。
+     * v39 根治：把逐帧 ΔEV 从**印相层**挪到**拍摄层**。
+     *
+     * 旧实现（v34）把 ΔEV 加到 `print_exposure`（放大机曝光时间）。但引擎的 135
+     * 片框（黑片基 / 橙色暗边印刷 / 齿孔）是在印相阶段一起叠上去的，
+     * `print_exposure` 一变片框就跟着变淡 —— 这才是「边框颜色偶尔不对」的根因。
+     * v35/v37/v38 都想在出图后把颜色校回去（CDF / 色度 LUT），但参考图只有
+     * 320px、成片 2710px，带内像素构成差太多，分布匹配不可靠：v38 真机把黑片基
+     * 染成橙棕 (101,59,33)，标准浓度应是 (10,12,15)。事后统计这条路到头了。
+     *
+     * 新实现让 `print_exposure` **恒等于基础值**（v32 时代的标准浓度），把亮度
+     * 补偿放到 `exposure_compensation_ev`（拍摄层 EV）：它作用于底片影像曝光、
+     * 不经过印相链，片框颜色天然恒定，整个 FrameBorderLock 后处理不再需要。
+     * 物理上也更对 —— 曝光标定本属于拍摄层，不是放大机曝光时间。
+     *
+     * 闭环与符号无关：候选小图和主参数都由本函数生成，选档只看 p50/p90 距目标
+     * 的远近，[interpolateIspGuideEv] 用 min/max 处理区间，所以即便 ec 的正负
+     * 含义与推测相反，也能收敛到让画面亮度匹配 ISP JPEG 的那个值。
+     *
+     * [useEc] = false 是热回退（外部私有目录放 `ec_ev_off`）：回到 v34 的
+     * `print_exposure` 路径并重新启用片框校色，不用重装 APK。
      */
-    internal fun withIspGuidedExposure(baseJson: String, deltaEv: Double): String {
-        // 下限 0.05：print_exposure 为负会被引擎整帧拒掉（v33 的 FAIL 根因）
-        val value = (basePrintExposure(baseJson) + deltaEv).coerceIn(0.05, 6.0)
-        return mergeParams(
-            baseJson,
+    internal fun withIspGuidedExposure(
+        baseJson: String,
+        deltaEv: Double,
+        useEc: Boolean = true,
+    ): String {
+        val base = basePrintExposure(baseJson)
+        val extra = if (useEc) {
             mapOf(
                 "auto_exposure" to "false",
-                "print_exposure" to value.toString(),
+                "print_exposure" to base.toString(),
+                // EV 是对数量，可正可负；钳 ±3EV 防异常值把整帧打飞
+                "exposure_compensation_ev" to (-deltaEv).coerceIn(-3.0, 3.0).toString(),
             )
-        )
+        } else {
+            // v34 旧路径：下限 0.05，print_exposure 为负会被引擎整帧拒掉
+            mapOf(
+                "auto_exposure" to "false",
+                "print_exposure" to (base + deltaEv).coerceIn(0.05, 6.0).toString(),
+                "exposure_compensation_ev" to "0",
+            )
+        }
+        return mergeParams(baseJson, extra)
     }
 
     /** 直闪帧曝光量在拍摄时已定死（v31 已关 AE），不需要也不该再引导。 */
@@ -880,25 +1025,27 @@ object SpektraProcessor {
         outPaths: List<String>,
         longEdge: Int = 320,
         zoomRatio: Float = 0f,
+        /** v40：每档对应一个 DNG 输入曝光 EV；为空则全部按 0 处理（v34 旧行为） */
+        gainEvs: List<Double> = emptyList(),
     ): List<Pair<Int, Int>?> {
         if (paramJsons.isEmpty() || paramJsons.size != outPaths.size) return emptyList()
         return try {
             val eng = ensureEngine(context.applicationContext)
-            val workPath = prepareGateDng(dngPath, context.cacheDir, paramJsons.first(), zoomRatio)
-            try {
-                paramJsons.mapIndexed { i, json ->
-                    try {
-                        renderRawOne(
-                            eng, context, workPath, asLinearInput(json),
-                            outPaths[i], 0, longEdge
-                        )
-                    } catch (e: Throwable) {
-                        Log.w(TAG, "ISP 定标小图 $i 渲染失败: ${e.message}")
-                        null
-                    }
+            // v40：每档的 DNG 像素不同，必须各用一份工作副本（v34 共用一份是因为
+            // 只有参数在变）。4 档 × 25MB，实测仍在可接受的冲洗耗时内。
+            paramJsons.mapIndexed { i, json ->
+                val work = prepareGateDng(
+                    dngPath, context.cacheDir, json, zoomRatio,
+                    gainEvs.getOrElse(i) { 0.0 }
+                )
+                try {
+                    renderRawOne(eng, context, work, asLinearInput(json), outPaths[i], 0, longEdge)
+                } catch (e: Throwable) {
+                    Log.w(TAG, "ISP 定标小图 $i 渲染失败: ${e.message}")
+                    null
+                } finally {
+                    if (work != dngPath) runCatching { java.io.File(work).delete() }
                 }
-            } finally {
-                if (workPath != dngPath) runCatching { java.io.File(workPath).delete() }
             }
         } catch (e: Throwable) {
             Log.e(TAG, "ISP 定标批量渲染失败: ${e.message} | dng=$dngPath", e)

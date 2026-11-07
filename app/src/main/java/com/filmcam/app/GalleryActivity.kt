@@ -71,6 +71,10 @@ class GalleryActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_gallery)
 
+        // 边到边：整页顶部/底部让出状态栏与导航栏
+        val gRoot = com.filmcam.app.ui.EdgeToEdge.contentRoot(this)
+        com.filmcam.app.ui.EdgeToEdge.setup(this, gRoot, gRoot)
+
         rvGallery = findViewById(R.id.rvGallery)
         tvEmpty = findViewById(R.id.tvEmpty)
         layoutUndeveloped = findViewById(R.id.layoutUndeveloped)

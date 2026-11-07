@@ -229,7 +229,8 @@ class FilmStockMapperTest {
         assertEquals(1.0, obj.getDouble("grain_amount"), 1e-6)
         assertEquals(1.0, obj.getDouble("halation_amount"), 1e-6)
         assertEquals(3.0, obj.getDouble("glare_amount"), 1e-6)
-        assertEquals(1.0, obj.getDouble("print_exposure"), 1e-6)
+        // v46：放大机曝光锁死（相纸标准浓度），曝光补偿改走输入层
+        assertEquals(0.83, obj.getDouble("print_exposure"), 1e-6)
         assertEquals(36.0, obj.getDouble("film_format_mm"), 1e-6)
         assertEquals(2048, obj.getInt("preview_long_edge"))
         assertEquals("sRGB", obj.getString("input_color_space"))
@@ -239,15 +240,21 @@ class FilmStockMapperTest {
     fun `用户覆盖相纸与曝光后按覆盖值输出`() {
         val settings = FilmStockMapper.DevSettings(
             grainAmount = 1.5f,
-            printExposure = 0.75f,
+            exposureEv = 0.75f,
             paperOverride = "kodak_supra_endura",
         )
         val obj = JSONObject(
             FilmStockMapper.buildParamsJson("kodak_portra_400", "kodak_portra_endura", settings)
         )
         assertEquals("kodak_supra_endura", obj.getString("print_stock"))
-        assertEquals(0.75, obj.getDouble("print_exposure"), 1e-6)
+        // 曝光不再走 print_exposure（否则片框跟着变浓度）；它只在 EXIF 快照里留一份
+        assertEquals(0.83, obj.getDouble("print_exposure"), 1e-6)
         assertEquals(1.5, obj.getDouble("grain_amount"), 1e-6)
+        val exif = JSONObject(
+            FilmStockMapper.buildExifParamsJson("kodak_portra_400", "kodak_portra_endura", settings)
+        )
+        assertEquals(0.75, exif.getDouble("exposure_ev"), 1e-6)
+        assertEquals(0.83, exif.getDouble("print_exposure"), 1e-6)
     }
 
     @Test

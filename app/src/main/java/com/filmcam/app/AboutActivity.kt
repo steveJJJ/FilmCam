@@ -29,6 +29,10 @@ class AboutActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_about)
 
+        // 边到边：滚动内容顶部/底部让出状态栏与导航栏
+        val aRoot = com.filmcam.app.ui.EdgeToEdge.contentRoot(this)
+        com.filmcam.app.ui.EdgeToEdge.setup(this, aRoot, aRoot)
+
         val pi = runCatching { packageManager.getPackageInfo(packageName, 0) }.getOrNull()
         val verName = pi?.versionName ?: "?"
         val verCode = pi?.let { info ->

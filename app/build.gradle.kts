@@ -13,13 +13,14 @@ val keystoreProps = Properties().apply {
 
 android {
     namespace = "com.filmcam.app"
-    compileSdk = 34
+    compileSdk = 36
+    buildToolsVersion = "36.0.0"
 
     defaultConfig {
         applicationId = "com.filmcam.app"
         minSdk = 26
-        targetSdk = 34
-        versionCode = 34
+        targetSdk = 36
+        versionCode = 47
         versionName = "1.0.0"
     }
 

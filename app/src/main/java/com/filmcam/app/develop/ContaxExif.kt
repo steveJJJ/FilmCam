@@ -20,7 +20,7 @@ import java.util.Locale
  *  - LensModel → 胶卷显示名（如 "Kodak Portra 400"）
  *  - ImageDescription → 引擎 film_stock / print_stock id（便于复现）
  *  - UserComment → 冲洗参数 JSON 快照（grain/halation/glare/exposure/paper）
- *  - Software → "FilmCam + SpektraLab Engine"
+ *  - Software → "Relic Cam + SpektraLab Engine"
  *  - BodySerialNumber → rollId（胶卷编号）
  *
  * 全部为模拟值，无真实机型信息。saveAttributes 后读回校验并打日志。
@@ -91,7 +91,7 @@ object ContaxExif {
             // BodySerialNumber → rollId（胶卷编号）
             exif.setAttribute(ExifInterface.TAG_BODY_SERIAL_NUMBER, rollId)
             // Software → 应用 + 引擎标识
-            exif.setAttribute(ExifInterface.TAG_SOFTWARE, "FilmCam + SpektraLab Engine")
+            exif.setAttribute(ExifInterface.TAG_SOFTWARE, "Relic Cam + SpektraLab Engine")
             // UserComment → 冲洗参数 + 拍摄参数 JSON 快照（用 ASCII 前缀确保兼容性）。
             // shot 作为嵌套对象并入同一份 JSON：一个 UserComment 装完，旧解析器读不到的键会忽略。
             exif.setAttribute(
