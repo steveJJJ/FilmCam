@@ -794,8 +794,29 @@ class DevelopmentService : Service() {
             SpektraProcessor.withRawExposureMethod(it, isFlash)
         }
 
+        // v33：设备定标。同一次快门三星 ISP 已经渲出一张「曝光正确」的 JPEG，
+        // 用它的亮度分位当目标，程序自己选放大机曝光，取代引擎逐张猜曝光。
+        // 任何一步失败都回落 v32 参数链，绝不阻断冲洗；直闪帧跳过（v31 已固定曝光）。
+        val ispDeltaEv =
+            if (SpektraProcessor.shouldUseIspGuide(isFlash, ispGuideEnabled())) {
+                runCatching {
+                    guideRawExposureByIsp(roll.rollId, index, dngPath, rawParamsJson, frameZoom)
+                }.onFailure {
+                    Log.w(TAG, "ISP 曝光定标失败，回落 v32 参数链（不影响冲洗）", it)
+                }.getOrNull()
+            } else null
+        val finalParamsJson = if (ispDeltaEv != null) {
+            SpektraProcessor.withIspGuidedExposure(rawParamsJson, ispDeltaEv)
+        } else rawParamsJson
+        val finalFallbacks = if (ispDeltaEv != null) {
+            rawFallbacks.map { SpektraProcessor.withIspGuidedExposure(it, ispDeltaEv) }
+        } else rawFallbacks
+        if (ispDeltaEv != null) {
+            Log.i(TAG, "帧 $index [RAW] ISP 定标 ΔEV=$ispDeltaEv（auto_exposure=false）")
+        }
+
         // RAW 影调 A/B 探针：只在外部私有目录放了 raw_tone_ab.json 且是第一帧时跑，
-        // 全程吞异常、不影响本帧正常冲洗。渲完的小图靠 adb pull 回来做像素统计。
+        // 全程吞异常、不影响本帧正常冲洗。仍用 v32 参数链，保持历轮 A/B 的实验口径。
         runCatching { runRawToneProbe(dngPath, rawParamsJson, index, frameZoom) }
             .onFailure { Log.w(TAG, "RAW 影调探针异常（不影响冲洗）", it) }
 
@@ -806,8 +827,8 @@ class DevelopmentService : Service() {
         // 引擎 RAW 会话出图（主参数 + 兜底链；主参数失败整个会话重开）
         Log.d(TAG, "帧 $index [RAW] 帧记录变焦比=$frameZoom（0=老帧回落设备默认）")
         val result = SpektraProcessor.processRawFrame(
-            applicationContext, dngPath, rawParamsJson, tmpJpeg.absolutePath,
-            fallbackParamsJsons = rawFallbacks,
+            applicationContext, dngPath, finalParamsJson, tmpJpeg.absolutePath,
+            fallbackParamsJsons = finalFallbacks,
             zoomRatio = frameZoom
         )
         check(result.ok) { "processRawFrame 失败: ${result.message}" }
@@ -949,6 +970,112 @@ class DevelopmentService : Service() {
         }
         Log.i(TAG, "RAW 影调探针完成: ${outDir.absolutePath} (${cases.size} 张)")
     }
+
+    /**
+     * v33 设备定标：用同快门的 ISP JPEG 给这张 RAW 选放大机曝光。
+     *
+     * 同一次快门 HAL 同时给了 JPEG（三星 ZSL/HDR/AE/AWB 全处理完）和 RAW_SENSOR，
+     * `UndevelopedFilmStore.saveFrame` 两样都随帧落盘。JPEG 就是「设备认为曝光
+     * 正确」的参考：拿它的中心区亮度分位当目标，逐档渲 320px 小图比一次，
+     * 选最接近的 print_exposure。每帧由设备自己算，零调参、跨场景自适应。
+     *
+     * 只比亮度分位数 —— 不叠 JPEG 像素、不叠二次 tone mapper、不对齐 JPEG 风格。
+     * 任何异常返回 null，调用侧回落 v32 参数链，绝不阻断冲洗。
+     */
+    private fun guideRawExposureByIsp(
+        rollId: String,
+        index: Int,
+        dngPath: String,
+        baseJson: String,
+        zoomRatio: Float,
+    ): Double? {
+        val targetHist = runCatching { ispJpegHistogram(rollId, index) }.getOrNull() ?: return null
+        val rawTarget = SpektraProcessor.luminancePercentiles(targetHist)
+        if (rawTarget.first < 8.0) return null   // 全黑 / 解码异常，别拿它定标
+        // v34：ISP 参考自己过曝时不能照抄（v33 #2 target 203/256 → 成片全白）
+        val target = SpektraProcessor.clampIspTarget(rawTarget.first, rawTarget.second)
+
+        val outDir = File(cacheDir, "isp_guide").apply { runCatching { mkdirs() } }
+        val offsets = SpektraProcessor.ISP_GUIDE_EV_OFFSETS
+        val paramJsons = offsets.map { SpektraProcessor.withIspGuidedExposure(baseJson, it) }
+        val outFiles = offsets.map { File(outDir, "p_$it.jpg") }
+        // v34：整批只 prepareGateDng 一次，省掉 v33 的 6×25MB DNG 拷贝（12s → 目标 5s）
+        val dims = SpektraProcessor.renderIspGuideBatch(
+            applicationContext, dngPath, paramJsons,
+            outFiles.map { it.absolutePath }, 320, zoomRatio
+        )
+        val points = ArrayList<SpektraProcessor.IspGuidePoint>()
+        val report = StringBuilder(
+            "帧$index rawTarget p50=${rawTarget.first} p90=${rawTarget.second} " +
+                "clamped=${target.first}/${target.second}\n"
+        )
+        offsets.forEachIndexed { i, ev ->
+            val out = outFiles[i]
+            val hist = if (dims.getOrNull(i) != null && out.exists()) {
+                runCatching { jpegHistogram(out) }.getOrNull()
+            } else null
+            if (hist == null) {
+                report.append("  ev=$ev FAIL\n")
+            } else {
+                val st = SpektraProcessor.luminancePercentiles(hist)
+                points.add(SpektraProcessor.IspGuidePoint(ev, st.first, st.second))
+                report.append("  ev=$ev p50=${st.first} p90=${st.second}\n")
+            }
+            runCatching { out.delete() }
+        }
+        // v34：先按相邻档 p50 插值出精确 ΔEV，超范围才退回离散选优
+        val chosen = SpektraProcessor.interpolateIspGuideEv(target.first, points)
+            ?: SpektraProcessor.pickIspGuideEv(target, points)
+        report.append("  chosen=${chosen ?: "NONE 回落 v32"}\n")
+        runCatching {
+            getExternalFilesDir(null)?.let {
+                File(it, "isp_guide_report.txt").appendText(report.toString())
+            }
+        }
+        Log.i(
+            TAG,
+            "ISP 曝光定标 帧$index target p50/p90=${target.first}/${target.second} " +
+                "候选=${points.size} 选中=$chosen"
+        )
+        return chosen
+    }
+
+    /** 同快门 ISP JPEG → 中心区灰度直方图（冲洗后才删除，此处仍在卷里）。 */
+    private fun ispJpegHistogram(rollId: String, index: Int): IntArray? {
+        val stream = UndevelopedFilmStore.openFrameStream(rollId, index) ?: return null
+        val bmp = stream.use {
+            BitmapFactory.decodeStream(it, null, BitmapFactory.Options().apply { inSampleSize = 8 })
+        } ?: return null
+        return runCatching { centerHistogram(bmp) }.also { bmp.recycle() }.getOrNull()
+    }
+
+    /** 定标小图 → 中心区灰度直方图。 */
+    private fun jpegHistogram(file: File): IntArray? {
+        val bmp = BitmapFactory.decodeFile(file.absolutePath) ?: return null
+        return runCatching { centerHistogram(bmp) }.also { bmp.recycle() }.getOrNull()
+    }
+
+    /** 中心 80% 区域的 256 桶亮度直方图：四边各裁 10% 去掉片框白边差异。 */
+    private fun centerHistogram(bmp: Bitmap): IntArray {
+        val x0 = (bmp.width * 0.10f).toInt()
+        val y0 = (bmp.height * 0.10f).toInt()
+        val w = (bmp.width * 0.80f).toInt().coerceAtLeast(1)
+        val h = (bmp.height * 0.80f).toInt().coerceAtLeast(1)
+        val px = IntArray(w * h)
+        bmp.getPixels(px, 0, w, x0, y0, w, h)
+        val hist = IntArray(256)
+        for (p in px) {
+            val r = (p shr 16) and 0xFF
+            val g = (p shr 8) and 0xFF
+            val b = p and 0xFF
+            hist[(r * 77 + g * 150 + b * 29) shr 8]++
+        }
+        return hist
+    }
+
+    /** 热关开关：外部私有目录放 isp_guide_off 即停用，出问题不用重装。 */
+    private fun ispGuideEnabled(): Boolean =
+        getExternalFilesDir(null)?.let { !File(it, "isp_guide_off").exists() } ?: true
 
     private fun runMatrixProbe(bmp: Bitmap, baseJson: String?) {
         if (baseJson == null) return

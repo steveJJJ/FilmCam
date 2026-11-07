@@ -717,6 +717,125 @@ object SpektraProcessor {
         else mergeParams(baseJson, mapOf("auto_exposure_method" to "\"$RAW_DEFAULT_EXPOSURE_METHOD\""))
 
     /**
+     * ISP 引导的 RAW 曝光定标（v33）—— 把「引擎逐张猜曝光」换成「设备报曝光」。
+     *
+     * 为什么改：同一个测光方式 / print_exposure 值在不同底片上落点不同，因为
+     * 每张 RAW 的输入曝光量由 HAL AE 决定（室外强光顶到 1/8000s、iso 23~39，
+     * 底片中位码值贴着 BlackLevel=64）。靠拍样片选一个默认值永远收敛不了。
+     *
+     * 设备其实早就把答案给了：同一次快门三星 ISP 输出的那张 JPEG（ZSL/HDR/
+     * AE/AWB 全做完）已随帧落盘，用户 11-07 实拍确认「观感正常」。用它解码后的
+     * 亮度分位当目标，程序自己渲几张小图选放大机曝光 —— 零调参、跨场景自适应。
+     *
+     * 边界：**只用亮度分位数**，不叠 JPEG 像素、不叠二次 tone mapper、
+     * 不反向对齐 JPEG 的观感风格。这是输入曝光标定（IDT），不是风格迁移。
+     */
+    /**
+     * v34 候选档（相对基础 print_exposure 的偏移，EV）。
+     *
+     * ⚠️不能出现 < −0.5：基础 print_exposure=0.83，减 1.0 会得到 −0.17，
+     * 引擎直接拒参数（v33 五帧报告里 ev=−1.0/−1.5 全 FAIL）。
+     * 太小又会在「0.0 档 p50≈13」与「−0.5 档 p50≈62~216」之间留下空档，
+     * 所以提亮侧加密到 0.25 步长，再靠 [interpolateIspGuideEv] 插值补精度。
+     */
+    val ISP_GUIDE_EV_OFFSETS = doubleArrayOf(-0.5, -0.25, 0.0, 0.25, 0.5)
+
+    /** 一档候选渲染的亮度分位（p50 / p90），ev = 相对基础 print_exposure 的偏移。 */
+    data class IspGuidePoint(val ev: Double, val p50: Double, val p90: Double)
+
+    /** 256 桶灰度直方图 → (p50, p90)。纯函数，JVM 单测可直接构直方图验证。 */
+    internal fun luminancePercentiles(hist: IntArray): Pair<Double, Double> {
+        if (hist.size != 256) return 0.0 to 0.0
+        val total = hist.sum().toDouble()
+        if (total <= 0.0) return 0.0 to 0.0
+        fun at(q: Double): Double {
+            val want = q * total
+            var acc = 0.0
+            for (i in 0 until 256) {
+                val prev = acc
+                acc += hist[i]
+                if (acc >= want) {
+                    val denom = hist[i].coerceAtLeast(1)
+                    return i + ((want - prev) / denom).coerceIn(0.0, 1.0)
+                }
+            }
+            return 255.0
+        }
+        return at(0.50) to at(0.90)
+    }
+
+    /**
+     * 目标分位钳制。同帧 ISP JPEG 自己也会过曝（v33 #2 target p50=202.8 /
+     * p90=255.6，照抄就把成片推成全白），不能无脑相信设备参考。
+     */
+    internal fun clampIspTarget(p50: Double, p90: Double): Pair<Double, Double> =
+        p50.coerceIn(40.0, 150.0) to p90.coerceIn(100.0, 230.0)
+
+    /**
+     * 相邻两档之间按 p50 线性插值求精确 ΔEV —— v33 只选离散档是死黑/过曝片的
+     * 直接原因（0.0 档 p50≈13、−0.5 档 p50≈62~216，目标 103 落在中间却只能挑极端）。
+     * 目标超出候选覆盖范围时退化为「取 p50 最接近的一档」。
+     */
+    internal fun interpolateIspGuideEv(
+        targetP50: Double,
+        points: List<IspGuidePoint>,
+    ): Double? {
+        if (points.isEmpty()) return null
+        val sorted = points.sortedBy { it.ev }
+        if (sorted.size == 1) return sorted[0].ev
+        for (i in 0 until sorted.size - 1) {
+            val a = sorted[i]
+            val b = sorted[i + 1]
+            val lo = kotlin.math.min(a.p50, b.p50)
+            val hi = kotlin.math.max(a.p50, b.p50)
+            val span = b.p50 - a.p50
+            if (targetP50 >= lo && targetP50 <= hi && kotlin.math.abs(span) > 1e-6) {
+                val t = ((targetP50 - a.p50) / span).coerceIn(0.0, 1.0)
+                return a.ev + t * (b.ev - a.ev)
+            }
+        }
+        return sorted.minByOrNull { kotlin.math.abs(it.p50 - targetP50) }?.ev
+    }
+
+    /**
+     * 插值失败时的兜底：选与目标分位最接近的一档。p50 权重高（中灰落点），
+     * p90 权重压到 0.2 —— RAW 小图的 p90 几乎恒定 ~210（片框/高光），
+     * 区分度低，权重给大了会干扰选优。
+     */
+    internal fun pickIspGuideEv(
+        target: Pair<Double, Double>,
+        points: List<IspGuidePoint>,
+    ): Double? = points.minByOrNull {
+        kotlin.math.abs(it.p50 - target.first) + 0.2 * kotlin.math.abs(it.p90 - target.second)
+    }?.ev
+
+    /** 基础串里的放大机曝光基线（当前设备 0.83）；缺键按 0.83 兜底。 */
+    internal fun basePrintExposure(baseJson: String): Double = runCatching {
+        org.json.JSONObject(baseJson).optDouble("print_exposure", 0.83)
+    }.getOrDefault(0.83)
+
+    /**
+     * 固定引擎曝光 + 按设备标定值设放大机曝光。
+     * auto_exposure=false 在 v31 直闪帧已真机验证可用；print_exposure 是 EV 偏移
+     * （正 = 更暗），两者都在 ENGINE_KNOWN_KEYS 白名单里，不引入新 key。
+     */
+    internal fun withIspGuidedExposure(baseJson: String, deltaEv: Double): String {
+        // 下限 0.05：print_exposure 为负会被引擎整帧拒掉（v33 的 FAIL 根因）
+        val value = (basePrintExposure(baseJson) + deltaEv).coerceIn(0.05, 6.0)
+        return mergeParams(
+            baseJson,
+            mapOf(
+                "auto_exposure" to "false",
+                "print_exposure" to value.toString(),
+            )
+        )
+    }
+
+    /** 直闪帧曝光量在拍摄时已定死（v31 已关 AE），不需要也不该再引导。 */
+    internal fun shouldUseIspGuide(isFlash: Boolean, guideEnabled: Boolean): Boolean =
+        !isFlash && guideEnabled
+
+    /**
      * RAW 影调 A/B 探针的单组渲染：同一张 DNG、同一套基线参数，覆盖 extra 后渲一张
      * 小图。只由 DevelopmentService.runRawToneProbe 调用（外部配置文件触发），
      * 默认冲洗路径完全不碰它。
@@ -744,6 +863,46 @@ object SpektraProcessor {
         } catch (e: Throwable) {
             Log.e(TAG, "RAW 影调探针渲染失败: ${e.message} | dng=$dngPath", e)
             null
+        }
+    }
+
+    /**
+     * v34：一次 prepareGateDng + 多组小图渲染。
+     *
+     * v33 每组都调 [renderRawProbeFrame]，内部每次复制 25MB DNG 改 ActiveArea，
+     * 7 组 = 175MB IO，实测冲洗从 3.2s 涨到 12s。片门几何只与 zoom/片门参数
+     * 有关、与曝光参数无关，所以整批只预裁一次，之后复用同一个 workDng。
+     */
+    fun renderIspGuideBatch(
+        context: Context,
+        dngPath: String,
+        paramJsons: List<String>,
+        outPaths: List<String>,
+        longEdge: Int = 320,
+        zoomRatio: Float = 0f,
+    ): List<Pair<Int, Int>?> {
+        if (paramJsons.isEmpty() || paramJsons.size != outPaths.size) return emptyList()
+        return try {
+            val eng = ensureEngine(context.applicationContext)
+            val workPath = prepareGateDng(dngPath, context.cacheDir, paramJsons.first(), zoomRatio)
+            try {
+                paramJsons.mapIndexed { i, json ->
+                    try {
+                        renderRawOne(
+                            eng, context, workPath, asLinearInput(json),
+                            outPaths[i], 0, longEdge
+                        )
+                    } catch (e: Throwable) {
+                        Log.w(TAG, "ISP 定标小图 $i 渲染失败: ${e.message}")
+                        null
+                    }
+                }
+            } finally {
+                if (workPath != dngPath) runCatching { java.io.File(workPath).delete() }
+            }
+        } catch (e: Throwable) {
+            Log.e(TAG, "ISP 定标批量渲染失败: ${e.message} | dng=$dngPath", e)
+            paramJsons.map { null }
         }
     }
 
