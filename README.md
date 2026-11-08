@@ -1,5 +1,9 @@
 # FilmCam
 
+[![Google Play](https://img.shields.io/badge/Google%20Play-Relic%20Cam-3DDC84?logo=googleplay&logoColor=white)](https://play.google.com/store/apps/details?id=com.filmcam.app)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
+[![Platform](https://img.shields.io/badge/Android-26%2B-3DDC84?logo=android&logoColor=white)](app/build.gradle.kts)
+
 Android 胶片相机 App —— 光学取景器拍摄、整卷 36 张、暗房冲洗的真实胶卷工作流。
 色彩由 Vulkan 引擎 **SpektraFilm** 按真实胶片 profile 渲染。引擎源自
 [steveJJJ/SpektraLab-Android](https://github.com/steveJJJ/SpektraLab-Android)（Android Vulkan 移植，GPL-3.0-or-later）→
