@@ -75,6 +75,22 @@ class JpegNormalizerTest {
     }
 
     @Test
+    fun `App 整图口径下典型已调味输入接近满档`() {
+        // v50 初版把阈值按「中心裁切口径」设成 0.10/0.185，真机上 hi 只有 0.062~0.066
+        // → 自适应恒为 0、校正从未施加。这里守住口径修正后的结果。
+        val s = JpegNormalizer.Stats(hi = 0.066f, sMean = 0.16f, darkRatio = 0.24f, samples = 1000)
+        val k = JpegNormalizer.suggestStrength(s)
+        assertTrue("典型浓郁输入应接近满档，实际 $k", k > 0.8f)
+    }
+
+    @Test
+    fun `平淡输入完全不校正`() {
+        // 三星相机 P3 JPG 整图口径实测 hi≈0.019 / sMean≈0.089
+        val s = JpegNormalizer.Stats(hi = 0.019f, sMean = 0.089f, darkRatio = 0.01f, samples = 1000)
+        assertEquals(0f, JpegNormalizer.suggestStrength(s), 1e-6f)
+    }
+
+    @Test
     fun `强度恒在 0 到 1 之间`() {
         for (hi in listOf(-1f, 0f, 0.05f, 0.10f, 0.185f, 0.5f, 2f)) {
             val s = JpegNormalizer.Stats(hi, 0.2f, 0.1f, 1000)
