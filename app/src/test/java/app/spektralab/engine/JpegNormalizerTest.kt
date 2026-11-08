@@ -188,4 +188,39 @@ class JpegNormalizerTest {
         val t = InputExposure.lut(0.0)
         for (v in 0..255) assertEquals(v, t[v])
     }
+
+    @Test
+    fun `v53 默认滑杆是 60 且可完全关闭`() {
+        assertEquals(0.6f, JpegNormalizer.DEFAULT_STRENGTH, 1e-6f)
+        assertTrue(JpegNormalizer.DEFAULT_STRENGTH > 0f)
+        assertTrue(JpegNormalizer.DEFAULT_STRENGTH < JpegNormalizer.MAX_STRENGTH)
+        // 0 必须严格回退到 v49 行为
+        assertEquals(0f, JpegNormalizer.effectiveStrength(1f, 0f), 1e-6f)
+    }
+
+    @Test
+    fun `v53 整卷统一强度只由基准和滑杆决定`() {
+        val baseline = 0.961f
+        val k = JpegNormalizer.effectiveStrength(baseline, JpegNormalizer.DEFAULT_STRENGTH)
+        assertTrue("默认档应落在中等强度，实际 $k", k > 0.5f && k < 0.65f)
+        // 逐帧自适应本身确实会波动（同场景实测 hi 0.055~0.072），这正是 v53 要消除的
+        val low = JpegNormalizer.suggestStrength(JpegNormalizer.Stats(0.055f, 0.2f, 0.23f, 1000))
+        val high = JpegNormalizer.suggestStrength(JpegNormalizer.Stats(0.072f, 0.2f, 0.22f, 1000))
+        assertTrue("逐帧自适应应存在明显波动", high - low > 0.2f)
+        // 但整卷统一后，无论后续帧长什么样，强度都是同一个 k
+        for (hi in listOf(0.02f, 0.055f, 0.072f, 0.15f)) {
+            assertEquals(
+                "整卷基准不应随帧统计变化 (hi=$hi)",
+                k, JpegNormalizer.effectiveStrength(baseline, JpegNormalizer.DEFAULT_STRENGTH), 1e-6f
+            )
+        }
+        assertEquals(baseline, JpegNormalizer.effectiveStrength(baseline, 1f), 1e-6f)
+    }
+
+    @Test
+    fun `v53 平淡画面在默认档仍完全不校正`() {
+        val flat = JpegNormalizer.Stats(0.019f, 0.089f, 0.01f, 1000)
+        val baseline = JpegNormalizer.suggestStrength(flat)
+        assertEquals(0f, JpegNormalizer.effectiveStrength(baseline, JpegNormalizer.DEFAULT_STRENGTH), 1e-6f)
+    }
 }

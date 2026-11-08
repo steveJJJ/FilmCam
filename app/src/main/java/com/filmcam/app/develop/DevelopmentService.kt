@@ -363,6 +363,11 @@ class DevelopmentService : Service() {
             // 4) 逐帧
             var firstError: String? = null
             var fallbackFrames = 0
+            // v53：输入校正的「整卷基准」。一卷底片是整卷一起冲的，工艺参数全卷一致；
+            // 逐帧各算各的会让同卷浓淡跳变（实测同场景三帧 hi 0.055~0.072 →
+            // 自适应 0.632~1.0）。首帧统计定基准，后续帧沿用，且不再重复采样。
+            // -1 = 尚未定基准（RAW 通路不经过这段，始终不写）。
+            val rollNormBaseline = FloatArray(1) { -1f }
             for (index in 1..roll.shotCount) {
                 if (Thread.currentThread().isInterrupted) {
                     Log.w(TAG, "冲洗被中断: $rollId")
@@ -394,6 +399,7 @@ class DevelopmentService : Service() {
                         inputEv = jpegInputEv,
                         rawInputEv = userInputEv,
                         jpegNormStrength = effective.jpegNormalizeStrength,
+                        rollNormBaseline = rollNormBaseline,
                     )
                     if (usedFallback) {
                         fallbackFrames++
@@ -552,6 +558,11 @@ class DevelopmentService : Service() {
         rawInputEv: Float = 0f,
         /** v50：JPEG 通路输入侧反 ISP 归一化倍率 [0,1]；0 = 关（旧行为）。 */
         jpegNormStrength: Float = 0f,
+        /**
+         * v53：长度 1 的整卷基准槽。[0] < 0 表示尚未定基准，由本帧（首帧）统计写入；
+         * >= 0 时全卷沿用，不再重复采样。保证一卷里 36 张浓淡一致。
+         */
+        rollNormBaseline: FloatArray = FloatArray(1) { -1f },
     ): Boolean {
         val tTotal0 = android.os.SystemClock.elapsedRealtime()
 
@@ -684,17 +695,26 @@ class DevelopmentService : Service() {
             // 所以这里只会是 HAL 直出 JPEG 或导入照片；片基/齿孔由引擎后叠，不受影响。
             // 强度 0 时严格走旧路径（包括 ev=0 时一个像素都不动），可随时回退。
             if (jpegNormStrength > 1e-4f) {
-                val stats = app.spektralab.engine.JpegNormalizer.measure(bmp)
-                val adaptive = app.spektralab.engine.JpegNormalizer.suggestStrength(stats)
-                val effectiveK = (adaptive * jpegNormStrength).coerceIn(0f, 1f)
-                val ok = app.spektralab.engine.JpegNormalizer.apply(
-                    bmp, inputEv.toDouble(), effectiveK
-                )
+                val norm = app.spektralab.engine.JpegNormalizer
+                val baseline = rollNormBaseline[0]
+                val isFirst = baseline < 0f
+                // 整卷只采样一次：首帧定基准，后续帧沿用，避免同卷浓淡跳变
+                val stats = if (isFirst) norm.measure(bmp) else null
+                val adaptive = if (isFirst) {
+                    val k = norm.suggestStrength(stats!!)
+                    rollNormBaseline[0] = k
+                    k
+                } else baseline
+                val effectiveK = norm.effectiveStrength(adaptive, jpegNormStrength)
+                val ok = norm.apply(bmp, inputEv.toDouble(), effectiveK)
+                val tail = "倍率=${"%.2f".format(jpegNormStrength)} " +
+                    "实际=${"%.3f".format(effectiveK)} " +
+                    "曝光=${if (inputEv >= 0) "+" else ""}$inputEv EV（${if (ok) "已施加" else "跳过"}）"
                 Log.i(
                     TAG,
-                    "帧 $index 输入校正 hi=${"%.3f".format(stats.hi)} 暗部=${"%.2f".format(stats.darkRatio)} " +
-                        "自适应=${"%.3f".format(adaptive)} 实际=${"%.3f".format(effectiveK)} " +
-                        "曝光=${if (inputEv >= 0) "+" else ""}$inputEv EV（${if (ok) "已施加" else "跳过"}）"
+                    if (isFirst) "帧 $index 输入校正【整卷基准】hi=${"%.3f".format(stats!!.hi)} " +
+                        "暗部=${"%.2f".format(stats.darkRatio)} 自适应=${"%.3f".format(adaptive)} $tail"
+                    else "帧 $index 输入校正 沿用整卷基准=${"%.3f".format(adaptive)} $tail"
                 )
             } else if (kotlin.math.abs(inputEv) > 1e-3) {
                 val ok = app.spektralab.engine.InputExposure.apply(bmp, inputEv.toDouble())

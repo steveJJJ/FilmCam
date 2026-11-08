@@ -535,9 +535,12 @@ class AboutActivity : AppCompatActivity() {
             tvColor.text = if (y == 0f && mm == 0f) getString(R.string.eng_cc_off)
             else String.format(java.util.Locale.US, "%+.2f/%+.2f", y, mm)
         }
-        // v50 输入侧反 ISP 归一化：默认 0 = 关（与旧版逐像素一致）
+        // v53 输入侧反 ISP 归一化：默认 60%（同场景三档标定），0 仍可关
         run {
-            val pct = (prefs.getFloat("filmcam_dev_jpeg_normalize", 0f) * 100f).roundToInt()
+            val pct = (prefs.getFloat(
+                "filmcam_dev_jpeg_normalize",
+                app.spektralab.engine.JpegNormalizer.DEFAULT_STRENGTH
+            ) * 100f).roundToInt()
             tvJpeg.text = if (pct == 0) getString(R.string.eng_jpeg_norm_off) else "$pct%"
         }
 
@@ -759,8 +762,10 @@ class AboutActivity : AppCompatActivity() {
         val sb = view.findViewById<SeekBar>(R.id.sbJpegNorm)
         val tv = view.findViewById<TextView>(R.id.tvJpegValue)
 
-        val current = (prefs.getFloat("filmcam_dev_jpeg_normalize", 0f) * 100f)
-            .roundToInt().coerceIn(0, 100)
+        val current = (prefs.getFloat(
+            "filmcam_dev_jpeg_normalize",
+            app.spektralab.engine.JpegNormalizer.DEFAULT_STRENGTH
+        ) * 100f).roundToInt().coerceIn(0, 100)
         sb.progress = current
         tv.text = if (current == 0) getString(R.string.eng_jpeg_norm_off) else "$current%"
         sb.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {

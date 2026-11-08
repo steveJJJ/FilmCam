@@ -262,12 +262,14 @@ object FilmStockMapper {
         /**
          * v50：JPEG / 导入通路的**输入侧反 ISP 归一化**强度倍率 [0,1]。
          *
-         * 0（默认）= 完全关闭，逐像素行为与 v49 一致；>0 时每帧按自身统计
-         * （见 [JpegNormalizer.suggestStrength]）自适应算出校正量，再乘这个倍率。
+         * 0 = 完全关闭，逐像素行为与 v49 一致；>0 时由**首帧**统计定出整卷基准
+         * （见 [JpegNormalizer.suggestStrength]），整卷共用同一强度再乘这个倍率。
+         * 一卷胶卷是整卷一起冲的，逐帧各算各的会让同卷浓淡不一（v53 修正）。
+         * 默认 [JpegNormalizer.DEFAULT_STRENGTH]，依据见该常量注释的真机标定数据。
          * 只作用 JPEG 通路，RAW 通路不经过；不按机型存，也不改任何胶片参数。
-         * 全局一个值，工程模式滑杆标定，下一次冲洗生效。
+         * 全局一个值，工程模式滑杆可改，下一次冲洗生效。
          */
-        val jpegNormalizeStrength: Float = 0f,
+        val jpegNormalizeStrength: Float = JpegNormalizer.DEFAULT_STRENGTH,
     ) {
         /**
          * 成片按哪一格片门出片。片框关着时也一样按 135 全画幅那一格（3:2）——
@@ -520,9 +522,10 @@ object FilmStockMapper {
             ccScale = if (sp.contains("filmcam_dev_cc_scale")) {
                 sp.getFloat("filmcam_dev_cc_scale", CC_SCALE_DEFAULT).takeIf { it > 0f }
             } else CC_SCALE_DEFAULT,
-            // 输入侧归一化：默认 0 = 关（严格等价于旧行为）。脏值一律收进 [0,1]。
-            jpegNormalizeStrength = sp.getFloat("filmcam_dev_jpeg_normalize", 0f)
-                .coerceIn(0f, JpegNormalizer.MAX_STRENGTH),
+            // 输入侧归一化：v53 默认 60%（同场景三档标定），0 仍可关。脏值收进 [0,1]。
+            jpegNormalizeStrength = sp.getFloat(
+                "filmcam_dev_jpeg_normalize", JpegNormalizer.DEFAULT_STRENGTH
+            ).coerceIn(0f, JpegNormalizer.MAX_STRENGTH),
         )
     }
 

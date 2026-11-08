@@ -49,6 +49,18 @@ object JpegNormalizer {
     /** 用户滑杆的满档值；0 = 关闭（严格走旧的 InputExposure 路径）。 */
     const val MAX_STRENGTH = 1f
 
+    /**
+     * 滑杆默认值（v53 由 0 改为 0.6）。
+     *
+     * 依据：2026-11-08 同场景三档严格单变量真机对照（GOLD 200 / 印相 / 曝光0 / 带框）：
+     *   校正 0        S 0.2153  hi 10.07%  chroma 0.1237  L50 0.588
+     *   滑杆 60%      S 0.1822  hi  7.18%  chroma 0.1037  L50 0.592  ← 目视最自然
+     *   滑杆 100%     S 0.1473  hi  5.08%  chroma 0.0830  L50 0.628  ← 偏淡偏亮
+     * 60% 把多余饱和退掉约 15~29%，中位亮度几乎不动（+0.7%）；满档则 +6.7%。
+     * 0 仍可手动关掉，逐像素回退到 v49 行为。
+     */
+    const val DEFAULT_STRENGTH = 0.6f
+
     /** 满档时最多缩减的色度比例。经验上限，待真机标定后收紧。 */
     const val MAX_CHROMA_REDUCTION = 0.35f
 
@@ -138,6 +150,15 @@ object JpegNormalizer {
         if (s.sMean < 0.06f) k *= 0.20f
         return k.coerceIn(0f, MAX_STRENGTH)
     }
+
+    /**
+     * v53：整卷统一强度 = 首帧自适应基准 × 用户滑杆倍率。
+     * 抽成纯函数便于 JVM 单测守住「整卷一致、滑杆 0 可完全关闭」这条契约。
+     * [baseline] 由首帧 [suggestStrength] 定出，一卷内所有帧传同一个值。
+     */
+    fun effectiveStrength(baseline: Float, slider: Float): Float =
+        (baseline.coerceIn(0f, MAX_STRENGTH) * slider.coerceIn(0f, MAX_STRENGTH))
+            .coerceIn(0f, MAX_STRENGTH)
 
     /**
      * 单通道色度缩放：`y + (v-y)*keep`，中性灰 r=g=b 时严格不变。
