@@ -3,14 +3,16 @@ package com.filmcam.app.ui
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
+import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
-import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 
 /**
  * Android 15+(target 35+) 强制边到边适配：
- *  - 关掉 decor fits，让内容延伸到状态栏 / 导航栏之下；
+ *  - v57 起改用官方 `enableEdgeToEdge()`（androidx.activity 1.8+）：它在所有
+ *    API 级别统一关掉 decor fits、把系统栏设为透明，是 Play 要求的向后兼容做法；
+ *    原先手写的 `WindowCompat.setDecorFitsSystemWindows(window, false)` 已移除。
  *  - 系统栏图标深浅交给 [BodyTheme.applySystemBars]（钛银=深图标、黑钛=浅图标）；
  *  - 把「顶部 inset」加到 [topView] 的 paddingTop、「底部 inset」加到 [bottomView]
  *    的 paddingBottom（[bottomAsMargin]=true 时加到 marginBottom）。
@@ -36,7 +38,9 @@ object EdgeToEdge {
         extraBottomMarginViews: List<View> = emptyList(),
     ) {
         val window = activity.window
-        WindowCompat.setDecorFitsSystemWindows(window, false)
+        // 官方无边框开关：内部完成 decorFits=false + 系统栏透明，并向后兼容旧 API。
+        // 透明后露出的是根布局机身底色，所以不需要（也不能再）设置栏颜色。
+        activity.enableEdgeToEdge()
         BodyTheme.applySystemBars(window)
 
         val root = activity.findViewById<View>(android.R.id.content)

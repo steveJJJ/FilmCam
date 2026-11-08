@@ -1,7 +1,9 @@
 <resources>
     <style name="Theme.FilmCam" parent="Theme.MaterialComponents.NoActionBar">
-        <item name="android:statusBarColor">#000000</item>
-        <item name="android:navigationBarColor">#000000</item>
+        <!-- v57：android:statusBarColor / android:navigationBarColor 在 Android 15
+             (API 35) 起对 targetSdk 35+ 已弃用且不再生效。系统栏透明由
+             EdgeToEdge.setup 的官方 enableEdgeToEdge() 统一设置，露出的就是
+             根布局的机身底色；这里不再声明任何窗口栏颜色。 -->
     </style>
 
     <!-- 全 App 统一深色弹窗：暗房面板语义（深底 + 琥珀强调） -->

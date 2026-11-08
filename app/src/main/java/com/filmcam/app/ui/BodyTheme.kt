@@ -318,32 +318,20 @@ object BodyTheme {
     const val KEEP_TEXT_COLOR = "keepTextColor"
 
     /**
-     * 系统栏：底色换了，图标也得跟着换深浅，否则银色状态栏上还是浅色图标=看不见。
-     * 钛银档开 LIGHT_STATUS_BARS / LIGHT_NAVIGATION_BARS（图标转深色）。
+     * 系统栏图标深浅跟着机身配色走：钛银（浅底）= 深图标，黑钛（深底）= 浅图标。
+     *
+     * v57（Play 政策整改）：
+     * - 不再写 `window.statusBarColor` / `window.navigationBarColor` —— 这两个属性
+     *   在 Android 15(API 35) 起对 targetSdk 35+ 已弃用、且不再生效。系统栏透明由
+     *   [EdgeToEdge.setup] 的官方 `enableEdgeToEdge()` 统一设置，透明后露出的
+     *   就是根布局的机身底色，视觉与旧版一致。
+     * - 不再直接用 `SYSTEM_UI_FLAG_LIGHT_*` / `decor.systemUiVisibility`（API 30 起
+     *   弃用）。统一走 [androidx.core.view.WindowInsetsControllerCompat]，由
+     *   androidx.core 内部去适配 API 26~29 的旧实现，我们这边不再触碰弃用 API。
      */
     fun applySystemBars(window: android.view.Window) {
-        window.statusBarColor = bodyColor
-        window.navigationBarColor = bodyColor
-        val decor = window.decorView
-        if (android.os.Build.VERSION.SDK_INT >= 30) {
-            val ctrl = decor.windowInsetsController ?: return
-            val light = android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or
-                android.view.WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
-            ctrl.setSystemBarsAppearance(if (isTitan) light else 0, light)
-        } else {
-            @Suppress("DEPRECATION")
-            var flags = decor.systemUiVisibility
-            flags = if (isTitan) {
-                flags or android.view.View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or
-                    (if (android.os.Build.VERSION.SDK_INT >= 26)
-                        android.view.View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR else 0)
-            } else {
-                flags and android.view.View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR.inv() and
-                    (if (android.os.Build.VERSION.SDK_INT >= 26)
-                        android.view.View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR.inv() else -1)
-            }
-            @Suppress("DEPRECATION")
-            decor.systemUiVisibility = flags
-        }
+        val ctrl = androidx.core.view.WindowCompat.getInsetsController(window, window.decorView)
+        ctrl.isAppearanceLightStatusBars = isTitan
+        ctrl.isAppearanceLightNavigationBars = isTitan
     }
 }
