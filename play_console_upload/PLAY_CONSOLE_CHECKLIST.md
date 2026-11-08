@@ -11,7 +11,7 @@
 
 **已完成**
 - [x] 代码侧：targetSdk 36、16KB 对齐、edge-to-edge、AAB 重出
-- [x] 内购接入：billing 9.1.0 + `ProManager.kt` + 关于页「工程模式 PRO」入口，versionCode 54（含竖屏铭牌位置修复）
+- [x] 内购接入：billing 9.1.0 + `ProManager.kt` + 关于页「工程模式 PRO」入口（vc48 起）
 - [x] 隐私政策：免费 + 内购表述，已推送上线 `https://stevejjj.github.io/relic-cam-privacy/`
 - [x] 商店文案 / 图标 / 特色图 / 3 张截图 / 原生符号包 全部就绪
 - [x] 商家账号（付款资料）已提交，银行账户改用储蓄卡
@@ -21,7 +21,7 @@
    - 「正在验证」→ 等 1~3 个工作日（可能需上传 90 天内对账单 / 回填小额打款）
    - 「已验证」→ 进第 2 步
 2. **应用定价改「免费」**（⚠️ 不可逆）→ 商店设置 → 定价和分发
-3. **传 AAB** → 测试 → 内部测试 → 上传 `RelicCam-v1.0.0-vc54.aab`
+3. **传 AAB** → 测试 → 内部测试 → 上传 `RelicCam-v1.0.0-vc56.aab`
 4. **传素材 + 填商店信息**（第 1 节）→ 图标 512 / 特色图 1024×500 / 3 张截图
 5. **填 App content 全部问卷**（第 2 节）→ Data safety 全 No、无广告、目标受众 13-17+18+
 6. **建 `pro_unlock` 商品并激活**（第 3 节，需第 1 步完成）
@@ -64,7 +64,7 @@
 ```
 Relic Cam 把你的手机变成一台复古胶片相机 —— 免费下载，工程模式（Pro）一次解锁、永久可用。
 
-- 真实胶片模拟：内置多款经典胶片色彩（如 Kodak Gold 200、Cinestill 800T 等），拍摄即带胶片味道。
+- 真实胶片模拟：内置多款经典胶片色彩，拍摄即带胶片味道。
 - 暗房冲洗：在手机里完成「冲卷」，反差、颗粒、色调由冲洗参数决定，所见即所得。
 - 胶片质感：成片带胶片齿孔、片基与日期戳，像真的从暗房里拿出来。
 - 工程模式（Pro）：面向发烧友的专家面板 —— 手工校准输入曝光、放大机曝光、乳剂与印相层参数，把每一卷冲出你想要的味道。
@@ -77,7 +77,7 @@ Relic Cam 把你的手机变成一台复古胶片相机 —— 免费下载，�
 ```
 Relic Cam turns your phone into a vintage film camera — free to download, with Engineering Mode (Pro) as a single one-time unlock you keep forever.
 
-- Authentic film looks powered by real film profiles (Kodak Gold 200, Cinestill 800T, and more).
+- Authentic film looks powered by real film profiles.
 - In-app darkroom: develop your roll on-device with controllable contrast, grain, and tone.
 - Film aesthetics: sprocket holes, film rebate, and date stamps on every frame.
 - Engineering Mode (Pro): an expert panel for enthusiasts — hand-tune input exposure, enlarger exposure, and emulsion / printing-layer parameters to get exactly the look you want.
@@ -127,6 +127,33 @@ Free to download. Pick up your phone and step back into the film era.
 ### 2.8 Financial features（金融功能）— None
 - 选「None」（无支付、无订阅、无虚拟货币）。
 
+### 2.9 Foreground service permissions（前台服务声明）— 最容易秒拒的一节
+入口：**政策与计划 → App content → Foreground service permissions → 开始 / Manage**
+（上传过含该权限的 AAB 后才会出现；我们已传过）
+
+- **声明类型必须与 manifest 完全一致**：代码是 `FOREGROUND_SERVICE_DATA_SYNC` +
+  `android:foregroundServiceType="dataSync"` → 这里只能选 **Data sync**。
+  不要改选 mediaProcessing / mediaPlayback 等（类型不匹配会直接驳回）。
+  `POST_NOTIFICATIONS` 已声明、合并清单无 `INTERNET`，代码侧已核对无误。
+- use case **只勾本地文件处理类**（Local file processing / Import-export / on-device
+  processing 一类，以 Console 实际措辞为准）；**不要勾任何云端上传下载、备份同步、
+  网络传输** —— 应用没有 INTERNET 权限，勾了就是自相矛盾。
+- 三问的答法：
+  1. **核心功能**：用户在暗房点「冲洗整卷」，需要对整卷逐帧在设备本地做胶片渲染
+     （每帧数秒、整卷数分钟），期间必须连续执行并显示可见进度。
+  2. **用户路径**：暗房 → 点「冲洗」→ 出现持续通知显示帧数进度 → 可切到后台 / Home
+     → 通知栏持续可见 → 完成后返回查看成片。
+  3. **为何不能用 WorkManager**：任务由用户主动发起、需立即连续执行并提供实时进度，
+     WorkManager 会被 Doze / 电量配额延迟，无法满足「冲洗中随时回来看进度」的预期。
+- **演示视频**：`play_console_upload/fgs_demo.mp4`（50s / 1080p / 36MB）。
+  先传 YouTube 设为**不公开（Unlisted，不是 Private）**，用**无痕窗口**确认链接能播放，
+  再粘贴 URL。视频里必须能看清：① 点冲洗 ② 通知栏出现持续通知 ③ 切后台通知仍在
+  ④ 返回看到成片。
+- **常见秒拒原因**（16:06 提交 / 16:07 被拒属于这一类，通常是自动校验）：
+  视频链接无痕窗口打不开或设成了 Private；use case 勾了云端 / 网络项；
+  三问没说清「为什么不能延迟执行」；声明类型与 manifest 不一致；
+  通知不是持续的或没有进度。被拒后改完重新提交即可，提交 ID 会递增，不影响已上传的 AAB。
+
 ---
 
 ## 3. Pricing & distribution（定价与发布）+ 内购商品
@@ -156,7 +183,7 @@ Free to download. Pick up your phone and step back into the film era.
 
 ## 4. 上传与提交
 1. Play Console → 新建应用 → 填 1 节的基础信息。
-2. **测试 → 内部测试（Internal testing）** 先跑一轮 → 上传 `RelicCam-v1.0.0-vc54.aab`（⚠️ vc47~vc53 全部作废：vc48 是 libz 补丁写错字节的坏包；vc49~vc53 是调色标定与布局修复的中间版，只在本机验证过。**上架必须传 vc54**）。
+2. **测试 → 内部测试（Internal testing）** 先跑一轮 → 上传 `RelicCam-v1.0.0-vc56.aab`（⚠️ vc47~vc55 全部作废：vc48 是 libz 补丁写错字节的坏包；vc49~vc55 是调色标定与布局修复的中间版，只在本机验证过。**上架必须传 vc56**）。
 3. 依次补全第 2 节所有 App content 表单（标「待处理」的都要点完成）。
 4. 填完 Store listing（第 1 节）并上传图标/特图/截图。
 5. 提交审核。
