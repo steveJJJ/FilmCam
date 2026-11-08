@@ -21,6 +21,9 @@ class FilmCamApp : Application() {
         CrashLog.attach(this)
         CrashLog.install(Thread.getDefaultUncaughtExceptionHandler())
         com.filmcam.app.film.UndevelopedFilmStore.init(this)
+        // v55：竖屏倒过来时保持正竖（不让机身铭牌跑进物理顶部的状态栏 / 挖孔预留区），
+        // 但保留两侧横屏 —— 相机主拍摄方向与商店首图都是横屏。
+        com.filmcam.app.ui.ReversePortraitGuard.install(this)
         Log.i("FilmCam", "Application 就绪，崩溃日志: " + CrashLog.file(this).absolutePath)
     }
 }

@@ -116,7 +116,7 @@
         android:layout_height="22dp"
         android:adjustViewBounds="true"
         android:layout_gravity="bottom|center_horizontal"
-        android:layout_marginBottom="136dp"
+        android:layout_marginBottom="150dp"
         android:src="@drawable/ic_t3_logo"
         android:contentDescription="CONTAX T3" />
 

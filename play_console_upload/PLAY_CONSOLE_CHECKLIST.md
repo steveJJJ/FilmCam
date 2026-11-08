@@ -11,7 +11,7 @@
 
 **已完成**
 - [x] 代码侧：targetSdk 36、16KB 对齐、edge-to-edge、AAB 重出
-- [x] 内购接入：billing 9.1.0 + `ProManager.kt` + 关于页「工程模式 PRO」入口，versionCode 53（JPEG 输入校正已定档）
+- [x] 内购接入：billing 9.1.0 + `ProManager.kt` + 关于页「工程模式 PRO」入口，versionCode 54（含竖屏铭牌位置修复）
 - [x] 隐私政策：免费 + 内购表述，已推送上线 `https://stevejjj.github.io/relic-cam-privacy/`
 - [x] 商店文案 / 图标 / 特色图 / 3 张截图 / 原生符号包 全部就绪
 - [x] 商家账号（付款资料）已提交，银行账户改用储蓄卡
@@ -21,7 +21,7 @@
    - 「正在验证」→ 等 1~3 个工作日（可能需上传 90 天内对账单 / 回填小额打款）
    - 「已验证」→ 进第 2 步
 2. **应用定价改「免费」**（⚠️ 不可逆）→ 商店设置 → 定价和分发
-3. **传 AAB** → 测试 → 内部测试 → 上传 `RelicCam-v1.0.0-vc53.aab`
+3. **传 AAB** → 测试 → 内部测试 → 上传 `RelicCam-v1.0.0-vc54.aab`
 4. **传素材 + 填商店信息**（第 1 节）→ 图标 512 / 特色图 1024×500 / 3 张截图
 5. **填 App content 全部问卷**（第 2 节）→ Data safety 全 No、无广告、目标受众 13-17+18+
 6. **建 `pro_unlock` 商品并激活**（第 3 节，需第 1 步完成）
@@ -156,7 +156,7 @@ Free to download. Pick up your phone and step back into the film era.
 
 ## 4. 上传与提交
 1. Play Console → 新建应用 → 填 1 节的基础信息。
-2. **测试 → 内部测试（Internal testing）** 先跑一轮 → 上传 `RelicCam-v1.0.0-vc53.aab`（⚠️ vc47~vc52 全部作废：vc48 是 libz 补丁写错字节的坏包；vc49~vc52 是调色标定中间版，只在本机验证过。**上架必须传 vc53**）。
+2. **测试 → 内部测试（Internal testing）** 先跑一轮 → 上传 `RelicCam-v1.0.0-vc54.aab`（⚠️ vc47~vc53 全部作废：vc48 是 libz 补丁写错字节的坏包；vc49~vc53 是调色标定与布局修复的中间版，只在本机验证过。**上架必须传 vc54**）。
 3. 依次补全第 2 节所有 App content 表单（标「待处理」的都要点完成）。
 4. 填完 Store listing（第 1 节）并上传图标/特图/截图。
 5. 提交审核。
