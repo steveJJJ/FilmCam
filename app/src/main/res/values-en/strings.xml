@@ -278,6 +278,10 @@ Memory available: %10$d MB / %11$d MB total
     <string name="eng_lens_blur">Lens softness</string>
     <string name="eng_lens_hint">Sonnar softness on film (part of the body, not per roll)</string>
     <string name="eng_lens_note">0 = off (digital-sharp) · 4 invisible · 8 slight · 12 default · 20 soft · 35 dreamy. Takes effect on the next development.</string>
+    <string name="eng_jpeg_norm">JPEG input correction</string>
+    <string name="eng_jpeg_norm_hint">Undo the extra colour added by the phone ISP (JPG / import only)</string>
+    <string name="eng_jpeg_norm_note">0 = off (pixel-identical to the previous version) · 100% = per-frame adaptive correction. Device-agnostic: it measures how much this frame was already graded, so every phone gets its own strength while the input converges toward a linear negative. Night and near-monochrome scenes are automatically damped to avoid washing out. Affects JPG and imported photos only; RAW is untouched and no film/printing parameter is changed. Takes effect on the next development.</string>
+    <string name="eng_jpeg_norm_off">Off</string>
     <string name="eng_raw_negative">RAW negative</string>
     <string name="eng_raw_hint">Capture RAW (16-bit Bayer, bypassing the ISP tone mapping / AWB / multi-frame stacking) alongside JPEG. The DNG is kept as the negative (~25–40MB each) and developed through the engine RAW session. Falls back to the JPEG path on any failure.</string>
     <string name="eng_raw_unavailable">RAW negative (not supported)</string>

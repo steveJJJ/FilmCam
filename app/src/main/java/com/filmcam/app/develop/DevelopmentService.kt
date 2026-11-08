@@ -393,6 +393,7 @@ class DevelopmentService : Service() {
                         flashFrameParamsJson = flashFrameParamsJson,
                         inputEv = jpegInputEv,
                         rawInputEv = userInputEv,
+                        jpegNormStrength = effective.jpegNormalizeStrength,
                     )
                     if (usedFallback) {
                         fallbackFrames++
@@ -549,6 +550,8 @@ class DevelopmentService : Service() {
          * RAW 的绝对曝光由同帧 ISP JPEG 引导决定，这里只叠用户口味偏移。
          */
         rawInputEv: Float = 0f,
+        /** v50：JPEG 通路输入侧反 ISP 归一化倍率 [0,1]；0 = 关（旧行为）。 */
+        jpegNormStrength: Float = 0f,
     ): Boolean {
         val tTotal0 = android.os.SystemClock.elapsedRealtime()
 
@@ -677,7 +680,23 @@ class DevelopmentService : Service() {
             // 输入层曝光（v46）：曝光补偿在这里施加，引擎的 print_exposure 恒定 →
             // 片基/齿孔/暗边印刷的浓度不随曝光变（用户 11-07 的定调）。
             // 放在日期戳与暗角之后：日期戳是真机曝在底片上的字，该跟着底片一起变亮变暗。
-            if (kotlin.math.abs(inputEv) > 1e-3) {
+            // v50：JPEG 通路专属的输入侧反 ISP 归一化。RAW 通路在上面已提前 return，
+            // 所以这里只会是 HAL 直出 JPEG 或导入照片；片基/齿孔由引擎后叠，不受影响。
+            // 强度 0 时严格走旧路径（包括 ev=0 时一个像素都不动），可随时回退。
+            if (jpegNormStrength > 1e-4f) {
+                val stats = app.spektralab.engine.JpegNormalizer.measure(bmp)
+                val adaptive = app.spektralab.engine.JpegNormalizer.suggestStrength(stats)
+                val effectiveK = (adaptive * jpegNormStrength).coerceIn(0f, 1f)
+                val ok = app.spektralab.engine.JpegNormalizer.apply(
+                    bmp, inputEv.toDouble(), effectiveK
+                )
+                Log.i(
+                    TAG,
+                    "帧 $index 输入校正 hi=${"%.3f".format(stats.hi)} 暗部=${"%.2f".format(stats.darkRatio)} " +
+                        "自适应=${"%.3f".format(adaptive)} 实际=${"%.3f".format(effectiveK)} " +
+                        "曝光=${if (inputEv >= 0) "+" else ""}$inputEv EV（${if (ok) "已施加" else "跳过"}）"
+                )
+            } else if (kotlin.math.abs(inputEv) > 1e-3) {
                 val ok = app.spektralab.engine.InputExposure.apply(bmp, inputEv.toDouble())
                 Log.i(TAG, "帧 $index 输入曝光 ${if (inputEv >= 0) "+" else ""}$inputEv EV（${if (ok) "已施加" else "跳过"}）")
             }

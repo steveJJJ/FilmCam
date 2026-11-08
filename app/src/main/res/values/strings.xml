@@ -291,6 +291,10 @@ App 版本：%1$s (%2$d)
     <string name="eng_lens_blur">镜头柔度</string>
     <string name="eng_lens_hint">Sonnar 在底片上的柔度（机身属性，不随胶卷换）</string>
     <string name="eng_lens_note">0 = 关（纯数码锐）· 4 察觉不到 · 8 轻微 · 12 默认 · 20 明显柔 · 35 奶油。改完下一次冲洗生效</string>
+    <string name="eng_jpeg_norm">JPEG 输入校正</string>
+    <string name="eng_jpeg_norm_hint">退掉手机 ISP 多加的那层色彩（仅 JPG / 导入）</string>
+    <string name="eng_jpeg_norm_note">0 = 关（与旧版逐像素一致）· 100% = 按每帧统计自适应校正。不认机型：只量这一帧被 ISP 调了多少，不同手机自动得到不同强度，目标是把输入拉回接近线性底片。夜景与近单色场景会自动减弱，避免洗灰。只作用 JPG 与导入照片，RAW 通路不受影响，也不动胶片和印相参数。改完下一次冲洗生效</string>
+    <string name="eng_jpeg_norm_off">关</string>
     <string name="eng_raw_negative">RAW 负片</string>
     <string name="eng_raw_hint">快门同时收 RAW（16bit Bayer，绕过 ISP 的色调映射/自动白平衡/多帧合成），DNG 作底片存私有目录（约 25–40MB/张），冲洗走引擎 RAW 会话。失败自动落回 JPEG 通路，帧不丢</string>
     <string name="eng_raw_unavailable">RAW 负片（本机不支持）</string>

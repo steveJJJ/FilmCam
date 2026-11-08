@@ -474,6 +474,7 @@ class AboutActivity : AppCompatActivity() {
         val rowDev = view.findViewById<View>(R.id.rowEngDev)
         val rowLens = view.findViewById<View>(R.id.rowEngLens)
         val rowColor = view.findViewById<View>(R.id.rowEngColor)
+        val rowJpeg = view.findViewById<View>(R.id.rowEngJpeg)
 
         /** 绑定一行「名称 + 说明」，返回右侧读数 TextView */
         fun bindRow(row: View, labelRes: Int, hintRes: Int): TextView {
@@ -489,6 +490,7 @@ class AboutActivity : AppCompatActivity() {
         bindRow(rowDev, R.string.set_dev, R.string.eng_dev_hint)
         val tvLens = bindRow(rowLens, R.string.eng_lens_blur, R.string.eng_lens_hint)
         val tvColor = bindRow(rowColor, R.string.eng_cc, R.string.eng_cc_hint)
+        val tvJpeg = bindRow(rowJpeg, R.string.eng_jpeg_norm, R.string.eng_jpeg_norm_hint)
 
         fun slowMode(): com.filmcam.app.camera.FilmExposure.Mode =
             com.filmcam.app.camera.FilmExposure.Mode.fromPrefs(prefs.getInt("slowShutter", 0))
@@ -533,6 +535,11 @@ class AboutActivity : AppCompatActivity() {
             tvColor.text = if (y == 0f && mm == 0f) getString(R.string.eng_cc_off)
             else String.format(java.util.Locale.US, "%+.2f/%+.2f", y, mm)
         }
+        // v50 输入侧反 ISP 归一化：默认 0 = 关（与旧版逐像素一致）
+        run {
+            val pct = (prefs.getFloat("filmcam_dev_jpeg_normalize", 0f) * 100f).roundToInt()
+            tvJpeg.text = if (pct == 0) getString(R.string.eng_jpeg_norm_off) else "$pct%"
+        }
 
         // 当前装在机身上的是哪支胶卷：冲洗参数是按胶卷分开存的，默认就该停在这支
         val rollIdx = prefs.getInt("rollIndex", 0)
@@ -571,6 +578,11 @@ class AboutActivity : AppCompatActivity() {
         rowColor.setOnClickListener {
             consoleRef?.dismiss()
             showColorBalanceDialog { showEngineerConsole() }
+        }
+        // v50 JPEG 输入校正：输入层属性，所有档位通用，全局存、单独一层
+        rowJpeg.setOnClickListener {
+            consoleRef?.dismiss()
+            showJpegNormalizeDialog { showEngineerConsole() }
         }
 
         // 工程师模式开关：关掉 = 这些旋钮重新藏起来，入口回到"连点 10 次"
@@ -727,6 +739,43 @@ class AboutActivity : AppCompatActivity() {
 
         androidx.appcompat.app.AlertDialog.Builder(this, com.filmcam.app.ui.BodyTheme.dialogTheme)
             .setTitle(R.string.set_slow)
+            .setView(view)
+            .setPositiveButton(R.string.set_close, null)
+            .create()
+            .apply { setOnDismissListener { onClose() } }
+            .show()
+    }
+
+    /**
+     * v50：JPEG 输入侧反 ISP 归一化强度（0–100%）。
+     *
+     * 输入层属性：不按胶卷存、不按机型存，也不随输出档位变；下一次冲洗生效。
+     * 0 = 关，冲洗侧严格走 v49 的 [app.spektralab.engine.InputExposure] 路径。
+     */
+    private fun showJpegNormalizeDialog(onClose: () -> Unit) {
+        val prefs = getSharedPreferences("filmcam", MODE_PRIVATE)
+        val view = layoutInflater.inflate(R.layout.dialog_jpeg_normalize, null)
+        com.filmcam.app.ui.BodyTheme.applyToViewTree(view)
+        val sb = view.findViewById<SeekBar>(R.id.sbJpegNorm)
+        val tv = view.findViewById<TextView>(R.id.tvJpegValue)
+
+        val current = (prefs.getFloat("filmcam_dev_jpeg_normalize", 0f) * 100f)
+            .roundToInt().coerceIn(0, 100)
+        sb.progress = current
+        tv.text = if (current == 0) getString(R.string.eng_jpeg_norm_off) else "$current%"
+        sb.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(sb: SeekBar?, progress: Int, fromUser: Boolean) {
+                if (fromUser) {
+                    prefs.edit().putFloat("filmcam_dev_jpeg_normalize", progress / 100f).apply()
+                }
+                tv.text = if (progress == 0) getString(R.string.eng_jpeg_norm_off) else "$progress%"
+            }
+            override fun onStartTrackingTouch(sb: SeekBar?) {}
+            override fun onStopTrackingTouch(sb: SeekBar?) {}
+        })
+
+        androidx.appcompat.app.AlertDialog.Builder(this, com.filmcam.app.ui.BodyTheme.dialogTheme)
+            .setTitle(R.string.eng_jpeg_norm)
             .setView(view)
             .setPositiveButton(R.string.set_close, null)
             .create()
