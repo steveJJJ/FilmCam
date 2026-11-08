@@ -34,15 +34,30 @@ class FlashController(
     var onBuiltInFlash: ((Boolean) -> Unit)? = null
 
     override fun startScan() {
-        if (mode != FlashMode.EXTERNAL) return
+        if (mode != FlashMode.EXTERNAL) {
+            android.util.Log.i("FlashDiag", "startScan 跳过：mode=$mode")
+            return
+        }
         // restoreSettings / cycleFlashMode /「拍摄同款」三条路都会调到这里。
         // 以前每次都 new 一个 FotorGearFlash，旧 GATT 不关 → 同一台灯被反复注册
         // client_if（真机日志里能看到成串 GATT_Register / 连接互相顶掉）。
         // 一次 EXTERNAL 会话只建一条 GATT，连接状态由 FotorGearFlash 自己维护。
-        if (bleFlash != null) return
-        bleFlash = FotorGearFlash(context).also {
-            it.onStatusChange = { s -> onStatusChange?.invoke(s) }
-            it.startScan()
+        if (bleFlash != null) {
+            android.util.Log.i("FlashDiag", "startScan 跳过：已有 BLE 会话")
+            return
+        }
+        android.util.Log.i("FlashDiag", "startScan 新建 BLE 会话")
+        // v59：BLE 建连（权限/适配器/协议）出任何异常都不能冒泡到 cycleFlashMode，
+        // 否则档位切换后半段（相机同步、LCD、落盘）会整段被跳过，表现为「按键没反应」。
+        runCatching {
+            bleFlash = FotorGearFlash(context).also {
+                it.onStatusChange = { s -> onStatusChange?.invoke(s) }
+                it.startScan()
+            }
+        }.onFailure {
+            bleFlash = null
+            android.util.Log.w("FlashDiag", "BLE 会话建立失败", it)
+            onStatusChange?.invoke("SCAN_ERROR: ${it.message}")
         }
     }
 
@@ -67,6 +82,9 @@ class FlashController(
     override fun release() {
         onBuiltInFlash?.invoke(false)
         bleFlash?.release()
+        // v59：release() 之后必须清空引用，否则 startScan() 的幂等判断会一直
+        // 命中「已有会话」而永不重建 —— 灯被 close 后就再也连不回来。
+        bleFlash = null
         handler.removeCallbacksAndMessages(null)
     }
 }

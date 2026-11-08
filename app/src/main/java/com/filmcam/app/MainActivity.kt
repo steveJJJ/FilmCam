@@ -538,7 +538,11 @@ class MainActivity : AppCompatActivity() {
         // 上次退出时停在外置闪光档：以前只有「切档」和「拍摄同款」会去连灯，
         // 冷启动恢复的 EXTERNAL 只是 LCD 上写着 EXT，bleFlash 根本没建，
         // flash.trigger() 全程空转。startScan 已做幂等，这里补一次即可。
-        if (flash.mode == FlashMode.EXTERNAL) flash.startScan()
+        if (flash.mode == FlashMode.EXTERNAL) {
+            android.util.Log.i("FlashDiag", "restoreSettings 恢复 EXTERNAL，补建连")
+            runCatching { flash.startScan() }
+                .onFailure { android.util.Log.w("FlashDiag", "恢复建连失败", it) }
+        }
         val rollIndex = prefs.getInt("rollIndex", 0).coerceIn(0, FilmRollRepository.rolls.size - 1)
         // 上次选中的若是反转片（本版不支持），回退到第一支可用胶卷，避免带着禁用卷启动
         val restored = FilmRollRepository.rolls[rollIndex].takeIf { it.available }
@@ -1257,18 +1261,25 @@ class MainActivity : AppCompatActivity() {
 
     /** 循环切换闪光灯模式：OFF → BUILT_IN → EXTERNAL → OFF */
     private fun cycleFlashMode() {
+        val from = flash.mode
         flash.mode = when (flash.mode) {
             FlashMode.OFF -> FlashMode.BUILT_IN
             FlashMode.BUILT_IN -> FlashMode.EXTERNAL
             FlashMode.EXTERNAL -> FlashMode.OFF
         }
+        // v59：档位切换全程留痕。灯身物理键走 HID 音量键，排查时靠这条
+        // 与 FlashDiag 的 keyDown / shutterDown 对齐，才能分清是「没切档」
+        // 还是「切了档但灯没响」。
+        android.util.Log.i("FlashDiag", "cycleFlashMode $from -> ${flash.mode}")
         binding.tvFlashStatus.text = when (flash.mode) {
             FlashMode.OFF -> getString(R.string.main_flash_off)
             FlashMode.BUILT_IN -> getString(R.string.main_flash_internal)
             FlashMode.EXTERNAL -> getString(R.string.main_flash_external)
         }
         if (flash.mode == FlashMode.EXTERNAL) {
-            flash.startScan()
+            // 建连失败也不能吞掉后面的相机同步 / LCD / 落盘，否则看起来像「按键没反应」
+            runCatching { flash.startScan() }
+                .onFailure { android.util.Log.w("FlashDiag", "切档时建连失败", it) }
         }
         // 内置闪光灯档位变化要同步给相机：切进来 = 拍照闪光模式，切走 = 关掉
         flash.setBuiltInEnabled(flash.mode == FlashMode.BUILT_IN)
@@ -1366,6 +1377,12 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         // 回前台：恢复 GL，SurfaceTexture 重建后会自动触发 onSurfaceTextureReady → 重新启动相机
         binding.glSurfaceView.onResume()
+        // v59：回前台时若仍停在外置档，补一次建连（startScan 幂等；
+        // 若 onDestroy 曾 release 过，新建的 FlashController 会在这里把灯连回来）。
+        if (flash.mode == FlashMode.EXTERNAL) {
+            runCatching { flash.startScan() }
+                .onFailure { android.util.Log.w("FlashDiag", "回前台建连失败", it) }
+        }
         // 冲洗是后台干的：用户这会儿可能正在暗房看进度，也可能已经回到机身。
         // 「冲洗完成」这条状态汇报该从机顶 LCD 出来，而不是弹一个 Android 式吐司。
         com.filmcam.app.develop.DevelopmentState.addListener(devStateListener)
@@ -1544,6 +1561,13 @@ class MainActivity : AppCompatActivity() {
             return true
         }
         if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN || keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
+            // v59：灯身物理键 = HID Volume Down。这条日志能区分「灯键没送到」
+            // 与「灯键送到了但拍照被守卫拦下」（卷满 / isCapturing 未复位）。
+            android.util.Log.i(
+                "FlashDiag",
+                "keyDown=$keyCode mode=${flash.mode} capturing=$isCapturing " +
+                    "shots=${currentShotCount()} -> triggerShutter"
+            )
             triggerShutter()
             return true
         }
