@@ -38,10 +38,18 @@ class Camera2Controller(private val context: Context) {
          *
          * 真机逐档扫描（暗场、灯距固定）：ISO 57 @100ms → RAW 净信号 284、
          * p90=562、p99=966、饱和 1.68%（不过曝的直闪片）；ISO 289 时 68% 饱和。
-         * `flash_sync_gain.txt` 是倍率（默认 1.0），EV 拨盘按标准档位 2^EV 调。
+         * `flash_sync_gain.txt` 是倍率（**默认 4.0**，与常量一致），EV 拨盘按 2^EV 调；
+         * 实际下发 ISO = 57 × gain × 2^EV（默认 228）。
+         * ⚠️ 这是 S25U 单台标定值，跨厂商不可移植；P0 只保证「出图 + 按本机
+         * ISO 刻度守恒」，绝对曝光量的机型差异留给 P1 的 ISP 引导定标。
          */
         private const val FLASH_SYNC_ISO_AT_100MS = 57f
         private const val FLASH_SYNC_GAIN_DEFAULT = 4.0f
+
+        /** 闪光同步窗口物理下限：灯脉冲几十毫秒，窗口再窄会漏闪。 */
+        private const val MIN_SYNC_SHUTTER_NS = 8_000_000L
+        /** 闪光同步窗口上限（S25U 设备上限 176ms，留 26ms 余量）。 */
+        private const val MAX_SYNC_SHUTTER_NS = 150_000_000L
 
         /**
          * 灯的固件固有延迟：从收到 05 xx 到 COB 真正出光约 200ms（官方所谓
@@ -719,7 +727,7 @@ class Camera2Controller(private val context: Context) {
         }
         // AE 补偿步长：换算闪光帧 EV 偏置要用（1/2 与 1/3 步长的设备很常见）
         chars.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_STEP)?.let { s ->
-            if (s != null && s.numerator > 0 && s.denominator > 0) aeCompStep = s
+            if (s.numerator > 0 && s.denominator > 0) aeCompStep = s
         }
         android.util.Log.i(
             "FlashTuning",
@@ -1082,22 +1090,42 @@ class Camera2Controller(private val context: Context) {
      * 只关 AE、不动 CONTROL_MODE —— AF / AWB 仍然自动（和慢门那套同理）。
      */
     private fun applyExternalFlashSync(builder: CaptureRequest.Builder) {
+        // v62 P0：快门必须按设备真实上限收敛，且被截断后要反算 ISO 补回曝光量。
+        // 旧实现写死 100ms，在最大曝光只有 33~66ms 的机型上会被 HAL 截断，
+        // 曝光量凭空少 1~2 EV，闪光帧直接黑一片。
+        val maxShutterNs = (deviceMaxExposureSec * 1_000_000_000f)
+            .coerceIn(MIN_SYNC_SHUTTER_NS.toFloat(), MAX_SYNC_SHUTTER_NS.toFloat())
+            .toLong()
+        val minShutterNs = maxOf(
+            MIN_SYNC_SHUTTER_NS,
+            (deviceMinExposureSec * 1_000_000_000f).toLong().coerceAtLeast(0L)
+        )
+        val caps = FlashExposure.Caps(
+            hasManualSensor, deviceIsoRange.first, deviceIsoRange.last,
+            minShutterNs, maxShutterNs
+        )
+        if (!caps.canLockExposure()) {
+            // LEGACY / LIMITED 机型不支持 MANUAL_SENSOR：手写 AE_OFF + SENSOR_* key
+            // 会被 HAL 忽略甚至让整帧失败。降级为「BLE 点灯 + HAL 自动曝光」——
+            // 代价是 AE 可能在闪光峰值重新测光把成片压暗，但至少保证出图。
+            android.util.Log.w(
+                "FlashSync",
+                "设备不支持手动曝光（manualSensor=$hasManualSensor " +
+                    "快门=$minShutterNs~$maxShutterNs ns ISO=$deviceIsoRange），" +
+                    "外置闪光降级为 BLE 点灯 + HAL 自动曝光"
+            )
+            return
+        }
         val evGain = Math.pow(2.0, exposureComp.toDouble()).toFloat()
         val gain = flashSyncGain * evGain
-        var shutterNs = FLASH_SYNC_SHUTTER_NS
-        var isoF = FLASH_SYNC_ISO_AT_100MS * gain
-        val minIso = deviceIsoRange.first.toFloat()
-        val maxIso = deviceIsoRange.last.toFloat()
-        if (isoF < minIso) {
-            shutterNs = (shutterNs * isoF / minIso).toLong()
-                .coerceIn(8_000_000L, FLASH_SYNC_SHUTTER_NS)
-            isoF = minIso
-        } else if (isoF > maxIso) {
-            shutterNs = (shutterNs * isoF / maxIso).toLong()
-                .coerceIn(FLASH_SYNC_SHUTTER_NS, 150_000_000L)
-            isoF = maxIso
-        }
-        val iso = isoF.toInt().coerceIn(deviceIsoRange.first, deviceIsoRange.last)
+        val solved = FlashExposure.solve(
+            baseIso = FLASH_SYNC_ISO_AT_100MS * gain,
+            baseShutterNs = FLASH_SYNC_SHUTTER_NS,
+            minIso = deviceIsoRange.first,
+            maxIso = deviceIsoRange.last,
+            minShutterNs = minShutterNs,
+            maxShutterNs = maxShutterNs,
+        )
         builder.set(
             CaptureRequest.CONTROL_MODE,
             android.hardware.camera2.CameraMetadata.CONTROL_MODE_AUTO
@@ -1106,15 +1134,17 @@ class Camera2Controller(private val context: Context) {
             CaptureRequest.CONTROL_AE_MODE,
             android.hardware.camera2.CameraMetadata.CONTROL_AE_MODE_OFF
         )
-        builder.set(CaptureRequest.SENSOR_EXPOSURE_TIME, shutterNs)
-        builder.set(CaptureRequest.SENSOR_SENSITIVITY, iso)
+        builder.set(CaptureRequest.SENSOR_EXPOSURE_TIME, solved.shutterNs)
+        builder.set(CaptureRequest.SENSOR_SENSITIVITY, solved.iso)
         builder.set(
             CaptureRequest.SENSOR_FRAME_DURATION,
-            maxOf(shutterNs, 33_000_000L)
+            maxOf(solved.shutterNs, 33_000_000L)
         )
         android.util.Log.i(
             "FlashSync",
-            "闪光固定曝光 iso=$iso t=${shutterNs / 1_000_000}ms gain=$gain ev=$exposureComp" +
+            "闪光固定曝光 iso=${solved.iso} t=${solved.shutterNs / 1_000_000}ms " +
+                "gain=$gain ev=$exposureComp 快门上限=${maxShutterNs / 1_000_000}ms" +
+                (if (solved.clamped) " ⚠️ ${solved.note}" else "") +
                 " (环境基线 iso=$aeBaselineIso t=${(aeBaselineSec * 1000).toInt()}ms)"
         )
     }
