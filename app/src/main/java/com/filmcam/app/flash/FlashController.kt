@@ -65,7 +65,18 @@ class FlashController(
         when (mode) {
             // 内置闪光由相机 HAL 在快门那一刻自己打，这里不需要再动什么
             FlashMode.BUILT_IN -> {}
-            FlashMode.EXTERNAL -> bleFlash?.trigger()
+            FlashMode.EXTERNAL -> {
+                val dev = bleFlash
+                if (dev == null) {
+                    // 以前这里是 `bleFlash?.trigger()`，会话没建起来时连日志都没有，
+                    // 表现为「切到外置档、按快门、灯毫无反应」，无法区分于指令缺失。
+                    android.util.Log.w("FlashDiag", "trigger 跳过：无 BLE 会话，立即重建（本帧漏闪）")
+                    startScan()
+                    onStatusChange?.invoke("TRIGGER_SKIP NO_SESSION")
+                } else {
+                    dev.trigger()
+                }
+            }
             FlashMode.OFF -> {}
         }
     }

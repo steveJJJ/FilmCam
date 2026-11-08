@@ -47,8 +47,9 @@ import androidx.annotation.RequiresPermission
  *   提前 250/200/150ms → RAW 净信号 953/957/956（闪光进画面）
  *   曝光开始 / +50 / +100ms → ~11（等于没闪）
  *
- * 正式触发指令在外部私有目录 `flash_trigger.hex`（默认 05 00），可随时
- * adb push 换参数，不用重新编译。
+ * 正式触发指令内置为 `05 00`（见 [FlashTriggerCommand]）；外部私有目录的
+ * `flash_trigger.hex` 只作调参覆盖，可随时 adb push 换参数，不用重新编译。
+ * ⚠️ 该目录在卸载 / 清数据时会被删掉，所以点灯能力绝不能依赖这个文件存在。
  *
  * 逆向工具（保留，方便以后调参）：
  *  - [dumpGatt] 把整张 GATT 表打进 logcat；0xFFE1 通知打进 "FlashNotify" tag；
@@ -361,11 +362,7 @@ class FotorGearFlash(
         return ok
     }
 
-    private fun parseHex(s: String): ByteArray? = runCatching {
-        val hex = s.replace(Regex("[^0-9a-fA-F]"), "")
-        if (hex.isEmpty() || hex.length % 2 != 0) return@runCatching null
-        ByteArray(hex.length / 2) { i -> hex.substring(i * 2, i * 2 + 2).toInt(16).toByte() }
-    }.getOrNull()
+    private fun parseHex(s: String): ByteArray? = FlashTriggerCommand.parseHex(s)
 
     /** 订阅 0xFFE1：灯身按键 / 预闪 / 闪光事件会上报字节，这是协议最直接的线索。 */
     @RequiresPermission("android.permission.BLUETOOTH_CONNECT")
@@ -405,8 +402,8 @@ class FotorGearFlash(
      *
      * 调用点已从「按快门那一刻」挪到 Camera2Controller.onExposureStarted ——
      * 三星 HAL 从提交请求到真正开曝光要 ~240ms，提前发灯就白闪了。
-     * 默认读 `flash_trigger.hex`（05 01）；若存在 `flash_candidates.txt` 则
-     * 进入快门逐条轮转的逆向模式，供调参用。
+     * 指令优先读 `flash_trigger.hex`，缺失 / 非法一律回退内置 `05 00`；
+     * 若存在 `flash_candidates.txt` 则进入快门逐条轮转的逆向模式，供调参用。
      */
     @RequiresPermission("android.permission.BLUETOOTH_CONNECT")
     override fun trigger() {
@@ -429,23 +426,35 @@ class FotorGearFlash(
             onStatusChange?.invoke("TRIG #$no/${candidates.size} ${label.take(12)}")
             return
         }
+        // v60：以前这里读到 null 就 TRIGGER_SKIP NO_CMD 整帧跳过点灯，
+        // 而配置文件在卸载 / 清数据后必然不存在 —— App 快门点灯因此静默失效。
         val cmd = readTriggerCommand()
-        if (cmd == null) {
-            android.util.Log.i(TAG, "触发跳过：未配置 BLE 指令（灯由物理按键自行闪光）")
-            onStatusChange?.invoke("TRIGGER_SKIP NO_CMD")
-            return
-        }
         val ok = writeCommand(g, char, cmd, "TRIGGER")
         onStatusChange?.invoke(if (ok) "TRIGGER_SENT" else "TRIGGER_FAIL")
     }
 
-    /** 外部私有目录 `flash_trigger.hex` 里的十六进制字节，逆向出来直接丢进去即可。 */
-    private fun readTriggerCommand(): ByteArray? = runCatching {
-        val dir = context.getExternalFilesDir(null) ?: return@runCatching null
-        val f = java.io.File(dir, TRIGGER_HEX_FILE)
-        if (!f.exists()) return@runCatching null
-        parseHex(f.readText().substringBefore("//"))
-    }.getOrNull()
+    /**
+     * 外部私有目录 `flash_trigger.hex` 优先；文件不存在 / 读失败 / 内容非法
+     * 一律回退内置默认 05 00（[FlashTriggerCommand.DEFAULT]）。
+     * 返回值永远非空，调用方不需要也不能再跳过点灯。
+     */
+    private fun readTriggerCommand(): ByteArray {
+        val raw = runCatching {
+            val dir = context.getExternalFilesDir(null) ?: return@runCatching null
+            val f = java.io.File(dir, TRIGGER_HEX_FILE)
+            if (!f.exists()) return@runCatching null
+            f.readText()
+        }.onFailure {
+            android.util.Log.w(TAG, "读取 flash_trigger.hex 失败，回退内置默认", it)
+        }.getOrNull()
+        val cmd = FlashTriggerCommand.resolve(raw)
+        android.util.Log.i(
+            TAG,
+            "触发指令 ${if (raw != null) "外部覆盖" else "内置默认"} -> " +
+                cmd.joinToString(" ") { "%02X".format(it.toInt() and 0xFF) }
+        )
+        return cmd
+    }
 
     override fun release() {
         released = true
