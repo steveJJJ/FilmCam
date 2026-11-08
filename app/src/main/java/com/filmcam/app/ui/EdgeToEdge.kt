@@ -2,6 +2,7 @@ package com.filmcam.app.ui
 
 import android.view.View
 import android.view.ViewGroup
+import android.widget.FrameLayout
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
@@ -24,7 +25,15 @@ object EdgeToEdge {
         activity: AppCompatActivity,
         topView: View? = null,
         bottomView: View? = null,
-        bottomAsMargin: Boolean = false
+        bottomAsMargin: Boolean = false,
+        /**
+         * 额外要一起补偿底部 inset 的控件。v54：竖屏机身铭牌与 [bottomBar] 同为
+         * `bottom` gravity，只补 bottomBar 会让铭牌相对下移一个导航栏高度
+         * （真机竖屏实测：铭牌上方空 130px、下方只剩 10px，v48 边到边回归）。
+         * 只处理 [FrameLayout.LayoutParams]：横屏布局里铭牌是 LinearLayout 子项，
+         * 会自动跳过，不受影响。
+         */
+        extraBottomMarginViews: List<View> = emptyList(),
     ) {
         val window = activity.window
         WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -36,6 +45,10 @@ object EdgeToEdge {
             (bottomView?.layoutParams as? ViewGroup.MarginLayoutParams)?.bottomMargin ?: 0
         } else {
             bottomView?.paddingBottom ?: 0
+        }
+        // -1 = 不是 FrameLayout 子项（横屏铭牌），跳过补偿
+        val extraBases = extraBottomMarginViews.map { v ->
+            (v.layoutParams as? FrameLayout.LayoutParams)?.bottomMargin ?: -1
         }
 
         ViewCompat.setOnApplyWindowInsetsListener(root) { _, insets ->
@@ -55,6 +68,15 @@ object EdgeToEdge {
                         bottomView.paddingLeft, bottomView.paddingTop,
                         bottomView.paddingRight, botBase + sb.bottom
                     )
+                }
+            }
+            extraBottomMarginViews.forEachIndexed { i, v ->
+                val base = extraBases[i]
+                if (base < 0) return@forEachIndexed
+                val lp = v.layoutParams as? FrameLayout.LayoutParams ?: return@forEachIndexed
+                if (lp.bottomMargin != base + sb.bottom) {
+                    lp.bottomMargin = base + sb.bottom
+                    v.layoutParams = lp
                 }
             }
             insets

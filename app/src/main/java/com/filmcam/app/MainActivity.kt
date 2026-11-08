@@ -113,9 +113,13 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        // 边到边：顶栏/底栏推出状态栏与导航栏（相机预览保持全屏）
+        // 边到边：顶栏/底栏推出状态栏与导航栏（相机预览保持全屏）。
+        // 竖屏铭牌与底栏同为 bottom gravity，必须一起补同样的底部 inset，
+        // 否则它会相对下移一个导航栏高度（v48 回归，v54 修复）。
+        // 横屏里铭牌是 LinearLayout 子项，EdgeToEdge 会自动跳过。
         com.filmcam.app.ui.EdgeToEdge.setup(
-            this, binding.topBar, binding.bottomBar, bottomAsMargin = true
+            this, binding.topBar, binding.bottomBar, bottomAsMargin = true,
+            extraBottomMarginViews = listOf(binding.brandLogo)
         )
 
         // 胶卷图标（预览不做 LUT 调色：光学取景器看不到成片效果，是产品设计）
