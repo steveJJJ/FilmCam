@@ -245,6 +245,19 @@ Memory available: %10$d MB / %11$d MB total
     <string name="about_support">SUPPORT</string>
     <string name="about_credits">CREDITS</string>
 
+    <!-- ===== In-app purchase: Engineering Mode (Pro) ===== -->
+    <string name="about_spec_pro">PRO MODE</string>
+    <string name="pro_state_locked">Locked</string>
+    <string name="pro_price_loading">Loading…</string>
+    <string name="pro_buy">Unlock %1$s</string>
+    <string name="pro_dialog_title">Engineering Mode (Pro)</string>
+    <string name="pro_dialog_body">Engineering Mode is an expert panel for enthusiasts: hand-tune input exposure, enlarger exposure, and the emulsion and print-layer parameters so every roll comes out the way you want.\n\nA one-time purchase, not a subscription — buy once and keep it forever. Reinstalling or switching phones restores it at no extra charge.\n\nRelic Cam itself has no network permission; the purchase is handled by Google Play, so your photos still cannot leave this phone.</string>
+    <string name="pro_dialog_buy">Buy and unlock</string>
+    <string name="pro_dialog_later">Not now</string>
+    <string name="pro_unlock_ok">Engineering Mode unlocked — thank you</string>
+    <string name="pro_unavailable">Purchase is unavailable right now, please try again later</string>
+    <string name="pro_not_ready">Fetching the price, please tap again in a moment</string>
+
     <!-- ===== About screen (strings set in AboutActivity code) ===== -->
     <string name="about_tap_more">%1$s · %2$d more taps</string>
     <string name="about_no_browser">No browser available</string>

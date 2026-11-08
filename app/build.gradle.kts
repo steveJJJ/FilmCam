@@ -20,7 +20,7 @@ android {
         applicationId = "com.filmcam.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 47
+        versionCode = 49
         versionName = "1.0.0"
     }
 
@@ -87,6 +87,10 @@ dependencies {
 
     // 图片加载（画廊缩略图，含内存/磁盘缓存）
     implementation("io.coil-kt:coil:2.7.0")
+
+    // 内购：工程模式 Pro（一次性买断）。Play 自 2026-08-31 起强制要求 8+。
+    // 传递依赖会注入网络/位置权限，已在 AndroidManifest 用 tools:node="remove" 剔除。
+    implementation("com.android.billingclient:billing:9.1.0")
 
     // 单元测试：纯 JVM（映射表 / 参数拼装 / 状态机），不依赖 Robolectric
     testImplementation("junit:junit:4.13.2")

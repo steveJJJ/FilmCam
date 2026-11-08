@@ -26,3 +26,23 @@ Thumbs.db
 keystore.properties
 keystore/
 tmp/
+
+# 私人/敏感文档（绝不入库）
+*.pdf
+招商银行*
+
+# Play 上架大素材（体积大、含个人照片，单独备份）
+play_console_upload/fgs_demo.mp4
+play_console_upload/native-debug-symbols.zip
+play_console_upload/RelicCam-*.aab
+play_console_upload/*.png
+play_console_upload/relic-cam-privacy/
+play_console_upload/upload_venv/
+play_console_upload/play-sa.json
+play_console_upload/*.json
+
+# Play 截图（含个人照片，仅本地保留）
+play_console_upload/play_ready/0*.png
+play_console_upload/play_ready/screenshots_v1/
+play_console_upload/screenshots/
+tools/*.pyc

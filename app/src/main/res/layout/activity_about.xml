@@ -188,6 +188,22 @@
                         android:focusable="true"
                         android:text="—" />
                 </LinearLayout>
+
+                <View style="@style/AboutSpecDivider" />
+
+                <!-- 工程模式（Pro）：未解锁时点这里买，已解锁时点这里直接进控制台。
+                     数值位显示价格/未解锁/PRO 三种状态，由 AboutActivity 渲染。 -->
+                <LinearLayout style="@style/AboutSpecRow">
+                    <TextView
+                        style="@style/AboutSpecLabel"
+                        android:text="@string/about_spec_pro" />
+                    <TextView
+                        android:id="@+id/tvSpecPro"
+                        style="@style/AboutSpecValue"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:text="@string/pro_state_locked" />
+                </LinearLayout>
             </LinearLayout>
         </LinearLayout>
 

@@ -45,6 +45,7 @@ class AboutActivity : AppCompatActivity() {
         buildSelfLicense()
         bindFeedback()
         bindAppreciation()
+        bindPro()
         paintNameplateChips()
 
         // 跟随机身配色（黑钛 / 钛银）
@@ -90,6 +91,64 @@ class AboutActivity : AppCompatActivity() {
     private val restoreVersionText = Runnable {
         tapCount = 0
         findViewById<TextView>(R.id.tvSpecVersion).text = versionText
+    }
+
+    // ===================== 工程模式（Pro 内购） =====================
+
+    /**
+     * 铭牌上的「工程模式 PRO」一行：未解锁显示价格，点击走 Google Play 内购；
+     * 已解锁显示 PRO，点击直接进控制台。
+     *
+     * 说明：版本号连点 10 次那条彩蛋入口**保留**，方便开发期在正式包上直接进控制台，
+     * 不必每次走一遍购买流程。若日后想彻底关掉这个后门，把上面 onVersionTap 里的
+     * 解锁分支删掉即可（购买路径不受影响）。
+     */
+    private fun bindPro() {
+        ProManager.onUpdate = { runOnUiThread { renderProState() } }
+        ProManager.onMessage = { msg ->
+            runOnUiThread { Toast.makeText(this, msg, Toast.LENGTH_SHORT).show() }
+        }
+        findViewById<TextView>(R.id.tvSpecPro).setOnClickListener {
+            if (ProManager.isPro(this) || EngineerMode.isOn(this)) {
+                showEngineerConsole()
+            } else {
+                showProPurchaseDialog()
+            }
+        }
+        renderProState()
+        ProManager.start(this)
+    }
+
+    /** 按权益/价格刷新铭牌上的那一位 */
+    private fun renderProState() {
+        val tv = findViewById<TextView>(R.id.tvSpecPro) ?: return
+        tv.text = when {
+            ProManager.isPro(this) -> getString(R.string.pro_state_unlocked)
+            else -> {
+                val price = ProManager.price(this)
+                if (price != null) getString(R.string.pro_buy, price)
+                else getString(R.string.pro_state_locked)
+            }
+        }
+    }
+
+    private fun showProPurchaseDialog() {
+        val price = ProManager.price(this)
+        val positive = if (price != null) getString(R.string.pro_buy, price)
+        else getString(R.string.pro_dialog_buy)
+        androidx.appcompat.app.AlertDialog.Builder(this, com.filmcam.app.ui.BodyTheme.dialogTheme)
+            .setTitle(R.string.pro_dialog_title)
+            .setMessage(R.string.pro_dialog_body)
+            .setPositiveButton(positive) { _, _ -> ProManager.buy(this) }
+            .setNegativeButton(R.string.pro_dialog_later, null)
+            .show()
+    }
+
+    override fun onDestroy() {
+        // 回调持有 Activity，页面销毁必须摘掉，否则旋转屏幕会漏一个 AboutActivity
+        ProManager.onUpdate = null
+        ProManager.onMessage = null
+        super.onDestroy()
     }
 
     /**

@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <uses-feature android:name="android.hardware.camera.any" android:required="true" />
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
@@ -25,6 +26,18 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- 内购（工程模式 Pro）。购买请求经 IPC 交给 Play 商店，真正的联网由 Play 商店完成，
+         所以本 App 依旧不申请 INTERNET 权限 —— 这是隐私政策的核心论据，别加回来。
+
+         但 billing 的传递依赖（play-services-location、Firebase datatransport）会在清单合并时
+         注入 INTERNET / ACCESS_NETWORK_STATE / ACCESS_COARSE_LOCATION，下面逐个剔掉。
+         注意 ACCESS_FINE_LOCATION 不能 remove：我们自己要在 API≤30 上用它扫 BLE，
+         它与库里的同名声明会自动合并，保留 maxSdkVersion=30 的收窄。 -->
+    <uses-permission android:name="com.android.vending.BILLING" />
+    <uses-permission android:name="android.permission.INTERNET" tools:node="remove" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" tools:node="remove" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" tools:node="remove" />
 
     <!-- allowBackup 必须关闭：未冲洗胶卷的登记表在 SharedPreferences（会被备份），
          而对应的帧文件在 MediaStore / DCIM（不在同一备份域，不会恢复）。
