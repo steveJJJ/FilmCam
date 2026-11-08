@@ -118,7 +118,18 @@ class LutGLSurfaceView @JvmOverloads constructor(
             surfaceHeight = height
             GLES30.glViewport(0, 0, width, height)
             Log.i("LutRenderer", "surfaceChanged: ${width}x${height}")
-            diagAppend("surfaceChanged: ${width}x${height}")
+            // v58 跨机型诊断：shader 的 letterbox 由 surface 尺寸算，取景框标记层
+            // 由 View 尺寸算。两者若不一致，画面与 UI 会整体错位（部分厂商窗口策略）。
+            val vw = this@LutGLSurfaceView.width
+            val vh = this@LutGLSurfaceView.height
+            val line = "surfaceChanged: surface=${width}x${height} view=${vw}x${vh} " +
+                "density=${resources.displayMetrics.density}" +
+                (if (vw > 0 && vh > 0 && (vw != width || vh != height)) " GEOMETRY_MISMATCH" else "")
+            diagAppend(line)
+            runCatching {
+                val dir = context.getExternalFilesDir(null) ?: context.filesDir
+                java.io.File(dir, "filmcam_layout.txt").appendText("$line\n")
+            }
         }
 
         private var loggedFrames = 0

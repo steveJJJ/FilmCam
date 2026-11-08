@@ -36,6 +36,11 @@ object EdgeToEdge {
          * 会自动跳过，不受影响。
          */
         extraBottomMarginViews: List<View> = emptyList(),
+        /**
+         * v58：把本次派发的系统栏 inset 回传给调用方，供 [ChromeSafeArea] 用
+         * 「预览留白」重新定位机身控件。不改变这里的补偿逻辑。
+         */
+        onSystemBarInsets: ((topPx: Int, bottomPx: Int) -> Unit)? = null,
     ) {
         val window = activity.window
         // 官方无边框开关：内部完成 decorFits=false + 系统栏透明，并向后兼容旧 API。
@@ -57,6 +62,7 @@ object EdgeToEdge {
 
         ViewCompat.setOnApplyWindowInsetsListener(root) { _, insets ->
             val sb = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            onSystemBarInsets?.invoke(sb.top, sb.bottom)
             topView?.let { v ->
                 v.setPadding(v.paddingLeft, topBase + sb.top, v.paddingRight, v.paddingBottom)
             }

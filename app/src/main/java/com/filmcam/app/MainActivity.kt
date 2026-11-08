@@ -117,10 +117,51 @@ class MainActivity : AppCompatActivity() {
         // 竖屏铭牌与底栏同为 bottom gravity，必须一起补同样的底部 inset，
         // 否则它会相对下移一个导航栏高度（v48 回归，v54 修复）。
         // 横屏里铭牌是 LinearLayout 子项，EdgeToEdge 会自动跳过。
+        // v58：机身控件按「预览留白」自适应定位。布局里的 150dp / 48dp / 16dp
+        // 是在 S25U 上调出来的固定值，短屏 / 大状态栏 / 三键导航 / 大显示尺寸
+        // 都会把它们顶进预览画面。ChromeSafeArea 只在越界时收，基准机型逐像素等价。
+        var sbTopPx = 0
+        var sbBottomPx = 0
+        var chromeDiagWritten = false
+        val refitChrome = {
+            val changed = com.filmcam.app.ui.ChromeSafeArea.apply(
+                binding.root, binding.topBar, binding.bottomBar, binding.brandLogo,
+                binding.lcdDisplay, binding.evKey, binding.settingsKey,
+                binding.viewfinderFrame.contentRect(), sbTopPx, sbBottomPx
+            )
+            // 一次性布局快照，写到外部 filesDir 便于 adb pull / 文件管理器导出：
+            //   adb pull /sdcard/Android/data/com.filmcam.app/files/filmcam_layout.txt
+            if (!chromeDiagWritten && sbTopPx > 0 && sbBottomPx > 0 &&
+                binding.viewfinderFrame.width > 0
+            ) {
+                chromeDiagWritten = true
+                runCatching {
+                    val dir = getExternalFilesDir(null) ?: filesDir
+                    val logoM = (binding.brandLogo.layoutParams as? android.widget.FrameLayout.LayoutParams)?.bottomMargin
+                    val barM = (binding.bottomBar.layoutParams as? android.widget.FrameLayout.LayoutParams)?.bottomMargin
+                    java.io.File(dir, "filmcam_layout.txt").appendText(
+                        "chrome changed=$changed " +
+                            "view=${binding.root.width}x${binding.root.height} " +
+                            "density=${resources.displayMetrics.density} " +
+                            "sb=$sbTopPx/$sbBottomPx " +
+                            "content=${binding.viewfinderFrame.contentRect()} " +
+                            "topPad=${binding.topBar.paddingTop} logoMargin=$logoM barMargin=$barM\n"
+                    )
+                }
+            }
+            Unit
+        }
         com.filmcam.app.ui.EdgeToEdge.setup(
             this, binding.topBar, binding.bottomBar, bottomAsMargin = true,
-            extraBottomMarginViews = listOf(binding.brandLogo)
+            extraBottomMarginViews = listOf(binding.brandLogo),
+            onSystemBarInsets = { t, b ->
+                sbTopPx = t
+                sbBottomPx = b
+                binding.root.post { refitChrome() }
+            }
         )
+        // 旋转 / 分辨率 / 显示大小变化后重新量一次（值不变时不写，不会自激循环）
+        binding.root.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> refitChrome() }
 
         // 胶卷图标（预览不做 LUT 调色：光学取景器看不到成片效果，是产品设计）
         binding.tvFilmName.setImageResource(currentRoll.iconResId)

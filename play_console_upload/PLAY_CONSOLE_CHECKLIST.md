@@ -21,7 +21,7 @@
    - 「正在验证」→ 等 1~3 个工作日（可能需上传 90 天内对账单 / 回填小额打款）
    - 「已验证」→ 进第 2 步
 2. **应用定价改「免费」**（⚠️ 不可逆）→ 商店设置 → 定价和分发
-3. **传 AAB** → 测试 → 内部测试 → 上传 `RelicCam-v1.0.0-vc57.aab`
+3. **传 AAB** → 测试 → 内部测试 → 上传 `RelicCam-v1.0.0-vc58.aab`
 4. **传素材 + 填商店信息**（第 1 节）→ 图标 512 / 特色图 1024×500 / 3 张截图
 5. **填 App content 全部问卷**（第 2 节）→ Data safety 全 No、无广告、目标受众 13-17+18+
 6. **建 `pro_unlock` 商品并激活**（第 3 节，需第 1 步完成）
@@ -37,6 +37,10 @@
 - 全部 6 个 `.so` 的 `PT_LOAD` 对齐 = **16384（16KB）**，无自带 libz ✓
 - AAB 已签名（FILMCAM 密钥），Play App Signing 会再用上传密钥重签 ✓
 - 真机冒烟：相机/相册/关于/照片查看 启动无崩溃；**暗房引擎初始化已修复**（见下方「重要修复」）
+- **v58 跨机型屏幕兼容**：新增 `ChromeSafeArea`，按「预览内容矩形之外的可用留白 + 系统栏 inset」
+  等比缩放机身控件的 paddingTop / margin，并夹紧保证永不压进预览画面；窄屏按比例收窄顶栏。
+  S25U 真机验证 `changed=false`（逐像素等价），横屏布局不介入。
+  诊断文件 `adb pull /sdcard/Android/data/com.filmcam.app/files/filmcam_layout.txt`。
 - **v57 无边框政策整改**：已改用官方 `enableEdgeToEdge()`（androidx.activity 1.9.0），删除
   `android:statusBarColor` / `android:navigationBarColor` 与 `window.statusBarColor` /
   `window.navigationBarColor`（API 35 弃用），不再直接使用 `SYSTEM_UI_FLAG_LIGHT_*`（API 30 弃用），
@@ -187,7 +191,7 @@ Free to download. Pick up your phone and step back into the film era.
 
 ## 4. 上传与提交
 1. Play Console → 新建应用 → 填 1 节的基础信息。
-2. **测试 → 内部测试（Internal testing）** 先跑一轮 → 上传 `RelicCam-v1.0.0-vc57.aab`（⚠️ vc47~vc56 全部作废：vc48 是 libz 补丁写错字节的坏包；vc49~vc56 是调色标定与布局修复的中间版，只在本机验证过。**上架必须传 vc57**）。
+2. **测试 → 内部测试（Internal testing）** 先跑一轮 → 上传 `RelicCam-v1.0.0-vc58.aab`（⚠️ vc47~vc57 全部作废：vc48 是 libz 补丁写错字节的坏包；vc49~vc57 是调色标定与布局修复的中间版，只在本机验证过。**上架必须传 vc58**）。
 3. 依次补全第 2 节所有 App content 表单（标「待处理」的都要点完成）。
 4. 填完 Store listing（第 1 节）并上传图标/特图/截图。
 5. 提交审核。
