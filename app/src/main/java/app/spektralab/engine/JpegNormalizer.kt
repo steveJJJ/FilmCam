@@ -2,7 +2,6 @@ package app.spektralab.engine
 
 import android.graphics.Bitmap
 import kotlin.math.abs
-import kotlin.math.pow
 import kotlin.math.roundToInt
 import kotlin.math.max
 import kotlin.math.min
@@ -35,8 +34,13 @@ import kotlin.math.min
  *
  * ## 性能
  * 统计只在 256px 降采样图上做；像素变换一次 getPixels/setPixels 遍历完成
- * 线性域曝光 + 色度缩放 + 对比压缩，不产生第二份全尺寸位图（峰值内存已到 240MB）。
- * 编码用 4097 项预计算表代替逐像素 pow。
+ * 曝光 256 项查表 + 色度缩放 + 对比压缩，不产生第二份全尺寸位图（峰值内存已到
+ * 240MB），热路径里没有 pow / 没有 4097 项编码表（v52 去掉，顺带更快）。
+ *
+ * ## v52 教训（勿退回去）
+ * 色度缩放曾放在线性域，看似「物理正确」，实测却把 HLS 亮度整体抬高约 0.15~0.19，
+ * 满档成片发白、高光烧白。退 ISP 的饱和是 display-referred 域的操作，
+ * 必须在码值域保持 L。真机同场景对照数据见 2026-11-08 日志。
  */
 object JpegNormalizer {
 
@@ -48,8 +52,12 @@ object JpegNormalizer {
     /** 满档时最多缩减的色度比例。经验上限，待真机标定后收紧。 */
     const val MAX_CHROMA_REDUCTION = 0.35f
 
-    /** 满档时最多压缩的对比比例（以 128 中灰为锚）。 */
-    const val MAX_CONTRAST_REDUCTION = 0.18f
+    /**
+     * 满档时最多压缩的对比比例（以 128 中灰为锚）。
+     * v52：0.18 -> 0.08。满档 0.18 时黑位被抬到 23、白位压到 232，
+     * 叠上去饱和后画面明显发灰；这一层只是退 ISP 的 S 曲线，不该成为主机制。
+     */
+    const val MAX_CONTRAST_REDUCTION = 0.08f
 
     /**
      * 输入侧「高饱和像素占比」的目标：靠近线性底片一侧的平淡输入。
@@ -71,9 +79,6 @@ object JpegNormalizer {
 
     /** 采样图长边（px）。统计用途，不参与出片。 */
     private const val SAMPLE_LONG_EDGE = 256
-
-    /** 线性光 → sRGB 码值的查表精度。4096 级误差 < 0.25 码值。 */
-    private const val ENC_STEPS = 4096
 
     data class Stats(
         /** 高饱和像素占比（HLS S > 0.4，且亮度落在 0.12..0.88）。 */
@@ -134,9 +139,21 @@ object JpegNormalizer {
         return k.coerceIn(0f, MAX_STRENGTH)
     }
 
-    /** 单像素单通道的色度缩放（线性域）。中性灰 r=g=b 时严格不变。 */
+    /**
+     * 单通道色度缩放：`y + (v-y)*keep`，中性灰 r=g=b 时严格不变。
+     * v52 起调用方传入的是 **sRGB 码值域归一化值** 与 HLS 的 L；
+     * 传线性域值会导致亮度漂移（见类注释）。
+     */
     internal fun chromaChannel(v: Float, y: Float, keep: Float): Float =
         (y + (v - y) * keep).coerceIn(0f, 1f)
+
+    /** 码值域单通道去饱和；[l] 为该像素 HLS 的 L（归一化），缩放后 L 严格不变。 */
+    internal fun desaturateChannel(code: Int, l: Float, keep: Float): Int =
+        (chromaChannel(code / 255f, l, keep) * 255f).roundToInt().coerceIn(0, 255)
+
+    /** HLS 亮度 L=(max+min)/2（归一化）。 */
+    internal fun hlsL(r: Int, g: Int, b: Int): Float =
+        (max(r, max(g, b)) + min(r, min(g, b))) * 0.5f / 255f
 
     /**
      * 对比压缩表：以 128 中灰为锚把码值向中间收。[reduction]=0 时严格恒等。
@@ -162,7 +179,15 @@ object JpegNormalizer {
     }.getOrDefault(Stats(0f, 0f, 1f, 0))
 
     /**
-     * 一次遍历完成：线性域曝光增益 + 色度缩放 + 对比压缩。
+     * 一次遍历完成：线性域曝光增益（走 [InputExposure.lut]，与旧版逐像素一致）
+     * → **码值域**保持亮度的色度缩放 → 轻微对比压缩。
+     *
+     * ⚠️ v52 关键修正：色度缩放**不能在线性域做**。v50/v51 用线性能量亮度
+     * `0.2126R+0.7152G+0.0722B` 作锚，数学上守恒的是线性能量，但编码回 sRGB 后
+     * HLS 亮度会大幅抬升 —— 实测典型像素：纯红 L 0.500→0.686、肤色 0.706→0.859、
+     * 窗外亮灰 0.843→1.000（直接烧白）。真机满档成片因此「发白、发灰、高光过曝」，
+     * 并非单纯变淡。这里改在 display-referred 码值域以 HLS 的 L=(max+min)/2 为锚，
+     * 去饱和严格不改变亮度；ISP 当初加饱和也是在显示域做的，退它自然该在同一域。
      *
      * [strength] = 0 时**委托** [InputExposure.apply]，保证关掉滑杆后与旧版逐像素一致
      * （包括 ev=0 时严格不改一个像素）。不可变位图 / 异常 → 返回 false 不动像素。
@@ -177,11 +202,8 @@ object JpegNormalizer {
             val k = strength.coerceIn(0f, MAX_STRENGTH)
             val chromaKeep = 1f - MAX_CHROMA_REDUCTION * k
             val contrast = contrastLut(MAX_CONTRAST_REDUCTION * k)
-            val gain = 2.0.pow(ev).toFloat()
-
-            // 预计算：解码 256 项、编码 4097 项，热路径里不出现 pow
-            val lin = FloatArray(256) { InputExposure.srgbToLinear(it).toFloat() }
-            val enc = IntArray(ENC_STEPS + 1) { InputExposure.linearToSrgb(it.toDouble() / ENC_STEPS) }
+            // 曝光段直接复用旧表：ev=0 严格恒等，ev≠0 与 v49 逐像素一致
+            val exp = InputExposure.lut(ev)
 
             val w = bmp.width
             val h = bmp.height
@@ -191,13 +213,17 @@ object JpegNormalizer {
                 var touched = false
                 for (x in 0 until w) {
                     val p = row[x]
-                    val lr = lin[(p shr 16) and 0xFF] * gain
-                    val lg = lin[(p shr 8) and 0xFF] * gain
-                    val lb = lin[p and 0xFF] * gain
-                    val lum = 0.2126f * lr + 0.7152f * lg + 0.0722f * lb
-                    val r = contrast[enc[(chromaChannel(lr, lum, chromaKeep) * ENC_STEPS).roundToInt().coerceIn(0, ENC_STEPS)]]
-                    val g = contrast[enc[(chromaChannel(lg, lum, chromaKeep) * ENC_STEPS).roundToInt().coerceIn(0, ENC_STEPS)]]
-                    val b = contrast[enc[(chromaChannel(lb, lum, chromaKeep) * ENC_STEPS).roundToInt().coerceIn(0, ENC_STEPS)]]
+                    val r0 = exp[(p shr 16) and 0xFF]
+                    val g0 = exp[(p shr 8) and 0xFF]
+                    val b0 = exp[p and 0xFF]
+                    // HLS 的 L：去饱和时严格不变，避免高光烧白 / 整体抬亮
+                    val l = hlsL(r0, g0, b0)
+                    val r1 = desaturateChannel(r0, l, chromaKeep)
+                    val g1 = desaturateChannel(g0, l, chromaKeep)
+                    val b1 = desaturateChannel(b0, l, chromaKeep)
+                    val r = contrast[r1]
+                    val g = contrast[g1]
+                    val b = contrast[b1]
                     val np = (p and 0xFF000000.toInt()) or (r shl 16) or (g shl 8) or b
                     if (np != p) {
                         row[x] = np

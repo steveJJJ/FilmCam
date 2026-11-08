@@ -118,7 +118,7 @@ class JpegNormalizerTest {
 
     @Test
     fun `对比压缩表单调且中灰不动`() {
-        val t = JpegNormalizer.contrastLut(0.18f)
+        val t = JpegNormalizer.contrastLut(JpegNormalizer.MAX_CONTRAST_REDUCTION)
         assertEquals(128, t[128])
         for (v in 1..255) assertTrue("码值 $v 出现反转", t[v] >= t[v - 1])
         assertTrue("黑位应向中灰抬", t[0] > 0)
@@ -142,5 +142,50 @@ class JpegNormalizerTest {
         assertTrue(out > lum)
         assertEquals(0f, JpegNormalizer.chromaChannel(-3f, lum, 2f), 1e-6f)
         assertEquals(1f, JpegNormalizer.chromaChannel(3f, lum, 2f), 1e-6f)
+    }
+
+    @Test
+    fun `v52 码值域去饱和严格保持 HLS 亮度`() {
+        // v50/v51 在线性域做，纯红 L 会 0.500 -> 0.686、窗外亮灰 0.843 -> 1.000，
+        // 真机满档成片因此发白、高光烧白。这里守住亮度守恒。
+        val keep = 1f - JpegNormalizer.MAX_CHROMA_REDUCTION
+        val samples = listOf(
+            Triple(255, 0, 0),      // 纯红
+            Triple(200, 60, 50),    // 钢铁侠红
+            Triple(220, 170, 140),  // 肤色
+            Triple(210, 215, 220),  // 窗外亮灰
+            Triple(128, 128, 128),  // 中性灰
+        )
+        for ((r, g, b) in samples) {
+            val before = (maxOf(r, g, b) + minOf(r, g, b)) * 0.5f
+            val l = JpegNormalizer.hlsL(r, g, b)
+            val r1 = JpegNormalizer.desaturateChannel(r, l, keep)
+            val g1 = JpegNormalizer.desaturateChannel(g, l, keep)
+            val b1 = JpegNormalizer.desaturateChannel(b, l, keep)
+            val after = (maxOf(r1, g1, b1) + minOf(r1, g1, b1)) * 0.5f
+            assertEquals("像素 ($r,$g,$b) 亮度漂移", before, after, 1.5f)
+        }
+    }
+
+    @Test
+    fun `v52 去饱和确实降低饱和且不烧白`() {
+        val keep = 1f - JpegNormalizer.MAX_CHROMA_REDUCTION
+        val l = JpegNormalizer.hlsL(255, 0, 0)
+        val r1 = JpegNormalizer.desaturateChannel(255, l, keep)
+        val g1 = JpegNormalizer.desaturateChannel(0, l, keep)
+        val b1 = JpegNormalizer.desaturateChannel(0, l, keep)
+        assertTrue("纯红应被去饱和", maxOf(r1, g1, b1) - minOf(r1, g1, b1) < 255)
+        assertTrue("不该出现新的纯白", maxOf(r1, g1, b1) < 255)
+
+        val lw = JpegNormalizer.hlsL(210, 215, 220)
+        listOf(210, 215, 220).forEach { c ->
+            assertTrue("亮灰不该被抬到纯白", JpegNormalizer.desaturateChannel(c, lw, keep) < 255)
+        }
+    }
+
+    @Test
+    fun `曝光表在 0EV 严格恒等`() {
+        val t = InputExposure.lut(0.0)
+        for (v in 0..255) assertEquals(v, t[v])
     }
 }
