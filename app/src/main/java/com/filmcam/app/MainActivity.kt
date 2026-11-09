@@ -23,6 +23,8 @@ import com.filmcam.app.camera.Camera2Controller
 import com.filmcam.app.camera.FilmExposure
 import com.filmcam.app.databinding.ActivityMainBinding
 import com.filmcam.app.develop.DevelopController
+import com.filmcam.app.develop.DeviceGeometryReport
+import com.filmcam.app.develop.DeviceGeometryReportIo
 import com.filmcam.app.film.UndevelopedFilmStore
 import com.filmcam.app.filter.FilmRoll
 import com.filmcam.app.filter.FilmRollAdapter
@@ -33,6 +35,7 @@ import com.filmcam.app.ui.AdvanceRitual
 import com.filmcam.app.ui.T3LcdView
 import com.filmcam.app.ui.ViewfinderFrameView
 import com.google.android.material.bottomsheet.BottomSheetDialog
+import java.util.Locale
 import kotlin.math.roundToInt
 
 /**
@@ -107,11 +110,60 @@ class MainActivity : AppCompatActivity() {
         }
     }.toTypedArray()
 
+    /**
+     * v63 内测诊断：进程启动时记一次设备 / 窗口基线。
+     * 只读系统信息，不碰任何布局、曝光或渲染参数；失败静默。
+     * 内测用户可在「关于 → 问题反馈」里一键复制 / 分享这份报告。
+     */
+    private fun recordDeviceBasics() {
+        val dm = resources.displayMetrics
+        val cfg = resources.configuration
+        val pi = runCatching { packageManager.getPackageInfo(packageName, 0) }.getOrNull()
+        val verCode = pi?.let {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) it.longVersionCode
+            else @Suppress("DEPRECATION") it.versionCode.toLong()
+        } ?: -1L
+        val rotation = runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) display?.rotation ?: -1
+            else @Suppress("DEPRECATION") windowManager.defaultDisplay.rotation
+        }.getOrDefault(-1)
+        val bounds = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            runCatching {
+                val wm = getSystemService(android.view.WindowManager::class.java)
+                val b = wm.currentWindowMetrics.bounds
+                "${b.width()}x${b.height()}"
+            }.getOrDefault("?")
+        } else "n/a(api<30)"
+        DeviceGeometryReport.putAll(
+            "device.manufacturer" to Build.MANUFACTURER,
+            "device.model" to Build.MODEL,
+            "device.device" to Build.DEVICE,
+            "device.brand" to Build.BRAND,
+            "device.android" to Build.VERSION.RELEASE,
+            "device.sdk" to Build.VERSION.SDK_INT,
+            "app.versionCode" to verCode,
+            "app.versionName" to (pi?.versionName ?: "?"),
+            "window.boundsPx" to bounds,
+            "window.displayPixels" to "${dm.widthPixels}x${dm.heightPixels}",
+            "window.density" to "%.3f".format(Locale.US, dm.density),
+            "window.densityDpi" to dm.densityDpi,
+            "window.widthDp" to cfg.screenWidthDp,
+            "window.heightDp" to cfg.screenHeightDp,
+            "window.smallestWidthDp" to cfg.smallestScreenWidthDp,
+            "window.orientation" to if (cfg.orientation ==
+                android.content.res.Configuration.ORIENTATION_LANDSCAPE
+            ) "landscape" else "portrait",
+            "window.rotation" to rotation,
+        )
+        DeviceGeometryReportIo.flush(this)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         UndevelopedFilmStore.init(this)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        runCatching { recordDeviceBasics() }
 
         // 边到边：顶栏/底栏推出状态栏与导航栏（相机预览保持全屏）。
         // 竖屏铭牌与底栏同为 bottom gravity，必须一起补同样的底部 inset，
@@ -129,6 +181,11 @@ class MainActivity : AppCompatActivity() {
                 binding.lcdDisplay, binding.evKey, binding.settingsKey,
                 binding.viewfinderFrame.contentRect(), sbTopPx, sbBottomPx
             )
+            // v63：ChromeSafeArea 已把几何记进聚合器，这里补一次落盘（字段没变不会写）
+            runCatching {
+                DeviceGeometryReport.put("chrome.changed", changed)
+                DeviceGeometryReportIo.flush(this)
+            }
             // 一次性布局快照，写到外部 filesDir 便于 adb pull / 文件管理器导出：
             //   adb pull /sdcard/Android/data/com.filmcam.app/files/filmcam_layout.txt
             if (!chromeDiagWritten && sbTopPx > 0 && sbBottomPx > 0 &&
@@ -157,6 +214,13 @@ class MainActivity : AppCompatActivity() {
             onSystemBarInsets = { t, b ->
                 sbTopPx = t
                 sbBottomPx = b
+                runCatching {
+                    DeviceGeometryReport.putAll(
+                        "insets.topPx" to t,
+                        "insets.bottomPx" to b,
+                    )
+                    DeviceGeometryReportIo.flush(this)
+                }
                 binding.root.post { refitChrome() }
             }
         )

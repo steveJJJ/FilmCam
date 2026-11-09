@@ -4,6 +4,8 @@ import android.graphics.RectF
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
+import com.filmcam.app.develop.DeviceGeometryReport
+import java.util.Locale
 import kotlin.math.roundToInt
 
 /**
@@ -156,6 +158,34 @@ object ChromeSafeArea {
                 sbTop, sbBottom, topBarContentH, barH, logoH
             )
         )
+        // v63 只读取证：横屏 applicable=false 会提前 return，所以必须记录在这里，
+        // 否则最需要排查的主拍摄方向反而没有数据。绝不参与任何布局计算。
+        runCatching {
+            val topGap = content.top.coerceIn(0f, root.height.toFloat())
+            val botGap = (root.height - content.bottom).coerceIn(0f, root.height.toFloat())
+            DeviceGeometryReport.putAll(
+                "chrome.applicable" to g.applicable,
+                "chrome.topPaddingPx" to g.topPaddingPx,
+                "chrome.barMarginPx" to g.barMarginPx,
+                "chrome.logoMarginPx" to g.logoMarginPx,
+                "chrome.widthScale" to "%.4f".format(Locale.US, g.widthScale),
+                "chrome.topGapPx" to "%.1f".format(Locale.US, topGap),
+                "chrome.botGapPx" to "%.1f".format(Locale.US, botGap),
+                "chrome.topUsableDp" to "%.1f".format(
+                    Locale.US, (topGap - sbTop).coerceAtLeast(0f) / density
+                ),
+                "chrome.botUsableDp" to "%.1f".format(
+                    Locale.US, (botGap - sbBottom).coerceAtLeast(0f) / density
+                ),
+                "chrome.sbTopPx" to sbTop,
+                "chrome.sbBottomPx" to sbBottom,
+                "chrome.density" to "%.3f".format(Locale.US, density),
+                "chrome.view" to "${root.width}x${root.height}",
+                "chrome.widthDp" to "%.1f".format(Locale.US, root.width / density),
+                "content.rect" to content,
+                "content.orientation" to if (root.width >= root.height) "landscape" else "portrait",
+            )
+        }
         if (!g.applicable) return false
 
         val scale = g.widthScale

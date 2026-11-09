@@ -263,6 +263,11 @@ Memory available: %10$d MB / %11$d MB total
     <string name="about_no_browser">No browser available</string>
     <string name="about_feedback_email_channel">Send an email</string>
     <string name="about_feedback_wechat_channel">Join the WeChat group</string>
+    <string name="about_diag_copy_channel">Copy device diagnostics</string>
+    <string name="about_diag_share_channel">Share device diagnostics</string>
+    <string name="about_diag_copied">Diagnostics copied — paste it to the developer</string>
+    <string name="about_diag_share_title">Share device diagnostics</string>
+    <string name="about_diag_share_failed">No sharing app available</string>
     <string name="about_wechat_id_label">WeChat ID</string>
     <string name="about_wechat_copied">WeChat ID %1$s copied — search it in WeChat to join</string>
     <string name="about_source_request">Request source: %1$s</string>

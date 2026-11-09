@@ -130,9 +130,24 @@ class LutGLSurfaceView @JvmOverloads constructor(
                 val dir = context.getExternalFilesDir(null) ?: context.filesDir
                 java.io.File(dir, "filmcam_layout.txt").appendText("$line\n")
             }
+            // v63：surface 变化（含旋转）重新采两帧，确保横屏也能拿到变换矩阵
+            loggedFrames = 0
+            glDiagDone = false
+            runCatching {
+                com.filmcam.app.develop.DeviceGeometryReport.putAll(
+                    "gl.surface" to "${width}x${height}",
+                    "gl.view" to "${vw}x${vh}",
+                    "gl.geometryMismatch" to (vw > 0 && vh > 0 && (vw != width || vh != height)),
+                    "gl.density" to "%.3f".format(
+                        java.util.Locale.US, resources.displayMetrics.density
+                    ),
+                )
+                com.filmcam.app.develop.DeviceGeometryReportIo.flush(this@LutGLSurfaceView.context)
+            }
         }
 
         private var loggedFrames = 0
+        private var glDiagDone = false
 
         /** 华为用户版屏蔽三方应用 logcat，诊断信息写文件 */
         private fun diagAppend(line: String) {
@@ -150,8 +165,12 @@ class LutGLSurfaceView @JvmOverloads constructor(
             // 诊断：前 2 帧输出纹理矩阵，用于排查不同设备上的几何问题
             if (loggedFrames < 2) {
                 loggedFrames++
-                Log.i("LutRenderer", "frame#$loggedFrames texMatrix=${texMatrix.joinToString(",") { "%.3f".format(it) }}")
-                diagAppend("frame#$loggedFrames texMatrix=${texMatrix.joinToString(",") { "%.3f".format(it) }}")
+                val matrixText = texMatrix.joinToString(",") { "%.3f".format(it) }
+                Log.i("LutRenderer", "frame#$loggedFrames texMatrix=$matrixText")
+                diagAppend("frame#$loggedFrames texMatrix=$matrixText")
+                runCatching {
+                    com.filmcam.app.develop.DeviceGeometryReport.put("gl.texMatrix", matrixText)
+                }
             }
             // 竖屏走 SurfaceTexture 变换矩阵（模式 0，一直正常）；
             // 横屏这台机器拿到的是单位阵（缺 V 翻转），自己补上：
@@ -161,6 +180,28 @@ class LutGLSurfaceView @JvmOverloads constructor(
                 android.view.Surface.ROTATION_90 -> 1f
                 android.view.Surface.ROTATION_270 -> 2f
                 else -> 0f
+            }
+            // v63：采满两帧后记一次渲染几何（uMode / 朝向 / aspect），不逐帧写
+            if (loggedFrames == 2 && !glDiagDone) {
+                glDiagDone = true
+                runCatching {
+                    val vw = this@LutGLSurfaceView.width.toFloat()
+                    val vh = this@LutGLSurfaceView.height.toFloat()
+                    val ca = ViewfinderFrameView.contentAspectFor(
+                        surfaceWidth.toFloat(), surfaceHeight.toFloat()
+                    )
+                    val sa = if (vh > 0f) vw / vh else 0f
+                    com.filmcam.app.develop.DeviceGeometryReport.putAll(
+                        "gl.mode" to mode,
+                        "gl.rotation" to (this@LutGLSurfaceView.display?.rotation ?: -1),
+                        "gl.renderSize" to "${surfaceWidth}x${surfaceHeight}",
+                        "gl.contentAspect" to "%.4f".format(java.util.Locale.US, ca),
+                        "gl.screenAspect" to "%.4f".format(java.util.Locale.US, sa),
+                        "gl.fitHeight" to (sa > ca),
+                        "gl.offsetY" to ViewfinderFrameView.PREVIEW_OFFSET_Y,
+                    )
+                    com.filmcam.app.develop.DeviceGeometryReportIo.flush(this@LutGLSurfaceView.context)
+                }
             }
             renderTo(surfaceWidth, surfaceHeight, offsetY = ViewfinderFrameView.PREVIEW_OFFSET_Y,
                 mode = mode)

@@ -768,6 +768,32 @@ class Camera2Controller(private val context: Context) {
         // 读取传感器方向
         val sensorOrientation = chars.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 90
         android.util.Log.i("Camera2", "previewSize=$previewSize sensorOrientation=$sensorOrientation")
+        // v63 只读取证：把预览尺寸 / 比例 / 传感器能力记进跨机型报告。
+        // ⚠️ 不改任何 selection 逻辑 —— P0 是否收敛到 4:3 要等真机数据再定。
+        runCatching {
+            val asp = previewSize.width.toFloat() / previewSize.height.toFloat()
+            val candidates = map?.getOutputSizes(SurfaceTexture::class.java)
+                ?.filter { maxOf(it.width, it.height) <= 1920 }
+                ?.sortedByDescending { it.width * it.height }
+                ?.take(12)
+                ?.joinToString(" ") { "${it.width}x${it.height}" } ?: "?"
+            com.filmcam.app.develop.DeviceGeometryReport.putAll(
+                "camera.previewSize" to "${previewSize.width}x${previewSize.height}",
+                "camera.previewAspect" to "%.4f".format(java.util.Locale.US, asp),
+                "camera.previewIs4x3" to (kotlin.math.abs(asp - 4f / 3f) < 0.01f),
+                "camera.previewIs16x9" to (kotlin.math.abs(asp - 16f / 9f) < 0.01f),
+                "camera.sensorOrientation" to sensorOrientation,
+                "camera.displayRotationDeg" to deviceRotationDegrees(),
+                "camera.hasManualSensor" to hasManualSensor,
+                "camera.isoRange" to "${deviceIsoRange.first}..${deviceIsoRange.last}",
+                "camera.exposureSec" to "%.6f..%.6f".format(
+                    java.util.Locale.US, deviceMinExposureSec, deviceMaxExposureSec
+                ),
+                "camera.previewCandidates" to candidates,
+                "camera.maxJpeg" to "${maxJpeg.width}x${maxJpeg.height}",
+            )
+            com.filmcam.app.develop.DeviceGeometryReportIo.flush(context)
+        }
 
         // 拍照方向：Camera2 标准公式 (屏幕旋转映射 + 传感器方向 + 270) % 360。
         // 竖屏(0°)  : (90 + 90 + 270) % 360 = 90  → 传感器横画面转 90° 成 3:4 竖构图

@@ -276,6 +276,11 @@ App 版本：%1$s (%2$d)
     <string name="about_no_browser">没有可用的浏览器</string>
     <string name="about_feedback_email_channel">发邮件反馈</string>
     <string name="about_feedback_wechat_channel">加微信进群反馈</string>
+    <string name="about_diag_copy_channel">复制设备诊断报告</string>
+    <string name="about_diag_share_channel">分享设备诊断报告</string>
+    <string name="about_diag_copied">诊断报告已复制，粘贴发给开发者即可</string>
+    <string name="about_diag_share_title">分享设备诊断报告</string>
+    <string name="about_diag_share_failed">没有可用的分享应用</string>
     <string name="about_wechat_id_label">微信号</string>
     <string name="about_wechat_copied">微信号 %1$s 已复制，去微信搜索加群</string>
     <string name="about_source_request">索取源码：%1$s</string>

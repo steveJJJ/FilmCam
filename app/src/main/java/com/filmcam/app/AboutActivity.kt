@@ -294,15 +294,46 @@ class AboutActivity : AppCompatActivity() {
     private fun showFeedbackOptions() {
         val channels = arrayOf(
             getString(R.string.about_feedback_email_channel),
-            getString(R.string.about_feedback_wechat_channel)
+            getString(R.string.about_feedback_wechat_channel),
+            getString(R.string.about_diag_copy_channel),
+            getString(R.string.about_diag_share_channel)
         )
         androidx.appcompat.app.AlertDialog.Builder(this, com.filmcam.app.ui.BodyTheme.dialogTheme)
             .setTitle(R.string.about_feedback)
             .setItems(channels) { _, which ->
-                if (which == 0) sendFeedback() else copyWechatId()
+                when (which) {
+                    0 -> sendFeedback()
+                    1 -> copyWechatId()
+                    2 -> copyGeometryReport()
+                    3 -> shareGeometryReport()
+                }
             }
             .setNegativeButton(R.string.main_cancel, null)
             .show()
+    }
+
+    /** v63 内测：跨机型几何报告，普通用户也能导出，不受工程模式 PRO 限制 */
+    private fun geometryReport(): String =
+        com.filmcam.app.develop.DeviceGeometryReportIo.read(this)
+
+    private fun copyGeometryReport() {
+        val clipboard = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
+        clipboard.setPrimaryClip(
+            android.content.ClipData.newPlainText("Relic Cam diagnostics", geometryReport())
+        )
+        Toast.makeText(this, R.string.about_diag_copied, Toast.LENGTH_SHORT).show()
+    }
+
+    private fun shareGeometryReport() {
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_SUBJECT, "Relic Cam device diagnostics")
+            putExtra(Intent.EXTRA_TEXT, geometryReport())
+        }
+        val ok = runCatching {
+            startActivity(Intent.createChooser(intent, getString(R.string.about_diag_share_title)))
+        }.isSuccess
+        if (!ok) Toast.makeText(this, R.string.about_diag_share_failed, Toast.LENGTH_SHORT).show()
     }
 
     /** 复制进群微信号到剪贴板（微信号：LazyRofin） */
