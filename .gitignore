@@ -46,3 +46,5 @@ play_console_upload/play_ready/0*.png
 play_console_upload/play_ready/screenshots_v1/
 play_console_upload/screenshots/
 tools/*.pyc
+__pycache__/
+*.pyc

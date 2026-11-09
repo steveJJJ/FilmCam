@@ -15,6 +15,7 @@
 - [x] 隐私政策：免费 + 内购表述，已推送上线 `https://stevejjj.github.io/relic-cam-privacy/`
 - [x] 商店文案 / 图标 / 特色图 / 3 张截图 / 原生符号包 全部就绪
 - [x] 商家账号（付款资料）已提交，银行账户改用储蓄卡
+- [x] **GitHub Release 资产已同步 vc65**（2026-11-10；此前停在 vc49，落后 16 个版本）→ 后续每次迭代按第 4.5 节执行
 
 **接下来按顺序做**
 1. **确认银行账户验证状态** → `payments.google.com` → 设置 → 付款方式
@@ -220,6 +221,39 @@ Free to download. Pick up your phone and step back into the film era.
 3. 依次补全第 2 节所有 App content 表单（标「待处理」的都要点完成）。
 4. 填完 Store listing（第 1 节）并上传图标/特图/截图。
 5. 提交审核。
+
+---
+
+## 4.5 每次版本迭代（升 versionCode）必做
+
+⚠️ **GitHub Release 资产必须与 versionCode 同步**。App 的「检查更新」在侧载包上会跳
+`https://github.com/steveJJJ/FilmCam/releases`；资产落后会让用户装回旧版 —— 2026-11-10
+之前就发生过：Release 停在 vc49，而代码已到 vc65，落后 16 个版本。
+
+固定 6 步，缺一不可：
+
+1. `app/build.gradle.kts` 改 `versionCode`。
+2. `export JAVA_HOME="$HOME/.jdks/jbr-21.0.11" && export MSYS_NO_PATHCONV=1` →
+   `./gradlew testDebugUnitTest assembleRelease bundleRelease`。
+3. 核验：`aapt2 dump badging` 版本号、6 个 `.so` 的 `p_align=16384`、libz 等长补丁在位、
+   `aapt2 dump permissions` **仍无 INTERNET**（v65 起新增的依赖也不能把权限带回来）。
+4. 归档两个包到 `play_console_upload/RelicCam-v1.0.0-vc<N>.{apk,aab}`。
+5. **同步 GitHub Release（必做）**：
+   ```bash
+   python scripts/publish_github_release.py --check   # 只读，退出码 2 = 落后
+   python scripts/publish_github_release.py           # 发布
+   python scripts/publish_github_release.py --check   # 必须 STATUS: IN_SYNC
+   ```
+   脚本自动读版本号 → 建 `v1.0.0-vc<N>` Release（`make_latest=true`）→ 传 APK + AAB →
+   给旧 Release 加废弃横幅 → 按 sha256 校验远端资产。`--dry-run` 只看计划，
+   `--notes-extra` 追加说明，`--vc N` 补发历史版本，`--refresh-notes` 才覆盖已有正文。
+   token 自动从 `GH_TOKEN` 或 Windows 凭据管理器读；代理默认 `127.0.0.1:7897`
+   （`--no-proxy` 关闭）。**幂等**：同 tag 复用、sha256 相同跳过上传、
+   不删任何旧资产、不动无资产的内测引导 Release。
+6. `git commit` + `push`；同步本清单的版本引用（作废区间、上传用 vc<N>）。
+
+Release 现状（2026-11-10）：`v1.0.0-vc65` 为 **Latest**（vc65 APK + AAB，
+sha256 见 Release 正文），`v1.0.0`（vc49）已标废弃，无资产的 `RelicCam` 内测引导页保持不动。
 
 ---
 
