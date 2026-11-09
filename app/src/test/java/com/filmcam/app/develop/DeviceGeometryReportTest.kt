@@ -96,4 +96,51 @@ class DeviceGeometryReportTest {
         threads.forEach { it.join() }
         assertEquals(n, DeviceGeometryReport.fieldCount())
     }
+
+    @Test
+    fun `矩阵首次写入置脏 相同矩阵不重复写入`() {
+        val m = identityMatrix()
+        assertTrue(DeviceGeometryReport.putMatrix("gl.texMatrix", m))
+        assertFalse(DeviceGeometryReport.putMatrix("gl.texMatrix", m.copyOf()))
+    }
+
+    @Test
+    fun `冷启动单位阵就绪后变旋转阵会被捕获`() {
+        assertTrue(DeviceGeometryReport.putMatrix("gl.texMatrix", identityMatrix()))
+        assertTrue(DeviceGeometryReport.render().contains("1.000,0.000,0.000,0.000"))
+        val rotated = FloatArray(16).apply {
+            this[1] = -1f; this[4] = -1f; this[10] = 1f
+            this[12] = 1f; this[13] = 1f; this[15] = 1f
+        }
+        assertTrue(DeviceGeometryReport.putMatrix("gl.texMatrix", rotated))
+        assertTrue(DeviceGeometryReport.render().contains("0.000,-1.000,0.000,0.000"))
+    }
+
+    @Test
+    fun `小于显示精度的抖动不置脏 报告全文不变`() {
+        DeviceGeometryReport.putMatrix("gl.texMatrix", identityMatrix())
+        val before = DeviceGeometryReport.render()
+        val jitter = identityMatrix().also { it[0] = 1.0002f }
+        assertFalse(DeviceGeometryReport.putMatrix("gl.texMatrix", jitter))
+        assertEquals(before, DeviceGeometryReport.render())
+    }
+
+    @Test
+    fun `clear 后矩阵缓存一并清空 可重新记录同一矩阵`() {
+        val m = identityMatrix()
+        DeviceGeometryReport.putMatrix("gl.texMatrix", m)
+        DeviceGeometryReport.clear()
+        assertTrue(DeviceGeometryReport.putMatrix("gl.texMatrix", m))
+    }
+
+    @Test
+    fun `矩阵按三位小数格式化且不破坏报告行结构`() {
+        val m = FloatArray(16).also { it[0] = 0.123456f }
+        DeviceGeometryReport.putMatrix("gl.texMatrix", m)
+        assertTrue(DeviceGeometryReport.render().contains("gl.texMatrix = 0.123,"))
+        assertFalse(DeviceGeometryReport.render().contains("\n0.000"))
+    }
+
+    private fun identityMatrix(): FloatArray =
+        FloatArray(16) { i -> if (i % 5 == 0) 1f else 0f }
 }

@@ -20,8 +20,12 @@ import java.util.Locale
 object DeviceGeometryReport {
 
     private val fields = LinkedHashMap<String, String>()
+    private val matrixCache = HashMap<String, FloatArray>()
     private var dirty = false
     private var updatedAtMs = System.currentTimeMillis()
+
+    /** 与报告的 3 位小数精度对齐：小于半个最小显示单位的变化不会改文本 */
+    private const val MATRIX_EPS = 0.0005f
 
     private val groupOrder = listOf(
         "device", "app", "window", "insets", "content", "chrome", "camera", "gl"
@@ -44,6 +48,27 @@ object DeviceGeometryReport {
     @Synchronized
     fun putAll(vararg pairs: Pair<String, Any?>) {
         pairs.forEach { put(it.first, it.second) }
+    }
+
+    /**
+     * GL 变换矩阵：只在数值**变化**时才格式化并置脏。
+     *
+     * v64：冷启动前两帧 SurfaceTexture 往往还是未初始化的单位阵，HAL 就绪后
+     * 才会换成真实旋转矩阵；只采前两帧会把单位阵永久写进报告，误导 uMode 判断。
+     * 调用方可以每帧安全调用 —— 相同矩阵直接返回 false，不做字符串格式化。
+     */
+    @Synchronized
+    fun putMatrix(key: String, values: FloatArray): Boolean {
+        val prev = matrixCache[key]
+        if (prev != null && sameMatrix(prev, values)) return false
+        matrixCache[key] = values.copyOf()
+        return put(key, values.joinToString(",") { "%.3f".format(Locale.US, it) })
+    }
+
+    private fun sameMatrix(a: FloatArray, b: FloatArray): Boolean {
+        if (a.size != b.size) return false
+        for (i in a.indices) if (kotlin.math.abs(a[i] - b[i]) > MATRIX_EPS) return false
+        return true
     }
 
     /** 有变化才返回全文并清脏标记；落盘方用它避免重复 IO。 */
@@ -80,6 +105,7 @@ object DeviceGeometryReport {
     @Synchronized
     fun clear() {
         fields.clear()
+        matrixCache.clear()
         dirty = true
         updatedAtMs = System.currentTimeMillis()
     }

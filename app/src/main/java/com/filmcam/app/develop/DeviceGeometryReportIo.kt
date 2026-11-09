@@ -23,13 +23,17 @@ object DeviceGeometryReportIo {
         }
     }
 
-    /** 先补写一次，再返回最新全文；文件读不到时退回内存报告。 */
+    /**
+     * 导出用：直接以**内存里的当前全文**覆写文件并返回。
+     * v64：不依赖 dirty 标记 —— GL 线程与 UI 线程可能并发 flush 并清掉脏标记，
+     * 而 transformMatrix 又在持续更新；用户点导出时必须拿到最新快照。
+     */
     fun read(context: Context): String {
-        flush(context)
-        return runCatching {
+        val text = DeviceGeometryReport.render()
+        runCatching {
             val dir = context.getExternalFilesDir(null) ?: context.filesDir
-            val f = File(dir, FILE_NAME)
-            if (f.exists()) f.readText() else DeviceGeometryReport.render()
-        }.getOrDefault(DeviceGeometryReport.render())
+            File(dir, FILE_NAME).writeText(text)
+        }
+        return text
     }
 }

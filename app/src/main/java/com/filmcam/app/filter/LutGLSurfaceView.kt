@@ -162,15 +162,23 @@ class LutGLSurfaceView @JvmOverloads constructor(
             val st = surfaceTexture ?: return
             st.updateTexImage()
             st.getTransformMatrix(texMatrix)
-            // 诊断：前 2 帧输出纹理矩阵，用于排查不同设备上的几何问题
+            // v64：矩阵每次**变化**才记录并落盘。冷启动前两帧常是未初始化的
+            // 单位阵，HAL 就绪后会换成真实旋转矩阵；只采前两帧会永远停在单位阵。
+            // putMatrix 对相同矩阵直接返回 false，GL 线程每帧调用也没有格式化开销。
+            runCatching {
+                if (com.filmcam.app.develop.DeviceGeometryReport
+                        .putMatrix("gl.texMatrix", texMatrix)
+                ) {
+                    com.filmcam.app.develop.DeviceGeometryReportIo
+                        .flush(this@LutGLSurfaceView.context)
+                }
+            }
+            // 诊断：前 2 帧输出纹理矩阵到 logcat / 内部日志（保持原行为）
             if (loggedFrames < 2) {
                 loggedFrames++
                 val matrixText = texMatrix.joinToString(",") { "%.3f".format(it) }
                 Log.i("LutRenderer", "frame#$loggedFrames texMatrix=$matrixText")
                 diagAppend("frame#$loggedFrames texMatrix=$matrixText")
-                runCatching {
-                    com.filmcam.app.develop.DeviceGeometryReport.put("gl.texMatrix", matrixText)
-                }
             }
             // 竖屏走 SurfaceTexture 变换矩阵（模式 0，一直正常）；
             // 横屏这台机器拿到的是单位阵（缺 V 翻转），自己补上：
