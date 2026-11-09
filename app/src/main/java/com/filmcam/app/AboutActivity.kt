@@ -1,5 +1,6 @@
 package com.filmcam.app
 
+import android.app.Activity
 import android.app.ActivityManager
 import android.content.Intent
 import android.graphics.drawable.GradientDrawable
@@ -11,7 +12,11 @@ import android.widget.LinearLayout
 import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.IntentSenderRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import com.filmcam.app.update.UpdateChecker
 import kotlin.math.roundToInt
 
 /**
@@ -24,10 +29,22 @@ class AboutActivity : AppCompatActivity() {
 
     private var tapCount = 0
     private var versionText = ""
+    private lateinit var updateLauncher: ActivityResultLauncher<IntentSenderRequest>
+    private lateinit var updateChecker: UpdateChecker
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_about)
+
+        // v65 检查更新：必须在 STARTED 之前注册 Activity Result launcher
+        updateLauncher = registerForActivityResult(
+            ActivityResultContracts.StartIntentSenderForResult()
+        ) { result ->
+            if (result.resultCode != Activity.RESULT_OK) {
+                Toast.makeText(this, R.string.update_flow_failed, Toast.LENGTH_SHORT).show()
+            }
+        }
+        updateChecker = UpdateChecker(this, updateLauncher)
 
         // 边到边：滚动内容顶部/底部让出状态栏与导航栏
         val aRoot = com.filmcam.app.ui.EdgeToEdge.contentRoot(this)
@@ -44,6 +61,7 @@ class AboutActivity : AppCompatActivity() {
         buildOssCredits()
         buildSelfLicense()
         bindFeedback()
+        bindUpdateCheck()
         bindAppreciation()
         bindPro()
         paintNameplateChips()
@@ -85,6 +103,11 @@ class AboutActivity : AppCompatActivity() {
                 }
             }
         }
+    }
+
+    /** v65 检查更新：Play 安装走应用内更新，侧载包跳下载页（零新增权限） */
+    private fun bindUpdateCheck() {
+        findViewById<View>(R.id.rowCheckUpdate).setOnClickListener { updateChecker.check() }
     }
 
     /** 把版本号刻字恢复回来（连点提示超时） */
@@ -144,10 +167,16 @@ class AboutActivity : AppCompatActivity() {
             .show()
     }
 
+    override fun onResume() {
+        super.onResume()
+        if (::updateChecker.isInitialized) updateChecker.onResume()
+    }
+
     override fun onDestroy() {
         // 回调持有 Activity，页面销毁必须摘掉，否则旋转屏幕会漏一个 AboutActivity
         ProManager.onUpdate = null
         ProManager.onMessage = null
+        if (::updateChecker.isInitialized) updateChecker.onDestroy()
         super.onDestroy()
     }
 

@@ -268,6 +268,17 @@ Memory available: %10$d MB / %11$d MB total
     <string name="about_diag_copied">Diagnostics copied — paste it to the developer</string>
     <string name="about_diag_share_title">Share device diagnostics</string>
     <string name="about_diag_share_failed">No sharing app available</string>
+    <string name="about_spec_update">UPDATES</string>
+    <string name="about_update_action">CHECK</string>
+    <string name="update_checking">Checking for updates…</string>
+    <string name="update_no_update">You’re up to date</string>
+    <string name="update_available">Update found — downloading</string>
+    <string name="update_open_page">Opened download page</string>
+    <string name="update_no_browser">No browser or store app available</string>
+    <string name="update_flow_failed">In-app update unavailable — opened download page</string>
+    <string name="update_downloaded">Update downloaded. Restart to install.</string>
+    <string name="update_restart">Restart now</string>
+    <string name="update_later">Later</string>
     <string name="about_wechat_id_label">WeChat ID</string>
     <string name="about_wechat_copied">WeChat ID %1$s copied — search it in WeChat to join</string>
     <string name="about_source_request">Request source: %1$s</string>

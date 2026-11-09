@@ -204,6 +204,22 @@
                         android:focusable="true"
                         android:text="@string/pro_state_locked" />
                 </LinearLayout>
+
+                <View style="@style/AboutSpecDivider" />
+
+                <!-- 检查更新：Play 安装走应用内更新，侧载包跳下载页（零新增权限） -->
+                <LinearLayout
+                    android:id="@+id/rowCheckUpdate"
+                    style="@style/AboutSpecRow"
+                    android:clickable="true"
+                    android:focusable="true">
+                    <TextView
+                        style="@style/AboutSpecLabel"
+                        android:text="@string/about_spec_update" />
+                    <TextView
+                        style="@style/AboutSpecValue"
+                        android:text="@string/about_update_action" />
+                </LinearLayout>
             </LinearLayout>
         </LinearLayout>
 

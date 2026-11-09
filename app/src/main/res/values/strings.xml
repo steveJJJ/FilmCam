@@ -281,6 +281,17 @@ App 版本：%1$s (%2$d)
     <string name="about_diag_copied">诊断报告已复制，粘贴发给开发者即可</string>
     <string name="about_diag_share_title">分享设备诊断报告</string>
     <string name="about_diag_share_failed">没有可用的分享应用</string>
+    <string name="about_spec_update">更新 UPDATE</string>
+    <string name="about_update_action">点击检查</string>
+    <string name="update_checking">正在检查更新…</string>
+    <string name="update_no_update">当前已是最新版本</string>
+    <string name="update_available">发现新版本，开始下载</string>
+    <string name="update_open_page">已打开下载页面</string>
+    <string name="update_no_browser">没有可用的浏览器或应用商店</string>
+    <string name="update_flow_failed">应用内更新未启动，已改为打开下载页面</string>
+    <string name="update_downloaded">新版本已下载，重启应用完成安装</string>
+    <string name="update_restart">立即重启</string>
+    <string name="update_later">稍后</string>
     <string name="about_wechat_id_label">微信号</string>
     <string name="about_wechat_copied">微信号 %1$s 已复制，去微信搜索加群</string>
     <string name="about_source_request">索取源码：%1$s</string>

@@ -21,7 +21,7 @@
    - 「正在验证」→ 等 1~3 个工作日（可能需上传 90 天内对账单 / 回填小额打款）
    - 「已验证」→ 进第 2 步
 2. **应用定价改「免费」**（⚠️ 不可逆）→ 商店设置 → 定价和分发
-3. **传 AAB** → 测试 → 内部测试 → 上传 `RelicCam-v1.0.0-vc64.aab`
+3. **传 AAB** → 测试 → 内部测试 → 上传 `RelicCam-v1.0.0-vc65.aab`
 4. **传素材 + 填商店信息**（第 1 节）→ 图标 512 / 特色图 1024×500 / 3 张截图
 5. **填 App content 全部问卷**（第 2 节）→ Data safety 全 No、无广告、目标受众 13-17+18+
 6. **建 `pro_unlock` 商品并激活**（第 3 节，需第 1 步完成）
@@ -37,6 +37,13 @@
 - 全部 6 个 `.so` 的 `PT_LOAD` 对齐 = **16384（16KB）**，无自带 libz ✓
 - AAB 已签名（FILMCAM 密钥），Play App Signing 会再用上传密钥重签 ✓
 - 真机冒烟：相机/相册/关于/照片查看 启动无崩溃；**暗房引擎初始化已修复**（见下方「重要修复」）
+- **v65 新增「检查更新」（A+B 组合，零新增权限）**：关于页规格表新增一行。
+  Play 安装的包走官方 `com.google.android.play:app-update:2.1.0` FLEXIBLE 应用内更新
+  （后台下载、用户确认后 completeUpdate）；侧载包 / 库不可用 / 不允许 flexible
+  一律 `ACTION_VIEW` 跳 GitHub Releases 页，Play 包失败则跳商店详情页。
+  **App 自身不联网**：aapt2 实测合并清单仍无 INTERNET / ACCESS_NETWORK_STATE /
+  REQUEST_INSTALL_PACKAGES，隐私政策与商店「完全离线」文案一个字未改；
+  不自建版本接口、不下载 APK 自安装（Play 政策禁止自更新）。
 - **v64 修复诊断版取证缺陷**：`gl.texMatrix` 以前只采前两帧，冷启动会
   把 SurfaceTexture 未初始化的**单位阵**永久写进报告；现在每次矩阵变化才记录
   （FloatArray 比较 + 3 位小数精度对齐的 epsilon），导出时强制以内存最新全文覆写。
@@ -209,7 +216,7 @@ Free to download. Pick up your phone and step back into the film era.
 
 ## 4. 上传与提交
 1. Play Console → 新建应用 → 填 1 节的基础信息。
-2. **测试 → 内部测试（Internal testing）** 先跑一轮 → 上传 `RelicCam-v1.0.0-vc64.aab`（⚠️ vc47~vc63 全部作废：vc48 是 libz 补丁写错字节的坏包；vc49~vc63 是调色标定与布局修复的中间版，只在本机验证过。**上传用 vc64**（内测诊断版，零行为改动））。
+2. **测试 → 内部测试（Internal testing）** 先跑一轮 → 上传 `RelicCam-v1.0.0-vc65.aab`（⚠️ vc47~vc64 全部作废：vc48 是 libz 补丁写错字节的坏包；vc49~vc64 是调色标定与布局修复的中间版，只在本机验证过。**上传用 vc65**（含检查更新，零新增权限））。
 3. 依次补全第 2 节所有 App content 表单（标「待处理」的都要点完成）。
 4. 填完 Store listing（第 1 节）并上传图标/特图/截图。
 5. 提交审核。

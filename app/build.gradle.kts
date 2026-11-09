@@ -20,7 +20,7 @@ android {
         applicationId = "com.filmcam.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 64
+        versionCode = 65
         versionName = "1.0.0"
     }
 
@@ -91,6 +91,11 @@ dependencies {
     // 内购：工程模式 Pro（一次性买断）。Play 自 2026-08-31 起强制要求 8+。
     // 传递依赖会注入网络/位置权限，已在 AndroidManifest 用 tools:node="remove" 剔除。
     implementation("com.android.billingclient:billing:9.1.0")
+
+    // 检查更新（v65）：Play 安装的包走官方应用内更新，其余走 ACTION_VIEW 跳转页。
+    // 零新增权限 —— 官方库通过 Play 商店 IPC 工作；传递依赖若注入网络权限，
+    // 已被 AndroidManifest 的 tools:node="remove" 剔除（构建后用 aapt2 实测）。
+    implementation("com.google.android.play:app-update:2.1.0")
 
     // 单元测试：纯 JVM（映射表 / 参数拼装 / 状态机），不依赖 Robolectric
     testImplementation("junit:junit:4.13.2")
