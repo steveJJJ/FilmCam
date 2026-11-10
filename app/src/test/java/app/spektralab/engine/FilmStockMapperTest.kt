@@ -411,20 +411,22 @@ class FilmStockMapperTest {
         assertTrue(FilmStockMapper.ENGINE_KNOWN_KEYS.contains("filter_shift_scale"))
     }
 
-    // ---- v69：胶片相框三档直选 ----
+    // ---- 胶片相框：设置面板点一下就地循环 ----
 
     @Test
-    fun `相框直选列表固定三档且白边在里面`() {
-        assertEquals(listOf(FrameFormat.OFF, FrameFormat.FULL, FrameFormat.WHITE), FrameFormat.choices)
-        assertEquals(3, FrameFormat.choices.distinct().size)
-        // 「增加一个白边相框」的入口契约：白边必须是能直接点中的一项
-        assertTrue("白边相框必须在直选列表里", FrameFormat.WHITE in FrameFormat.choices)
-        assertEquals(2, FrameFormat.choices.indexOf(FrameFormat.WHITE))
+    fun `相框循环顺序为关全画幅白边再回关`() {
+        assertEquals(FrameFormat.FULL, FrameFormat.next(FrameFormat.OFF))
+        assertEquals(FrameFormat.WHITE, FrameFormat.next(FrameFormat.FULL))
+        assertEquals(FrameFormat.OFF, FrameFormat.next(FrameFormat.WHITE))
+        // 白边相框必须在循环里可达：从任意档出发，最多点三下一定能选到
+        var f = FrameFormat.OFF
+        repeat(3) { if (f != FrameFormat.WHITE) f = FrameFormat.next(f) }
+        assertEquals(FrameFormat.WHITE, f)
     }
 
     @Test
     fun `三个档位的 key 都能往返还原`() {
-        FrameFormat.choices.forEach { format ->
+        listOf(FrameFormat.OFF, FrameFormat.FULL, FrameFormat.WHITE).forEach { format ->
             assertEquals(format, FrameFormat.fromKey(format.key))
         }
         assertEquals(FrameFormat.OFF, FrameFormat.fromKey(null))

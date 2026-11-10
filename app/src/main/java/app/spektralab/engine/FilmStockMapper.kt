@@ -171,20 +171,12 @@ object FilmStockMapper {
             fun fromOverscanFormat(s: String?): FrameFormat =
                 values().firstOrNull { it.overscanFormat != null && it.overscanFormat == s } ?: OFF
 
-            /** 档位循环：关 → 全画幅 135 → 白边 → 关。设置面板 v69 起不再用它。 */
+            /** 档位循环：关 → 全画幅 135 → 白边 → 关。设置面板点一下就地切换。 */
             fun next(current: FrameFormat): FrameFormat = when (current) {
                 OFF -> FULL
                 FULL -> WHITE
                 WHITE -> OFF
             }
-
-            /**
-             * v69 设置面板的直选列表：固定三档，顺序即 UI 顺序。
-             * 之前靠 [next] 就地循环（点一下换一档），白边相框很容易被连点切走，
-             * 用户只看到「白框没了」却不知道档位变了。现在列表里当前档打勾、
-             * 点哪档是哪档 —— **别再改回循环**。
-             */
-            val choices: List<FrameFormat> = listOf(OFF, FULL, WHITE)
         }
     }
 
