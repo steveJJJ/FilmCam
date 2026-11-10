@@ -15,14 +15,14 @@
 - [x] 隐私政策：免费 + 内购表述，已推送上线 `https://stevejjj.github.io/relic-cam-privacy/`
 - [x] 商店文案 / 图标 / 特色图 / 3 张截图 / 原生符号包 全部就绪
 - [x] 商家账号（付款资料）已提交，银行账户改用储蓄卡
-- [x] **GitHub Release 资产已同步 vc65**（2026-11-10；此前停在 vc49，落后 16 个版本）→ 后续每次迭代按第 4.5 节执行
+- [x] **GitHub Release 资产已同步 vc66**（2026-11-10；此前停在 vc49，落后 16 个版本）→ 后续每次迭代按第 4.5 节执行
 
 **接下来按顺序做**
 1. **确认银行账户验证状态** → `payments.google.com` → 设置 → 付款方式
    - 「正在验证」→ 等 1~3 个工作日（可能需上传 90 天内对账单 / 回填小额打款）
    - 「已验证」→ 进第 2 步
 2. **应用定价改「免费」**（⚠️ 不可逆）→ 商店设置 → 定价和分发
-3. **传 AAB** → 测试 → 内部测试 → 上传 `RelicCam-v1.0.0-vc65.aab`
+3. **传 AAB** → 测试 → 内部测试 → 上传 `RelicCam-v1.0.0-vc66.aab`
 4. **传素材 + 填商店信息**（第 1 节）→ 图标 512 / 特色图 1024×500 / 3 张截图
 5. **填 App content 全部问卷**（第 2 节）→ Data safety 全 No、无广告、目标受众 13-17+18+
 6. **建 `pro_unlock` 商品并激活**（第 3 节，需第 1 步完成）
@@ -38,6 +38,13 @@
 - 全部 6 个 `.so` 的 `PT_LOAD` 对齐 = **16384（16KB）**，无自带 libz ✓
 - AAB 已签名（FILMCAM 密钥），Play App Signing 会再用上传密钥重签 ✓
 - 真机冒烟：相机/相册/关于/照片查看 启动无崩溃；**暗房引擎初始化已修复**（见下方「重要修复」）
+- **v66 新增「白边相框」第三档**：设置 → 胶片相框循环到「白边相框」。
+  暗房相纸留白，四边绝对等宽 6%（短边）、暖白 `#F7F5F0`、无描边阴影、
+  日期戳仍留在画面内。白边由 App 在两条冲洗通路的落盘前外扩，
+  **不下发任何引擎 `overscan_*`**；导入照片同样适用，取景器不显示白边。
+  `FrameFormat` 由 OFF/FULL 扩为 OFF/FULL/WHITE，`isOn` 改按 `overscanFormat != null`
+  判定，白边档自动跳过引擎片门自检；EXIF 尺寸改用外扩后的最终值。
+  新增 `WhiteBorderRenderer` + 9 例单测，单测共 270 例。**零新增权限**。
 - **v65 新增「检查更新」（A+B 组合，零新增权限）**：关于页规格表新增一行。
   Play 安装的包走官方 `com.google.android.play:app-update:2.1.0` FLEXIBLE 应用内更新
   （后台下载、用户确认后 completeUpdate）；侧载包 / 库不可用 / 不允许 flexible
@@ -217,7 +224,7 @@ Free to download. Pick up your phone and step back into the film era.
 
 ## 4. 上传与提交
 1. Play Console → 新建应用 → 填 1 节的基础信息。
-2. **测试 → 内部测试（Internal testing）** 先跑一轮 → 上传 `RelicCam-v1.0.0-vc65.aab`（⚠️ vc47~vc64 全部作废：vc48 是 libz 补丁写错字节的坏包；vc49~vc64 是调色标定与布局修复的中间版，只在本机验证过。**上传用 vc65**（含检查更新，零新增权限））。
+2. **测试 → 内部测试（Internal testing）** 先跑一轮 → 上传 `RelicCam-v1.0.0-vc66.aab`（⚠️ vc47~vc65 全部作废：vc48 是 libz 补丁写错字节的坏包；vc49~vc65 是调色标定与布局修复的中间版，只在本机验证过。**上传用 vc66**（含白边相框，零新增权限））。
 3. 依次补全第 2 节所有 App content 表单（标「待处理」的都要点完成）。
 4. 填完 Store listing（第 1 节）并上传图标/特图/截图。
 5. 提交审核。
@@ -252,7 +259,7 @@ Free to download. Pick up your phone and step back into the film era.
    不删任何旧资产、不动无资产的内测引导 Release。
 6. `git commit` + `push`；同步本清单的版本引用（作废区间、上传用 vc<N>）。
 
-Release 现状（2026-11-10）：`v1.0.0-vc65` 为 **Latest**（vc65 APK + AAB，
+Release 现状（2026-11-10）：`v1.0.0-vc66` 为 **Latest**（vc66 APK + AAB，
 sha256 见 Release 正文），`v1.0.0`（vc49）已标废弃，无资产的 `RelicCam` 内测引导页保持不动。
 
 ---

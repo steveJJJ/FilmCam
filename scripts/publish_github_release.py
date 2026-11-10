@@ -276,8 +276,21 @@ def ensure_asset(release: dict, path: Path, token: str, digest: str) -> str:
     url = f"{UPLOAD}/releases/{release['id']}/assets?name=" + urllib.parse.quote(
         path.name, safe=""
     )
-    api("POST", url, token, payload=path.read_bytes(),
-        headers={"Content-Type": "application/octet-stream"}, timeout=300)
+    try:
+        api("POST", url, token, payload=path.read_bytes(),
+            headers={"Content-Type": "application/octet-stream"}, timeout=300)
+    except RuntimeError as e:
+        if "already_exists" not in str(e):
+            raise
+        # 上一次请求其实已经成功、只是响应在代理上丢了：重试撞到同名资产。
+        # 重新拉一次资产列表核对 sha256，匹配就当成功，别让整轮发布半途而废。
+        _, refreshed = api("GET", f"{API}/releases/{release['id']}", token)
+        same = next(
+            (a for a in refreshed.get("assets", []) if a["name"] == path.name), None
+        )
+        if not same or same.get("digest") != f"sha256:{digest}":
+            raise
+        return "uploaded(response-lost)"
     return "replaced" if replaced else "uploaded"
 
 

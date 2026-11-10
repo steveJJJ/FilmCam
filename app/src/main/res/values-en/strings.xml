@@ -84,6 +84,7 @@ Memory available: %10$d MB / %11$d MB total
     <string name="style_noritsu">Noritsu scan</string>
     <string name="set_frame">Film border</string>
     <string name="frame_full">Full 3:2</string>
+    <string name="frame_white">White border</string>
     <string name="set_frame_probe_failed">The engine rejects this gate — the roll develops without a film border; details in spektra_frame_probe.txt on external storage</string>
     <string name="set_slow">Slow shutter</string>
     <string name="set_wb">White balance</string>
@@ -121,7 +122,7 @@ Memory available: %10$d MB / %11$d MB total
         <item>Like changing a colour filter; stays until you change it</item>
         <item>Follow system / 简体中文 / English</item>
         <item>Full = original resolution, slower; Standard ≈ 12 MP, ~3x faster</item>
-        <item>Frames always follow the 135 gate (portrait shots use the upright gate): Off = image only, Full 3:2 scans the base and sprocket holes too</item>
+        <item>Frames always follow the 135 gate (portrait shots use the upright gate): Off = image only; Full 3:2 scans the base and sprocket holes; White = darkroom paper margin</item>
         <item>Nameplate and licenses</item>
     </string-array>
 

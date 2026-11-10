@@ -136,9 +136,20 @@ object FilmStockMapper {
 
         /** 135 全画幅（36×24mm，3:2，T3 这一格）：4:3 取景上下各裁掉约 5.6% */
         FULL("135", OVERSCAN_FORMAT_FULL, 36f / 24f),
+
+        /**
+         * v66 白边相框（暗房留白）：引擎仍按 135 片门出**纯画面**，
+         * 由 `WhiteBorderRenderer` 在落盘前外扩四边等宽的纸白边。
+         * 这一档绝不下发任何 `overscan_*` —— 片基/齿孔是引擎片框，不是相纸白边。
+         */
+        WHITE("white", null, 36f / 24f),
         ;
 
-        val isOn: Boolean get() = this != OFF
+        /** 是否走引擎的片框合成（白边档由 App 侧绘制，不算） */
+        val isOn: Boolean get() = overscanFormat != null
+
+        /** 是否走 App 侧白边合成 */
+        val isWhiteBorder: Boolean get() = this == WHITE
 
         /** 竖拍那一格：画面转 90°，宽高比取倒数（135 竖拍 = 24×36 = 2:3） */
         val gatePortrait: Float get() = 1f / gateAspect
@@ -158,12 +169,13 @@ object FilmStockMapper {
 
             /** 按引擎版式串反查档位（自检/日志里拿到的就是这种串）。 */
             fun fromOverscanFormat(s: String?): FrameFormat =
-                values().firstOrNull { it.overscanFormat == s } ?: OFF
+                values().firstOrNull { it.overscanFormat != null && it.overscanFormat == s } ?: OFF
 
-            /** 档位循环：关 ↔ 全画幅 */
+            /** 档位循环：关 → 全画幅 135 → 白边 → 关 */
             fun next(current: FrameFormat): FrameFormat = when (current) {
                 OFF -> FULL
-                FULL -> OFF
+                FULL -> WHITE
+                WHITE -> OFF
             }
         }
     }
@@ -276,7 +288,9 @@ object FilmStockMapper {
          * 取景器看到的是 4:3 一整块，真正落到底片上的只有中间那块 36×24。
          */
         val outputGate: FrameFormat
-            get() = if (frameFormat == FrameFormat.OFF) FrameFormat.FULL else frameFormat
+            get() = if (frameFormat == FrameFormat.OFF || frameFormat == FrameFormat.WHITE) {
+                FrameFormat.FULL
+            } else frameFormat
     }
 
     /** 相纸下拉项（保序，来自 stock_catalog.json prints[] 顺序）。 */
@@ -546,7 +560,7 @@ object FilmStockMapper {
             .edit().putString(PREF_FRAME_FORMAT, format.key).apply()
     }
 
-    /** 档位循环：关 ↔ 全画幅，返回新档位 */
+    /** 档位循环：关 → 全画幅 135 → 白边 → 关，返回新档位 */
     fun cycleFrameFormat(context: Context): FrameFormat {
         val next = FrameFormat.next(readFrameFormat(context))
         saveFrameFormat(context, next)

@@ -400,6 +400,8 @@ class DevelopmentService : Service() {
                         rawInputEv = userInputEv,
                         jpegNormStrength = effective.jpegNormalizeStrength,
                         rollNormBaseline = rollNormBaseline,
+                        // v66：白边档在两条通路的落盘前各自外扩（整卷统一，开卷读一次）
+                        whiteBorder = effective.frameFormat.isWhiteBorder,
                     )
                     if (usedFallback) {
                         fallbackFrames++
@@ -563,6 +565,8 @@ class DevelopmentService : Service() {
          * >= 0 时全卷沿用，不再重复采样。保证一卷里 36 张浓淡一致。
          */
         rollNormBaseline: FloatArray = FloatArray(1) { -1f },
+        /** v66：白边相框档（App 侧外扩；本档不带任何 `overscan_*`）。 */
+        whiteBorder: Boolean = false,
     ): Boolean {
         val tTotal0 = android.os.SystemClock.elapsedRealtime()
 
@@ -579,6 +583,7 @@ class DevelopmentService : Service() {
                     tmpJpeg, fallbackParamsJsons, frameNumber, gate,
                     frameParamsJson, frameOkPortrait, flashParamsJson, flashFrameParamsJson,
                     userInputEv = rawInputEv,
+                    whiteBorder = whiteBorder,
                 )
             }.onFailure {
                 Log.w(TAG, "帧 $index RAW 通路失败，落回 JPEG 通路: ${it.message}", it)
@@ -763,13 +768,26 @@ class DevelopmentService : Service() {
             }
             fellBack = result.fellBack
 
-            // EXIF（用引擎实际输出尺寸；镜头/胶卷元数据）
+            // v66 白边相框：本档引擎输出的是纯画面（无片基 / 齿孔），在 EXIF 与落盘之前
+            // 外扩四边等宽的纸白边。日期戳、暗角是在进引擎前就画在画面内的，外扩后
+            // 自然留在画面右下角，不会印到白边上。代价是多一次 JPEG 编解码（95 质量）。
+            val finalSize = if (whiteBorder) {
+                WhiteBorderRenderer.applyToJpeg(tmpJpeg)
+            } else {
+                WhiteBorderRenderer.Size(result.width, result.height)
+            }
+            if (whiteBorder) {
+                outW = finalSize.width
+                outH = finalSize.height
+            }
+
+            // EXIF（用成片最终尺寸；镜头/胶卷元数据）
             // DateTimeOriginal 记**冲洗完成时刻**而不是拍摄时刻：成片是刚从暗房拿出来的，
             // 拿旧照片的拍摄时间去当文件时间，系统相册会把它排到几个月前，等于冲了个看不见。
             // 真正的拍摄日期刻在画面日期戳上（上面 drawOnBitmap 用的 takenAt），并留一份
             // orig_taken_at 进 EXIF 快照。
             ContaxExif.write(
-                tmpJpeg, iso, result.width, result.height, takenAt,
+                tmpJpeg, iso, finalSize.width, finalSize.height, takenAt,
                 metadataAtMs = System.currentTimeMillis(),
                 filmDisplayName = filmDisplayName,
                 filmStockId = roll.filmStockId,
@@ -837,6 +855,8 @@ class DevelopmentService : Service() {
         flashFrameParamsJson: String?,
         /** 用户输入层曝光补偿（EV）。RAW 的绝对曝光仍由 ISP 引导决定，这里只叠偏移。 */
         userInputEv: Float = 0f,
+        /** v66：白边相框档（并入已有的那一次 `compress(JPEG, 95)`，不额外压一次）。 */
+        whiteBorder: Boolean = false,
     ): Boolean {
         val takenAt = try {
             UndevelopedFilmStore.frameTakenAt(roll.rollId, index)
@@ -935,8 +955,11 @@ class DevelopmentService : Service() {
             gainEv = totalGainEv
         )
         check(result.ok) { "processRawFrame 失败: ${result.message}" }
+        // v66：白边外扩后的最终尺寸，EXIF 要用它而不是引擎原始尺寸
+        var finalW = result.width
+        var finalH = result.height
 
-        // ---- 后处理：旋转 / 片门 / 日期戳 / 暗角 ----
+        // ---- 后处理：旋转 / 片门 / 日期戳 / 暗角 / 白边 ----
         // v37：必须像 JPEG 通路（:578）那样显式 inMutable —— 否则 rotation=0 的横拍
         // 拿到的是不可变 Bitmap，FrameBorderLock.setPixels 与日期戳 Canvas 都会抛
         // IllegalStateException，被 runCatching 静默吞掉，表现为「片框校色 0 像素」
@@ -998,6 +1021,16 @@ class DevelopmentService : Service() {
                 }.onFailure { Log.w(TAG, "帧 $index [RAW] 日期戳绘制失败（跳过）", it) }
             }
             runCatching { applySonnarVignette(bmp) }
+            // v66 白边相框必须是最后一步：日期戳与暗角已经画在画面内，外扩后
+            // 它们留在纯画面右下角，不会印到纸白边上。白边档没有 `overscan_active`，
+            // 上面的 FrameBorderLock 会自动跳过，不会把白边当片基去校色。
+            if (whiteBorder) {
+                val expanded = WhiteBorderRenderer.apply(bmp)
+                bmp.recycle()
+                bmp = expanded
+                finalW = bmp.width
+                finalH = bmp.height
+            }
             // 回写 tmpJpeg（引擎输出被后处理替换）
             java.io.FileOutputStream(tmpJpeg).use { out ->
                 bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 95, out)
@@ -1008,7 +1041,7 @@ class DevelopmentService : Service() {
 
         // EXIF + 落盘成片（与 JPEG 通路同一收尾）
         ContaxExif.write(
-            tmpJpeg, iso, result.width, result.height, takenAt,
+            tmpJpeg, iso, finalW, finalH, takenAt,
             metadataAtMs = System.currentTimeMillis(),
             filmDisplayName = filmDisplayName,
             filmStockId = roll.filmStockId,

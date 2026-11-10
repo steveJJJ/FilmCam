@@ -161,6 +161,11 @@ class FrameBorderTest {
             FilmStockMapper.FrameFormat.FULL,
             FilmStockMapper.DevSettings(frameFormat = FilmStockMapper.FrameFormat.FULL).outputGate
         )
+        // v66：白边档的画面仍按 135 片门出，只是落盘前才外扩相纸白边
+        assertEquals(
+            FilmStockMapper.FrameFormat.FULL,
+            FilmStockMapper.DevSettings(frameFormat = FilmStockMapper.FrameFormat.WHITE).outputGate
+        )
     }
 
     @Test
@@ -187,14 +192,35 @@ class FrameBorderTest {
 
     @Test
     fun cycleGoesOffThenFullFrame() {
-        // 设置面板只剩两档：关 ↔ 全画幅
+        // v66：设置面板三档，关 → 全画幅 → 白边 → 关
         assertEquals(FilmStockMapper.FrameFormat.FULL, FilmStockMapper.FrameFormat.next(
             FilmStockMapper.FrameFormat.OFF
         ))
-        assertEquals(FilmStockMapper.FrameFormat.OFF, FilmStockMapper.FrameFormat.next(
+        assertEquals(FilmStockMapper.FrameFormat.WHITE, FilmStockMapper.FrameFormat.next(
             FilmStockMapper.FrameFormat.FULL
         ))
-        assertEquals(2, FilmStockMapper.FrameFormat.values().size)
+        assertEquals(FilmStockMapper.FrameFormat.OFF, FilmStockMapper.FrameFormat.next(
+            FilmStockMapper.FrameFormat.WHITE
+        ))
+        assertEquals(3, FilmStockMapper.FrameFormat.values().size)
+    }
+
+    @Test
+    fun whiteBorder_neverAsksTheEngineForAnOverscan() {
+        val f = FilmStockMapper.FrameFormat.WHITE
+        assertFalse("白边不能走引擎片框自检", f.isOn)
+        assertTrue(f.isWhiteBorder)
+        assertEquals(null, f.overscanFormat)
+        assertEquals(f, FilmStockMapper.FrameFormat.fromKey("white"))
+        // 引擎版式串反查不能把 null 误认成白边档
+        assertEquals(
+            FilmStockMapper.FrameFormat.OFF,
+            FilmStockMapper.FrameFormat.fromOverscanFormat(null)
+        )
+        val o = json(f)
+        for (k in o.keys()) {
+            assertFalse("白边档不许下发 $k", k.startsWith("overscan"))
+        }
     }
 
     @Test
