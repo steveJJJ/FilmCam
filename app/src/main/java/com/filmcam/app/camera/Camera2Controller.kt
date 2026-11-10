@@ -744,15 +744,33 @@ class Camera2Controller(private val context: Context) {
             }
         }
 
-        // 预览分辨率：限制在 1920 宽以内。部分机型（三星 S25/Adreno + Android 16）
+        // 预览分辨率：限制在 1920 长边以内。部分机型（三星 S25/Adreno + Android 16）
         // 把 12MP 全尺寸作为 SurfaceTexture 私有流时，GL 消费者绑定 EGLImage 会
         // 持续失败（bindTextureImage 0x502），取景器黑屏；且预览远超屏幕分辨率
         // 白白耗电。拍照走 ImageReader JPEG，仍取全尺寸，不受影响。
-        val previewSize = map?.getOutputSizes(SurfaceTexture::class.java)
-            ?.filter { maxOf(it.width, it.height) <= 1920 }
-            ?.maxByOrNull { it.width * it.height }
-            ?: map?.getOutputSizes(SurfaceTexture::class.java)?.minByOrNull { it.width * it.height }
-            ?: Size(1920, 1440)
+        //
+        // v68 P0：**必须优先选 4:3**。旧逻辑只比面积，vivo V2227A / X300 Ultra 的
+        // HAL 报出 1920×1920(1:1, 3.686M) > 1920×1440(4:3, 2.765M)，方形纹理被
+        // shader 的常量内容比例（竖 3:4 / 横 4:3）直接拉伸 33.3% —— 用户看到
+        // 「画面比实物宽大」。取景器 shader 不读 previewSize，所以只能在选尺寸时收敛。
+        // S25U 最大面积候选本来就是 1920×1440，改策略后逐像素零变化。
+        val allPreviewSizes = map?.getOutputSizes(SurfaceTexture::class.java).orEmpty()
+        val picked = PreviewSizePolicy.choose(
+            allPreviewSizes.map { it.width to it.height }, maxLongEdge = 1920
+        )
+        val chosenBy = when {
+            picked == null -> "fallbackMinSize"
+            PreviewSizePolicy.isTargetAspect(picked.first, picked.second) -> "4x3"
+            else -> "fallbackMaxArea"
+        }
+        val previewSize = if (picked != null) {
+            Size(picked.first, picked.second)
+        } else {
+            // 全表都超过 1920 长边（极端机型）：退回最小档，别让私有流炸掉
+            allPreviewSizes.minByOrNull { it.width * it.height }
+                ?.let { Size(it.width, it.height) }
+                ?: Size(1920, 1440)
+        }
         surfaceTexture.setDefaultBufferSize(previewSize.width, previewSize.height)
         this.previewSize = previewSize
         runCatching {
@@ -768,8 +786,9 @@ class Camera2Controller(private val context: Context) {
         // 读取传感器方向
         val sensorOrientation = chars.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 90
         android.util.Log.i("Camera2", "previewSize=$previewSize sensorOrientation=$sensorOrientation")
-        // v63 只读取证：把预览尺寸 / 比例 / 传感器能力记进跨机型报告。
-        // ⚠️ 不改任何 selection 逻辑 —— P0 是否收敛到 4:3 要等真机数据再定。
+        // v63 起只读取证：把预览尺寸 / 比例 / 传感器能力记进跨机型报告。
+        // v68 新增失配告警 —— 没有 4:3 候选的机型仍会回退旧逻辑，靠这两个字段
+        // 一眼区分「尺寸选对了」与「HAL 只给了畸形比例」，别再靠截图猜。
         runCatching {
             val asp = previewSize.width.toFloat() / previewSize.height.toFloat()
             val candidates = map?.getOutputSizes(SurfaceTexture::class.java)
@@ -780,8 +799,21 @@ class Camera2Controller(private val context: Context) {
             com.filmcam.app.develop.DeviceGeometryReport.putAll(
                 "camera.previewSize" to "${previewSize.width}x${previewSize.height}",
                 "camera.previewAspect" to "%.4f".format(java.util.Locale.US, asp),
-                "camera.previewIs4x3" to (kotlin.math.abs(asp - 4f / 3f) < 0.01f),
+                // 与选择策略同一口径：max/min 归一化，兼容厂商竖置上报的尺寸
+                "camera.previewIs4x3" to PreviewSizePolicy.isTargetAspect(
+                    previewSize.width, previewSize.height
+                ),
                 "camera.previewIs16x9" to (kotlin.math.abs(asp - 16f / 9f) < 0.01f),
+                "camera.previewChosenBy" to chosenBy,
+                "camera.previewAspectMismatch" to !PreviewSizePolicy.isTargetAspect(
+                    previewSize.width, previewSize.height
+                ),
+                "camera.previewAspectErrorPct" to "%.1f".format(
+                    java.util.Locale.US,
+                    PreviewSizePolicy.aspectErrorFraction(
+                        previewSize.width, previewSize.height
+                    ) * 100f
+                ),
                 "camera.sensorOrientation" to sensorOrientation,
                 "camera.displayRotationDeg" to deviceRotationDegrees(),
                 "camera.hasManualSensor" to hasManualSensor,

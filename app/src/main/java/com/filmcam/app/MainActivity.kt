@@ -211,18 +211,25 @@ class MainActivity : AppCompatActivity() {
         com.filmcam.app.ui.EdgeToEdge.setup(
             this, binding.topBar, binding.bottomBar, bottomAsMargin = true,
             extraBottomMarginViews = listOf(binding.brandLogo),
-            onSystemBarInsets = { t, b ->
+            onSystemBarInsets = { t, b, vt, vb ->
                 sbTopPx = t
                 sbBottomPx = b
                 runCatching {
                     DeviceGeometryReport.putAll(
+                        // v68：t/b 是 getInsetsIgnoringVisibility 的最大 inset（隐藏栏后不跳），
+                        // vt/vb 是当前可见 inset；对比历史报告请认准这两个口径。
                         "insets.topPx" to t,
                         "insets.bottomPx" to b,
+                        "insets.visibleTopPx" to vt,
+                        "insets.visibleBottomPx" to vb,
+                        "insets.immersive" to true,
                     )
                     DeviceGeometryReportIo.flush(this)
                 }
                 binding.root.post { refitChrome() }
-            }
+            },
+            // 只在取景器页隐藏系统栏：拍摄更沉浸，其余 4 页保留时间与通知
+            immersive = true,
         )
         // 旋转 / 分辨率 / 显示大小变化后重新量一次（值不变时不写，不会自激循环）
         binding.root.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> refitChrome() }
@@ -1439,8 +1446,16 @@ class MainActivity : AppCompatActivity() {
         binding.glSurfaceView.onPause()
     }
 
+    /** v68：从通知栏 / 权限框 / 分屏返回时，系统栏会被系统重新显示，重新隐藏。 */
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) com.filmcam.app.ui.EdgeToEdge.applyImmersive(this)
+    }
+
     override fun onResume() {
         super.onResume()
+        // v68：切后台 / 下拉通知 / 弹权限框后系统会恢复系统栏，回前台补一次隐藏
+        com.filmcam.app.ui.EdgeToEdge.applyImmersive(this)
         // 回前台：恢复 GL，SurfaceTexture 重建后会自动触发 onSurfaceTextureReady → 重新启动相机
         binding.glSurfaceView.onResume()
         // v59：回前台时若仍停在外置档，补一次建连（startScan 幂等；

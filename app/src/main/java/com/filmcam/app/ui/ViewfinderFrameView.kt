@@ -212,8 +212,11 @@ class ViewfinderFrameView @JvmOverloads constructor(
         // 基线随内容上移时用「字体度量 + 固定间距」算净空，不再用魔术数字——
         // 之前 ± 的文字实际高度（约 1.2×iconSize）大于两者间距（0.6×iconSize），
         // 导致闪光闪电压在 ± 上。
-        val colLeft = cl + cw * 0.085f
-        var colBase = cb - ch * 0.28f
+        // v68：横屏下角标按片门宽内收、EV 按内容宽写死比例，两条曲线不相交会
+        // 让「+3±」压在内侧视差小角标上（小米15/S25U/X300Pro 横屏全中）。改成
+        // 按角标包围盒反推位置，竖屏不相交时原样返回 —— 基准逐像素零变化。
+        var colLeft = cl + cw * ViewfinderIndicatorLayout.EV_LEFT_FRACTION
+        var colBase = cb - ch * ViewfinderIndicatorLayout.EV_BASE_FRACTION
 
         // ⑤ 曝光补偿 ±（左侧偏下）：
         // 不能放在画面底部角落——那里有亮框和视差小角标两层横线，± 文字会压线。
@@ -225,6 +228,15 @@ class ViewfinderFrameView @JvmOverloads constructor(
                 typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
             }
             val text = if (st.evSteps > 0) "+${st.evSteps}" else st.evSteps.toString()
+            val textWidth = pmPaint.measureText(text) + 3 * density + pmPaint.measureText("±")
+            val fm = pmPaint.fontMetrics
+            val placement = ViewfinderIndicatorLayout.solve(
+                cl, ct, cr, cb, gl, gt, gr, gb,
+                textWidth, fm.ascent, fm.descent, density,
+                BRACKET_INSET, BRACKET_LEN, PARALLAX_INSET, PARALLAX_LEN
+            )
+            colLeft = placement.colLeft
+            colBase = placement.colBase
             canvas.drawText(text, colLeft, colBase, pmPaint)
             canvas.drawText(
                 "±", colLeft + pmPaint.measureText(text) + 3 * density, colBase, pmPaint

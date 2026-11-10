@@ -7,6 +7,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 
 /**
  * Android 15+(target 35+) 强制边到边适配：
@@ -39,14 +40,22 @@ object EdgeToEdge {
         /**
          * v58：把本次派发的系统栏 inset 回传给调用方，供 [ChromeSafeArea] 用
          * 「预览留白」重新定位机身控件。不改变这里的补偿逻辑。
+         * v68：前两个是「忽略可见性」的最大 inset（隐藏系统栏后仍稳定），
+         * 后两个是当前**可见** inset，供诊断报告对照口径。
          */
-        onSystemBarInsets: ((topPx: Int, bottomPx: Int) -> Unit)? = null,
+        onSystemBarInsets: ((topPx: Int, bottomPx: Int, visibleTopPx: Int, visibleBottomPx: Int) -> Unit)? = null,
+        /**
+         * v68：只在取景器页（MainActivity）开启沉浸式隐藏系统栏。
+         * 其余 4 个 Activity 保留系统栏 —— 看设置 / 相册 / 暗房仍能看到时间和通知。
+         */
+        immersive: Boolean = false,
     ) {
         val window = activity.window
         // 官方无边框开关：内部完成 decorFits=false + 系统栏透明，并向后兼容旧 API。
         // 透明后露出的是根布局机身底色，所以不需要（也不能再）设置栏颜色。
         activity.enableEdgeToEdge()
         BodyTheme.applySystemBars(window)
+        if (immersive) window.decorView.post { applyImmersive(activity) }
 
         val root = activity.findViewById<View>(android.R.id.content)
         val topBase = topView?.paddingTop ?: 0
@@ -61,8 +70,13 @@ object EdgeToEdge {
         }
 
         ViewCompat.setOnApplyWindowInsetsListener(root) { _, insets ->
-            val sb = insets.getInsets(WindowInsetsCompat.Type.systemBars())
-            onSystemBarInsets?.invoke(sb.top, sb.bottom)
+            // v68 防回归铁律：隐藏系统栏后 getInsets(systemBars()) 会变成 0，
+            // 直接用它会把 v54 修过的铭牌 / 底栏补偿一口气撤掉（控件下移一个
+            // 导航栏高度），ChromeSafeArea.usableDp 也跟着跳。改用「忽略可见性」
+            // 的最大 inset：栏在不在，补偿值都一致，布局一个像素都不动。
+            val sb = insets.getInsetsIgnoringVisibility(WindowInsetsCompat.Type.systemBars())
+            val visible = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            onSystemBarInsets?.invoke(sb.top, sb.bottom, visible.top, visible.bottom)
             topView?.let { v ->
                 v.setPadding(v.paddingLeft, topBase + sb.top, v.paddingRight, v.paddingBottom)
             }
@@ -90,6 +104,24 @@ object EdgeToEdge {
                 }
             }
             insets
+        }
+    }
+
+    /**
+     * v68 沉浸式：隐藏状态栏 + 导航栏，边缘下滑可临时呼出（不是永久锁死）。
+     * 官方 WindowInsetsControllerCompat，不需要弃用 API / 不新增权限、与 v57
+     * 的 enableEdgeToEdge() 不冲突。切后台、下拉通知、弹权限框后系统会恢复系统栏，
+     * 所以调用方必须在 onResume / onWindowFocusChanged 里重复调用。
+     */
+    fun applyImmersive(activity: AppCompatActivity) {
+        runCatching {
+            WindowInsetsControllerCompat(
+                activity.window, activity.window.decorView
+            ).apply {
+                hide(WindowInsetsCompat.Type.systemBars())
+                systemBarsBehavior =
+                    WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            }
         }
     }
 
