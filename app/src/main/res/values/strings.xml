@@ -275,13 +275,10 @@ App 版本：%1$s (%2$d)
     <!-- ===== 关于页（AboutActivity 代码内文案） ===== -->
     <string name="about_tap_more">%1$s · 再点 %2$d 次</string>
     <string name="about_no_browser">没有可用的浏览器</string>
-    <string name="about_feedback_email_channel">发邮件反馈</string>
+    <string name="about_feedback_email_channel">发邮件反馈（自动附诊断报告）</string>
     <string name="about_feedback_wechat_channel">加微信进群反馈</string>
-    <string name="about_diag_copy_channel">复制设备诊断报告</string>
-    <string name="about_diag_share_channel">分享设备诊断报告</string>
-    <string name="about_diag_copied">诊断报告已复制，粘贴发给开发者即可</string>
-    <string name="about_diag_share_title">分享设备诊断报告</string>
-    <string name="about_diag_share_failed">没有可用的分享应用</string>
+    <string name="feedback_diag_header">—— 设备诊断报告（自动生成，已随本邮件附上；如不便可删除）——</string>
+    <string name="feedback_diag_unavailable">（设备诊断报告暂不可用，请在反馈中说明机型与系统版本）</string>
     <string name="about_spec_update">更新 UPDATE</string>
     <string name="about_update_action">点击检查</string>
     <string name="update_checking">正在检查更新…</string>

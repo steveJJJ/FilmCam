@@ -312,8 +312,9 @@ class AboutActivity : AppCompatActivity() {
     }
 
     /**
-     * 标题栏右端的「问题反馈」入口：先给两个渠道选——
-     *  · 邮箱反馈：预填 App 版本与设备信息，便于拿到能直接复现的诊断数据；
+     * 标题栏右端的「问题反馈」入口：两个渠道——
+     *  · 邮箱反馈（v67）：预填版本/设备信息，并**自动附上设备诊断报告全文**；
+     *    「复制 / 分享诊断报告」两个重复入口已合并到这里，点一下直接拉起邮件。
      *  · 加微信进群：复制微信号（LazyRofin）到剪贴板，用户去微信加群当面反馈。
      */
     private fun bindFeedback() {
@@ -321,49 +322,23 @@ class AboutActivity : AppCompatActivity() {
     }
 
     private fun showFeedbackOptions() {
+        // v67：诊断导出合并进邮件反馈，列表回到两项，不再有复制/分享重复入口
         val channels = arrayOf(
             getString(R.string.about_feedback_email_channel),
-            getString(R.string.about_feedback_wechat_channel),
-            getString(R.string.about_diag_copy_channel),
-            getString(R.string.about_diag_share_channel)
+            getString(R.string.about_feedback_wechat_channel)
         )
         androidx.appcompat.app.AlertDialog.Builder(this, com.filmcam.app.ui.BodyTheme.dialogTheme)
             .setTitle(R.string.about_feedback)
             .setItems(channels) { _, which ->
-                when (which) {
-                    0 -> sendFeedback()
-                    1 -> copyWechatId()
-                    2 -> copyGeometryReport()
-                    3 -> shareGeometryReport()
-                }
+                if (which == 0) sendFeedback() else copyWechatId()
             }
             .setNegativeButton(R.string.main_cancel, null)
             .show()
     }
 
-    /** v63 内测：跨机型几何报告，普通用户也能导出，不受工程模式 PRO 限制 */
+    /** v67：诊断报告全文随「发邮件反馈」自动带走；不受工程模式 PRO 限制 */
     private fun geometryReport(): String =
         com.filmcam.app.develop.DeviceGeometryReportIo.read(this)
-
-    private fun copyGeometryReport() {
-        val clipboard = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
-        clipboard.setPrimaryClip(
-            android.content.ClipData.newPlainText("Relic Cam diagnostics", geometryReport())
-        )
-        Toast.makeText(this, R.string.about_diag_copied, Toast.LENGTH_SHORT).show()
-    }
-
-    private fun shareGeometryReport() {
-        val intent = Intent(Intent.ACTION_SEND).apply {
-            type = "text/plain"
-            putExtra(Intent.EXTRA_SUBJECT, "Relic Cam device diagnostics")
-            putExtra(Intent.EXTRA_TEXT, geometryReport())
-        }
-        val ok = runCatching {
-            startActivity(Intent.createChooser(intent, getString(R.string.about_diag_share_title)))
-        }.isSuccess
-        if (!ok) Toast.makeText(this, R.string.about_diag_share_failed, Toast.LENGTH_SHORT).show()
-    }
 
     /** 复制进群微信号到剪贴板（微信号：LazyRofin） */
     private fun copyWechatId() {
@@ -404,13 +379,21 @@ class AboutActivity : AppCompatActivity() {
                     Build.VERSION.RELEASE, Build.VERSION.SDK_INT
                 )
             )
+            // v67：自动附上设备诊断报告全文（合并掉原来的复制 / 分享两个入口）
+            // 报告约 2 KB，走正文而非附件：ACTION_SENDTO 不支持 EXTRA_STREAM，
+            // 加附件还得引 FileProvider + URI 授权，会破坏零新增权限/组件。
             putExtra(
-                Intent.EXTRA_TEXT, getString(
-                    R.string.feedback_body,
-                    verLabel, verCode, Build.MANUFACTURER, Build.MODEL,
-                    Build.VERSION.RELEASE, Build.VERSION.SDK_INT,
-                    metrics.widthPixels, metrics.heightPixels, metrics.densityDpi,
-                    availMb, totalMb
+                Intent.EXTRA_TEXT, FeedbackMail.composeBody(
+                    template = getString(
+                        R.string.feedback_body,
+                        verLabel, verCode, Build.MANUFACTURER, Build.MODEL,
+                        Build.VERSION.RELEASE, Build.VERSION.SDK_INT,
+                        metrics.widthPixels, metrics.heightPixels, metrics.densityDpi,
+                        availMb, totalMb
+                    ),
+                    header = getString(R.string.feedback_diag_header),
+                    report = runCatching { geometryReport() }
+                        .getOrDefault(getString(R.string.feedback_diag_unavailable)),
                 )
             )
         }

@@ -262,13 +262,10 @@ Memory available: %10$d MB / %11$d MB total
     <!-- ===== About screen (strings set in AboutActivity code) ===== -->
     <string name="about_tap_more">%1$s · %2$d more taps</string>
     <string name="about_no_browser">No browser available</string>
-    <string name="about_feedback_email_channel">Send an email</string>
+    <string name="about_feedback_email_channel">Email with diagnostics</string>
     <string name="about_feedback_wechat_channel">Join the WeChat group</string>
-    <string name="about_diag_copy_channel">Copy device diagnostics</string>
-    <string name="about_diag_share_channel">Share device diagnostics</string>
-    <string name="about_diag_copied">Diagnostics copied — paste it to the developer</string>
-    <string name="about_diag_share_title">Share device diagnostics</string>
-    <string name="about_diag_share_failed">No sharing app available</string>
+    <string name="feedback_diag_header">—— Device diagnostics (attached automatically; remove if you prefer) ——</string>
+    <string name="feedback_diag_unavailable">(Device diagnostics unavailable — please include your device model and Android version)</string>
     <string name="about_spec_update">UPDATES</string>
     <string name="about_update_action">CHECK</string>
     <string name="update_checking">Checking for updates…</string>

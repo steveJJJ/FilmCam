@@ -7,7 +7,7 @@ import java.io.File
  * [DeviceGeometryReport] 的落盘与读取。
  *
  * 文件写在 **外部私有目录**（`getExternalFilesDir`），内测用户不需要 root / adb，
- * 用系统文件管理器就能找到；App 内「关于 → 问题反馈」还能一键复制或分享全文。
+ * 用系统文件管理器就能找到；App 内「关于 → 问题反馈 → 发邮件反馈」会自动把全文附进邮件正文。
  * 路径：/sdcard/Android/data/com.filmcam.app/files/filmcam_device_report.txt
  */
 object DeviceGeometryReportIo {
