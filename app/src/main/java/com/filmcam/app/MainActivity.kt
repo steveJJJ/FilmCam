@@ -820,14 +820,42 @@ class MainActivity : AppCompatActivity() {
             refreshValues()
         }
         row(R.id.rowSetFrame).hapticClick {
-            // 胶片相框：关 → 全画幅 135（3:2，按 36×24 片门裁）→ 白边相框 → 关。就地循环，只影响下次冲洗。
-            val next = FilmStockMapper.cycleFrameFormat(this@MainActivity)
-            refreshValues()
-            // 当场问一次引擎：片门形状是渲染期才校验的（setParams 会收下、solve 才拒绝），
-            // 与其等冲完一卷才发现这机器不认这一格，不如现在就知道。
-            // 正在冲洗时不插队：两边共用同一个引擎实例，抢着开 session 只会互相打断
-            // v66：白边档是 App 侧画的，不走引擎片门自检（next.isOn 已排除它）
-            if (next.isOn && !developingNow()) probeFrameGate(next)
+            // v69 三档直选：之前点一下就地循环，白边相框很容易被连点切走，
+            // 用户只看到「白框没了」却不知道档位变了。现在弹出列表、当前档打勾，
+            // 点哪档是哪档；选完立刻刷新面板读数并给一条即时反馈。
+            // 白边相框就是列表里明确的一项，不会再被点走。
+            val choices = FilmStockMapper.FrameFormat.choices
+            val labels = choices.map { frameBorderName(it) }.toTypedArray()
+            val current = FilmStockMapper.readFrameFormat(this@MainActivity)
+            val checked = choices.indexOf(current).coerceAtLeast(0)
+            val picker = androidx.appcompat.app.AlertDialog.Builder(this, theme.dialogTheme)
+                .setTitle(R.string.set_frame)
+                .setSingleChoiceItems(labels, checked) { d, which ->
+                    val chosen = choices[which]
+                    d.dismiss()
+                    if (chosen != current) {
+                        FilmStockMapper.saveFrameFormat(this@MainActivity, chosen)
+                        refreshValues()
+                        android.widget.Toast.makeText(
+                            this@MainActivity,
+                            getString(R.string.set_frame) + "：" + frameBorderName(chosen),
+                            android.widget.Toast.LENGTH_SHORT
+                        ).show()
+                        // 只有全画幅档走引擎片门自检：白边是 App 侧画的、关是纯画面。
+                        // 正在冲洗时不插队：两边共用同一个引擎实例。
+                        if (chosen.isOn && !developingNow()) probeFrameGate(chosen)
+                    }
+                }
+                .setNegativeButton(android.R.string.cancel, null)
+                .create()
+            picker.guardDialog()
+            picker.setOnShowListener {
+                val dm = resources.displayMetrics
+                val w = (dm.widthPixels * 0.86f).toInt().coerceAtMost((400 * dm.density).toInt())
+                picker.window?.setLayout(w, android.view.ViewGroup.LayoutParams.WRAP_CONTENT)
+                picker.window?.setBackgroundDrawable(theme.panelDrawable())
+            }
+            picker.show()
         }
         row(R.id.rowSetAbout).hapticClick {
             dialog.dismiss()
@@ -860,7 +888,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     /** 设置面板「胶片相框」当前档位：关 / 全画幅 3:2 / 白边 */
-    private fun frameBorderName(): String = when (FilmStockMapper.readFrameFormat(this)) {
+    private fun frameBorderName(): String =
+        frameBorderName(FilmStockMapper.readFrameFormat(this))
+
+    /** 直选列表用：按指定档位取名，与面板读数同一套文案。 */
+    private fun frameBorderName(format: FilmStockMapper.FrameFormat): String = when (format) {
         FilmStockMapper.FrameFormat.FULL -> getString(R.string.frame_full)
         FilmStockMapper.FrameFormat.WHITE -> getString(R.string.frame_white)
         else -> getString(R.string.common_off)

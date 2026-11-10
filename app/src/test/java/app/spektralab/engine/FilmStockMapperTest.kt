@@ -1,5 +1,6 @@
 package app.spektralab.engine
 
+import app.spektralab.engine.FilmStockMapper.FrameFormat
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -408,5 +409,36 @@ class FilmStockMapperTest {
         assertTrue(FilmStockMapper.ENGINE_KNOWN_KEYS.contains("y_filter_shift"))
         assertTrue(FilmStockMapper.ENGINE_KNOWN_KEYS.contains("m_filter_shift"))
         assertTrue(FilmStockMapper.ENGINE_KNOWN_KEYS.contains("filter_shift_scale"))
+    }
+
+    // ---- v69：胶片相框三档直选 ----
+
+    @Test
+    fun `相框直选列表固定三档且白边在里面`() {
+        assertEquals(listOf(FrameFormat.OFF, FrameFormat.FULL, FrameFormat.WHITE), FrameFormat.choices)
+        assertEquals(3, FrameFormat.choices.distinct().size)
+        // 「增加一个白边相框」的入口契约：白边必须是能直接点中的一项
+        assertTrue("白边相框必须在直选列表里", FrameFormat.WHITE in FrameFormat.choices)
+        assertEquals(2, FrameFormat.choices.indexOf(FrameFormat.WHITE))
+    }
+
+    @Test
+    fun `三个档位的 key 都能往返还原`() {
+        FrameFormat.choices.forEach { format ->
+            assertEquals(format, FrameFormat.fromKey(format.key))
+        }
+        assertEquals(FrameFormat.OFF, FrameFormat.fromKey(null))
+        assertEquals(FrameFormat.OFF, FrameFormat.fromKey("nope"))
+        assertEquals(FrameFormat.FULL, FrameFormat.fromKey("135_half"))   // 旧版半格档迁移
+    }
+
+    @Test
+    fun `白边档走 App 渲染而不走引擎片框`() {
+        assertFalse("白边不该下发 overscan_*", FrameFormat.WHITE.isOn)
+        assertTrue("白边必须触发 App 侧外扩", FrameFormat.WHITE.isWhiteBorder)
+        assertTrue(FrameFormat.FULL.isOn)
+        assertFalse(FrameFormat.FULL.isWhiteBorder)
+        assertFalse(FrameFormat.OFF.isOn)
+        assertFalse(FrameFormat.OFF.isWhiteBorder)
     }
 }
