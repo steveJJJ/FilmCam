@@ -495,7 +495,7 @@ class AboutActivity : AppCompatActivity() {
     }
 
     /**
-     * 工程师控制台：慢门档位、输出风格、冲洗参数，加上原来的调试项（跳过冲洗 / 模拟失焦 /
+     * 工程师控制台：慢门档位、输出风格、冲洗参数，加上原来的调试项（模拟失焦 /
      * 慢门触发机制 / 冲洗耗时诊断）。
      *
      * 全部即时生效：这里调的是"看一眼效果"的旋钮，再让用户点一次「保存」只会让人怀疑
@@ -508,7 +508,6 @@ class AboutActivity : AppCompatActivity() {
 
         val theme = com.filmcam.app.ui.BodyTheme
         val swEngineer = view.findViewById<android.widget.Switch>(R.id.swEngineerMode)
-        val swSkip = view.findViewById<android.widget.Switch>(R.id.swSkipDevelop)
         val sbProb = view.findViewById<SeekBar>(R.id.sbSoftFocusProb)
         val tvProb = view.findViewById<TextView>(R.id.tvSoftFocusProb)
 
@@ -639,11 +638,6 @@ class AboutActivity : AppCompatActivity() {
                 Toast.makeText(this, R.string.eng_mode_off_toast, Toast.LENGTH_LONG).show()
                 consoleRef?.dismiss()
             }
-        }
-
-        swSkip.isChecked = prefs.getBoolean("debug_instant_develop", false)
-        swSkip.setOnCheckedChangeListener { _, checked ->
-            prefs.edit().putBoolean("debug_instant_develop", checked).apply()
         }
 
         // P3 RAW 负片：开关本身设备无关（不支持的机型开了也不会产生底片，无害），

@@ -15,14 +15,14 @@
 - [x] 隐私政策：免费 + 内购表述，已推送上线 `https://stevejjj.github.io/relic-cam-privacy/`
 - [x] 商店文案 / 图标 / 特色图 / 3 张截图 / 原生符号包 全部就绪
 - [x] 商家账号（付款资料）已提交，银行账户改用储蓄卡
-- [x] **GitHub Release 资产已同步 vc71**（2026-11-11；此前停在 vc49，落后 16 个版本）→ 后续每次迭代按第 4.5 节执行
+- [x] **GitHub Release 资产已同步 vc72**（2026-11-11；此前停在 vc49，落后 16 个版本）→ 后续每次迭代按第 4.5 节执行
 
 **接下来按顺序做**
 1. **确认银行账户验证状态** → `payments.google.com` → 设置 → 付款方式
    - 「正在验证」→ 等 1~3 个工作日（可能需上传 90 天内对账单 / 回填小额打款）
    - 「已验证」→ 进第 2 步
 2. **应用定价改「免费」**（⚠️ 不可逆）→ 商店设置 → 定价和分发
-3. **传 AAB** → 测试 → 内部测试 → 上传 `RelicCam-v1.0.0-vc71.aab`
+3. **传 AAB** → 测试 → 内部测试 → 上传 `RelicCam-v1.0.0-vc72.aab`
 4. **传素材 + 填商店信息**（第 1 节）→ 图标 512 / 特色图 1024×500 / 3 张截图
 5. **填 App content 全部问卷**（第 2 节）→ Data safety 全 No、无广告、目标受众 13-17+18+
 6. **建 `pro_unlock` 商品并激活**（第 3 节，需第 1 步完成）
@@ -229,7 +229,7 @@ Free to download. Pick up your phone and step back into the film era.
 
 ## 4. 上传与提交
 1. Play Console → 新建应用 → 填 1 节的基础信息。
-2. **测试 → 内部测试（Internal testing）** 先跑一轮 → 上传 `RelicCam-v1.0.0-vc71.aab`（⚠️ vc47~vc70 全部作废：vc48 是 libz 补丁写错字节的坏包；vc49~vc68 是调色标定、布局修复与反馈入口合并的中间版；vc69 的三档直选弹窗被用户否决；vc70 缺 vivo 机身控件自适应。**上传用 vc71**（修横屏 LCD 压预览框 + 竖屏设置键被裁，零新增权限））。
+2. **测试 → 内部测试（Internal testing）** 先跑一轮 → 上传 `RelicCam-v1.0.0-vc72.aab`（⚠️ vc47~vc71 全部作废：vc48 是 libz 补丁写错字节的坏包；vc49~vc68 是调色标定、布局修复与反馈入口合并的中间版；vc69 的三档直选弹窗被用户否决；vc70 缺 vivo 机身控件自适应；vc71 是内测候选。**上传用 vc72**（删除失效的「调试：跳过冲洗立刻出片」开关，含 vc71 全部修复，零新增权限））。
 3. 依次补全第 2 节所有 App content 表单（标「待处理」的都要点完成）。
 4. 填完 Store listing（第 1 节）并上传图标/特图/截图。
 5. 提交审核。
@@ -264,22 +264,27 @@ Free to download. Pick up your phone and step back into the film era.
    不删任何旧资产、不动无资产的内测引导 Release。
 6. `git commit` + `push`；同步本清单的版本引用（作废区间、上传用 vc<N>）。
 
-Release 现状（2026-11-11）：`v1.0.0-vc71` 为 **Latest**（vc71 APK + AAB，
-sha256 见 Release 正文），`v1.0.0-vc70` / `v1.0.0-vc69` / `v1.0.0`（vc49）等旧版已标废弃，无资产的 `RelicCam` 内测引导页保持不动。
+Release 现状（2026-11-11）：`v1.0.0-vc72` 为 **Latest**（vc72 APK + AAB，
+sha256 见 Release 正文），`v1.0.0-vc71` / `v1.0.0-vc70` / `v1.0.0`（vc49）等旧版已标废弃，无资产的 `RelicCam` 内测引导页保持不动。
 
-vc71 核验记录：`aapt2 dump badging` versionCode=71 / targetSdk=36；6 个 `.so` 的
-`PT_LOAD p_align=16384` 全通过、无 `libz.so.1` 残留（`libraw*`/`libraw_r*` 为等长补丁后的
-`libz.so`）；`aapt2 dump permissions` 与 vc70 一致（11 项）、仍无 INTERNET；单测 299 例 / 0 失败；
+vc72 核验记录：`aapt2 dump badging` versionCode=72 / targetSdk=36；6 个 `.so` 的
+`PT_LOAD p_align=16384` 全通过、无 `libz.so.1` 残留；`aapt2 dump permissions` 与 vc71 一致（11 项）、仍无 INTERNET；单测 301 例 / 0 失败；
 `assembleRelease` + `bundleRelease` BUILD SUCCESSFUL。
 
-vc71 变更：修 vivo X300 Ultra（1260×2772@3.5 / 360dp / Android 17）两处机身控件溢出。
-① 横屏 `layout-land` 液晶屏固定 148dp，右边缘 581px 压进 546px 黑边 35px；
-② 竖屏 `widthScale=0.8911` 只缩 LCD 与按键间距、漏算固定 48dp 按键，行内溢出 30px
-导致设置键被裁。修法：`ChromeSafeArea.fitLcdWidth` 以设计值为上限、按可用空间反算，
-横屏 `applicable=false` 分支改为「只夹紧 LCD 宽度再 return」，topBar padding / 底栏 /
-铭牌位置不动；净空取 4dp 使 S25U 横竖屏逐像素零变化。诊断新增
-`chrome.lcdWidthPx` / `lcdDesignPx` / `lcdClamped` 三个字段。**只改机身 UI，冲洗链路、
-白边渲染、预览几何均未动**。定量报告见 `tmp/sample_1109/vivo_x300ultra_chrome_overlap_research.md`。
+vc72 变更：删除工程师控制台里失效的「调试：跳过冲洗立刻出片」开关。该开关
+`debugInstantDevelop` 只在 `MainActivity.onCreate` 读一次、`onResume` 不重读，且 `onPause`
+的 `saveSettings()` 会把内存旧值回写覆盖控制台刚写的新值 → 打开后永远不生效、状态还会被抹掉。
+按用户拍板整体移除：UI Switch、prefs key、拍照回调触发、中英两个字符串与相关注释；
+`DevelopController.developRollInBackground` 保留（暗房「后台冲洗」按钮仍依赖它）。
+新增 2 条源码契约单测防止死开关被加回来。产物对比：vc71 → vc72 的 60 个 `res/*.xml`
+差异均为删字符串导致的资源 ID 重排（抽样文件长度不变、仅 11 字节差异），
+字符串资源 383 → 382；APK 内 4 个死开关标识零残留。**冲洗链路、白边渲染、预览几何、
+vivo 机身 UI 修复全部未动**。
+
+vc71 变更（已并入 vc72）：修 vivo X300 Ultra 横屏 LCD 压预览框 35px、竖屏设置键被裁 30px
+（`ChromeSafeArea.fitLcdWidth` 按可用空间反算，S25U 横竖屏逐像素零变化）；
+诊断新增 `chrome.lcdWidthPx` / `lcdDesignPx` / `lcdClamped`。
+定量报告见 `tmp/sample_1109/vivo_x300ultra_chrome_overlap_research.md`。
 
 ---
 

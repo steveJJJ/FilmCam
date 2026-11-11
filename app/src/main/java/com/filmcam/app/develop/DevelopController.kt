@@ -8,8 +8,8 @@ import android.content.Intent
  *
  *  - [startDevelopment]：打开暗房活动（带仪式感 UI）；若该卷已在冲洗则仅打开活动，
  *    活动自身负责挂接 [DevelopmentState] 的进度。
- *  - [developRollInBackground]：直接起前台服务后台冲洗（调试即时出片路径；
- *    暗房活动"后台冲洗"按钮也复用——活动 finish 后服务自然续跑）。
+ *  - [developRollInBackground]：直接起前台服务后台冲洗，由暗房活动的
+ *    "后台冲洗"按钮复用——活动 finish 后服务自然续跑。
  */
 object DevelopController {
 

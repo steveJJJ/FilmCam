@@ -220,7 +220,6 @@ App 版本：%1$s (%2$d)
     <string name="main_dev_paper_hint">自动 = 按胶卷品牌的官方推荐相纸搭配（如柯达负片印 Portra Endura、电影卷印 Kodak 2383），点上方可手动覆盖</string>
 
     <!-- ===== 布局：工程师模式 ===== -->
-    <string name="main_debug_skip_develop">调试：跳过冲洗立即出片</string>
     <string name="main_debug_softfocus_prob">模拟失焦概率（0% = 关闭）</string>
     <string name="main_debug_note">这些选项用于开发调试，普通使用无需调整。</string>
 

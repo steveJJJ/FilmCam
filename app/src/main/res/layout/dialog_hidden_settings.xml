@@ -118,13 +118,6 @@
             android:paddingEnd="24dp">
 
             <Switch
-                android:id="@+id/swSkipDevelop"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="@string/main_debug_skip_develop"
-                android:textSize="15sp" />
-
-            <Switch
                 android:id="@+id/swRawNegative"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"

@@ -212,7 +212,6 @@ Memory available: %10$d MB / %11$d MB total
     <string name="main_dev_paper_hint">Auto pairs each stock with its maker\'s recommended paper (Kodak negatives on Portra Endura, cine film on Kodak 2383). Tap above to pick one yourself.</string>
 
     <!-- ===== Layout: engineering mode ===== -->
-    <string name="main_debug_skip_develop">Debug: skip development, print at once</string>
     <string name="main_debug_softfocus_prob">Defocus chance (0 = off)</string>
     <string name="main_debug_note">Development and debugging only — no need to touch these.</string>
 

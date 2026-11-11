@@ -77,7 +77,6 @@ class MainActivity : AppCompatActivity() {
     private var filmRollMode = false  // 胶卷模式开关（旧设置保留兼容，计数改由 UndevelopedFilmStore 权威）
     /** 触感强度档位：0=低 1=中 2=强（用户可在设置里切，见 vibrate() 的缩放系数） */
     private var hapticLevel = 1
-    private var debugInstantDevelop = false  // 调试：拍完立即后台冲洗出片
     /** P3 RAW 负片（工程师控制台，默认关）：开着的快门同时收 RAW，DNG 作底片进引擎 RAW 会话 */
     private var rawNegativeEnabled = false
     private val FILM_MAX = 36  // 一卷36张
@@ -594,7 +593,6 @@ class MainActivity : AppCompatActivity() {
         com.filmcam.app.ui.AppLocale.load(this)
         // 旧 filmCount 键仅作迁移保留读取，不再作为权威（张数一律读 UndevelopedFilmStore.shotCount）
         @Suppress("UNUSED_VARIABLE") val legacyFilmCount = prefs.getInt("filmCount", 0)
-        debugInstantDevelop = prefs.getBoolean("debug_instant_develop", false)
         rawNegativeEnabled = prefs.getBoolean("filmcam_dev_raw", false)
         flash.mode = try {
             FlashMode.valueOf(prefs.getString("flashMode", FlashMode.OFF.name) ?: FlashMode.OFF.name)
@@ -634,7 +632,6 @@ class MainActivity : AppCompatActivity() {
         prefs.putInt("hapticLevel", hapticLevel)
         prefs.putInt("slowShutter", slowShutterMode.prefs)
         // 旧 filmCount 键不再写入；权威张数来自 UndevelopedFilmStore
-        prefs.putBoolean("debug_instant_develop", debugInstantDevelop)
         prefs.putString("flashMode", flash.mode.name)
         prefs.putInt("wbIndex", wbIndex)
         prefs.putInt("rollIndex", FilmRollRepository.rolls.indexOf(currentRoll))
@@ -1572,7 +1569,6 @@ class MainActivity : AppCompatActivity() {
         // 全分辨率拍照回调：后台把原帧 JPEG 存入未冲洗胶卷（零处理，不做 LUT/日期戳/EXIF——那些在冲洗侧做）
         cameraController?.onPhotoCaptured = { bytes, rotation, rawDng ->
             saveExecutor.execute {
-                var savedRollId: String? = null
                 try {
                     // 字节直传：相机 ISP 输出的 JPEG 原样入卷，不解码、不旋转、不全尺寸重编码。
                     // 方向由 rotation 随帧记录，冲洗侧统一旋转（90° 整数倍，无损）。
@@ -1585,7 +1581,6 @@ class MainActivity : AppCompatActivity() {
                             FilmStockMapper.printStockIdFor(currentRoll.name)
                         )
                     }
-                    savedRollId = roll.rollId
                     val iso = isoValues[isoValue]
                     val count = UndevelopedFilmStore.saveFrame(
                         roll.rollId, bytes, System.currentTimeMillis(), iso, rotation,
@@ -1600,10 +1595,6 @@ class MainActivity : AppCompatActivity() {
                         // 拍完把白平衡再下发一次：HAL 在 STILL_CAPTURE 之后偶尔会把 AWB
                         // 拨回 AUTO，表现为「设置好的校色片拍一张就没了」。
                         applyWbIndex()
-                        // 调试即时出片：拍完立即后台冲洗
-                        if (debugInstantDevelop) {
-                            savedRollId?.let { DevelopController.developRollInBackground(this, it) }
-                        }
                     }
                 } catch (e: Exception) {
                     // 底片没落上卷就不能留在缓存目录里（一张几十 MB，漏一张占一块地）
