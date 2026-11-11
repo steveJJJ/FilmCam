@@ -54,6 +54,12 @@ object ChromeSafeArea {
     /** 顶栏固定宽 396dp + 8dp 最小余量；低于它就按比例收窄。 */
     private const val DESIGN_WIDTH_DP = 404f
     private const val DESIGN_LCD_DP = 172f
+    /** 横屏 layout-land 里液晶屏的固定宽度；横屏不走 widthScale。 */
+    private const val DESIGN_LCD_LAND_DP = 148f
+    /** 三个机顶功能键的触控目标；widthScale 明确不缩它，竖屏反算时是固定项。 */
+    private const val DESIGN_KEY_SIZE_DP = 48f
+    /** 液晶屏与预览画面 / 按键组的最小净空；4dp 是让 S25U 基准零变化的上限。 */
+    private const val LCD_GAP_DP = 4f
     private const val DESIGN_KEY_GAP_DP = 24f
     private const val DESIGN_SIDE_PADDING_DP = 16f
 
@@ -89,6 +95,20 @@ object ChromeSafeArea {
         /** 顶栏横向缩放，1 = 不改。 */
         val widthScale: Float = 1f,
     )
+
+    /**
+     * v71：液晶屏宽度以设计值为上限、按实际可用宽度反算，只在放不下时收窄。
+     * 下限复用 [MIN_WIDTH_SCALE]，不新增魔数。纯函数，可 JVM 单测。
+     *
+     * 为什么要反算：`widthScale = rootW/dp / 404` 把整个设计宽等比缩，但 48dp
+     * 按键固定不缩，所以缩完仍可能溢出（vivo 360dp 就差 30px）；横屏更是完全
+     * 不介入，固定 148dp 直接压进预览框。按可用空间反算才能两个朝向都守住边界。
+     */
+    fun fitLcdWidth(designW: Int, availableW: Int, minScale: Float = MIN_WIDTH_SCALE): Int {
+        if (designW <= 0) return 0
+        val minW = (designW * minScale).roundToInt()
+        return minOf(designW, maxOf(minW, availableW))
+    }
 
     /** 纯计算：输入几何，输出目标像素值。可单测、不依赖 Android View。 */
     fun solve(i: Input): Geometry {
@@ -186,19 +206,50 @@ object ChromeSafeArea {
                 "content.orientation" to if (root.width >= root.height) "landscape" else "portrait",
             )
         }
-        if (!g.applicable) return false
-
-        val scale = g.widthScale
+        // v71：横屏不再「什么都不做」——layout-land 的液晶屏 148dp 是 S25U 基准，
+        // 细长屏黑边更窄（vivo 156dp vs S25U 171.4dp）会被压进预览框；
+        // 竖屏则补上 widthScale 漏算的固定 48dp 按键，保证最右设置键完整。
+        val landscape = !g.applicable
+        val scale = if (landscape) 1f else g.widthScale
+        val gapPx = (LCD_GAP_DP * density).roundToInt()
         val sidePad = (DESIGN_SIDE_PADDING_DP * scale * density).roundToInt()
-        val wantLeft = if (scale < 1f) sidePad else topBar.paddingLeft
-        var changed = false
+        val keyGap = (DESIGN_KEY_GAP_DP * scale * density).roundToInt()
+        val keyW = (DESIGN_KEY_SIZE_DP * density).roundToInt()
+        val designLcdW = if (landscape) (DESIGN_LCD_LAND_DP * density).roundToInt()
+        else (DESIGN_LCD_DP * scale * density).roundToInt()
+        val availableLcdW = if (landscape) {
+            (content.left - topBar.paddingStart - gapPx).toInt()
+        } else {
+            root.width - 2 * sidePad - (3 * keyW + 2 * keyGap) - gapPx
+        }
+        val lcdW = fitLcdWidth(designLcdW, availableLcdW)
+        runCatching {
+            DeviceGeometryReport.putAll(
+                "chrome.lcdWidthPx" to lcdW,
+                "chrome.lcdDesignPx" to designLcdW,
+                "chrome.lcdClamped" to (lcdW < designLcdW),
+            )
+        }
 
+        var changed = false
+        // 只在需要时写：S25U（scale=1 且未夹紧）一个像素都不动。
+        val needWrite = (scale < 1f) || (landscape && lcdW < designLcdW)
+        if (needWrite && lcd != null) {
+            val lp = lcd.layoutParams
+            if (lp.width != lcdW) {
+                lp.width = lcdW
+                lcd.layoutParams = lp
+                changed = true
+            }
+        }
+        // 横屏只管液晶屏宽度：topBar padding / 底栏 margin / 铭牌位置全部保持 XML 原样。
+        if (landscape) return changed
+
+        val wantLeft = if (scale < 1f) sidePad else topBar.paddingLeft
         if (topBar.paddingTop != g.topPaddingPx ||
             topBar.paddingLeft != wantLeft || topBar.paddingRight != wantLeft
         ) {
-            topBar.setPadding(
-                wantLeft, g.topPaddingPx, wantLeft, topBar.paddingBottom
-            )
+            topBar.setPadding(wantLeft, g.topPaddingPx, wantLeft, topBar.paddingBottom)
             changed = true
         }
 
@@ -216,15 +267,6 @@ object ChromeSafeArea {
         }
 
         if (scale < 1f) {
-            val lcdW = (DESIGN_LCD_DP * scale * density).roundToInt()
-            lcd?.layoutParams?.let { lp ->
-                if (lp.width != lcdW) {
-                    lp.width = lcdW
-                    lcd.layoutParams = lp
-                    changed = true
-                }
-            }
-            val keyGap = (DESIGN_KEY_GAP_DP * scale * density).roundToInt()
             listOfNotNull(evKey, settingsKey).forEach { v ->
                 val lp = v.layoutParams as? ViewGroup.MarginLayoutParams ?: return@forEach
                 if (lp.marginStart != keyGap) {

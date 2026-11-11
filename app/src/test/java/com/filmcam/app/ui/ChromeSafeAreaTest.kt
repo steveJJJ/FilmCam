@@ -103,4 +103,54 @@ class ChromeSafeAreaTest {
         assertFalse(ChromeSafeArea.solve(input(0, 0, 3f, 0f, 0f, 24f, 24f)).applicable)
         assertFalse(ChromeSafeArea.solve(input(1080, 2340, 0f, 0f, 100f, 24f, 24f)).applicable)
     }
+
+    // ---- v71：液晶屏宽度自适应（vivo X300 Ultra 横/竖屏溢出） ----
+    // 数值来自 tmp/sample_1109/vivo_x300ultra_chrome_overlap_research.md 的定量复算。
+    // 契约：vivo 两个朝向都要夹紧；S25U 两个朝向必须保持设计值（基准机逐像素零变化）。
+
+    @Test
+    fun `vivo 竖屏液晶屏收窄到设置键完整`() {
+        // 1260x2772 @3.5 / 360dp / widthScale 0.8911
+        // sidePad 50px、keyGap 75px、keyW 168px → 顶栏可用 1160px、按键组 654px、净空 14px
+        val design = 536                       // round(172dp * 0.8911 * 3.5)
+        val available = 1160 - 654 - 14
+        val w = ChromeSafeArea.fitLcdWidth(design, available)
+        assertEquals(492, w)
+        assertTrue("vivo 竖屏必须夹紧", w < design)
+        assertTrue("夹紧后整行放得下，设置键不被裁", w + 654 <= 1160)
+    }
+
+    @Test
+    fun `S25U 竖屏保持设计值零变化`() {
+        // 1080x2340 @2.625 / 411dp / widthScale 1.0
+        // sidePad 42、keyGap 63、keyW 126 → 可用 996、按键组 504、净空 11
+        val design = 452                       // round(172dp * 2.625)
+        val available = 996 - 504 - 11
+        assertEquals(design, ChromeSafeArea.fitLcdWidth(design, available))
+    }
+
+    @Test
+    fun `vivo 横屏液晶屏不压预览框`() {
+        // 2772x1260：4:3 内容宽 1680、左右黑边 546；paddingStart 63、净空 14
+        val design = 518                       // 148dp * 3.5
+        val available = 546 - 63 - 14
+        val w = ChromeSafeArea.fitLcdWidth(design, available)
+        assertEquals(469, w)
+        assertTrue("液晶屏右边缘不得越过内容区左边界", 63 + w <= 546)
+    }
+
+    @Test
+    fun `S25U 横屏保持 148dp 零变化`() {
+        // 2340x1080 @2.625：黑边 450、paddingStart 47.25、净空 10.5
+        val design = 389                       // round(148dp * 2.625)
+        val available = (450f - 47.25f - 10.5f).toInt()
+        assertEquals(design, ChromeSafeArea.fitLcdWidth(design, available))
+    }
+
+    @Test
+    fun `极窄屏按 0_78 下限夹紧且非法输入安全`() {
+        assertEquals(418, ChromeSafeArea.fitLcdWidth(536, -500))   // 536 * 0.78 = 418
+        assertEquals(0, ChromeSafeArea.fitLcdWidth(0, 1000))
+        assertEquals(0, ChromeSafeArea.fitLcdWidth(-10, 1000))
+    }
 }
