@@ -577,7 +577,8 @@ class AboutActivity : AppCompatActivity() {
             tvColor.text = if (y == 0f && mm == 0f) getString(R.string.eng_cc_off)
             else String.format(java.util.Locale.US, "%+.2f/%+.2f", y, mm)
         }
-        // v53 输入侧反 ISP 归一化：默认 60%（同场景三档标定），0 仍可关
+        // v50 输入侧反 ISP 归一化：v73 默认 70%（同场景三档标定 + 11-12 反馈上调），0 仍可关。
+        // 机身设置面板「色彩浓度」三档与这根滑杆共用一个 prefs，拖到中间值面板显示自定义
         run {
             val pct = (prefs.getFloat(
                 "filmcam_dev_jpeg_normalize",
@@ -787,7 +788,7 @@ class AboutActivity : AppCompatActivity() {
     }
 
     /**
-     * v50：JPEG 输入侧反 ISP 归一化强度（0–100%）。
+     * v50：JPEG 输入侧反 ISP 归一化强度（0–100%）；v73 与机身「色彩浓度」档位共用 prefs。
      *
      * 输入层属性：不按胶卷存、不按机型存，也不随输出档位变；下一次冲洗生效。
      * 0 = 关，冲洗侧严格走 v49 的 [app.spektralab.engine.InputExposure] 路径。

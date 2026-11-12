@@ -190,10 +190,13 @@ class JpegNormalizerTest {
     }
 
     @Test
-    fun `v53 默认滑杆是 60 且可完全关闭`() {
-        assertEquals(0.6f, JpegNormalizer.DEFAULT_STRENGTH, 1e-6f)
+    fun `v73 默认滑杆是 70 且可完全关闭`() {
+        assertEquals(0.7f, JpegNormalizer.DEFAULT_STRENGTH, 1e-6f)
         assertTrue(JpegNormalizer.DEFAULT_STRENGTH > 0f)
         assertTrue(JpegNormalizer.DEFAULT_STRENGTH < JpegNormalizer.MAX_STRENGTH)
+        // v73：满档天花板由 35% 提到 45%，但不得再往上加（11-08 真机满档已偏淡偏亮）
+        assertEquals(0.45f, JpegNormalizer.MAX_CHROMA_REDUCTION, 1e-6f)
+        assertTrue(JpegNormalizer.MAX_CHROMA_REDUCTION <= 0.45f)
         // 0 必须严格回退到 v49 行为
         assertEquals(0f, JpegNormalizer.effectiveStrength(1f, 0f), 1e-6f)
     }
@@ -202,7 +205,7 @@ class JpegNormalizerTest {
     fun `v53 整卷统一强度只由基准和滑杆决定`() {
         val baseline = 0.961f
         val k = JpegNormalizer.effectiveStrength(baseline, JpegNormalizer.DEFAULT_STRENGTH)
-        assertTrue("默认档应落在中等强度，实际 $k", k > 0.5f && k < 0.65f)
+        assertTrue("默认档应落在中偏上强度，实际 $k", k > 0.6f && k < 0.75f)
         // 逐帧自适应本身确实会波动（同场景实测 hi 0.055~0.072），这正是 v53 要消除的
         val low = JpegNormalizer.suggestStrength(JpegNormalizer.Stats(0.055f, 0.2f, 0.23f, 1000))
         val high = JpegNormalizer.suggestStrength(JpegNormalizer.Stats(0.072f, 0.2f, 0.22f, 1000))

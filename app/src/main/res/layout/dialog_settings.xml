@@ -97,7 +97,7 @@
         android:layout_height="1dp"
         android:background="#26262A" />
 
-    <!-- 六行：横屏可用高度紧张时这里滚动 -->
+    <!-- 铭牌列表（v73 起九行）：横屏可用高度紧张时这里滚动 -->
     <ScrollView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -150,6 +150,13 @@
 
             <include
                 android:id="@+id/rowSetFrame"
+                layout="@layout/item_setting_row" />
+
+            <View style="@style/AboutSpecDivider" />
+
+            <!-- v73：色彩浓度。就地循环，与「胶片相框 / 冲洗画质」同一套交互 -->
+            <include
+                android:id="@+id/rowSetColor"
                 layout="@layout/item_setting_row" />
 
             <View style="@style/AboutSpecDivider" />

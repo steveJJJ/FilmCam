@@ -694,7 +694,7 @@ class MainActivity : AppCompatActivity() {
         val rows = intArrayOf(
             R.id.rowSetBody, R.id.rowSetDatestamp, R.id.rowSetHaptic,
             R.id.rowSetWb, R.id.rowSetLanguage, R.id.rowSetQuality,
-            R.id.rowSetFrame, R.id.rowSetAbout
+            R.id.rowSetFrame, R.id.rowSetColor, R.id.rowSetAbout
         )
         val theme = com.filmcam.app.ui.BodyTheme
         fun row(id: Int): android.view.View = view.findViewById(id)
@@ -757,6 +757,7 @@ class MainActivity : AppCompatActivity() {
             value(R.id.rowSetLanguage).text = languageName()
             value(R.id.rowSetQuality).text = qualityName()
             value(R.id.rowSetFrame).text = frameBorderName()
+            value(R.id.rowSetColor).text = colorStrengthName()
             value(R.id.rowSetAbout).text = versionLabel()
             paintPanel()
         }
@@ -826,6 +827,13 @@ class MainActivity : AppCompatActivity() {
             // v66：白边档是 App 侧画的，不走引擎片门自检（next.isOn 已排除它）
             if (next.isOn && !developingNow()) probeFrameGate(next)
         }
+        row(R.id.rowSetColor).hapticClick {
+            // v73 色彩浓度：标准 → 淡 → 原始 → 标准。就地循环、面板不关，
+            // 只影响下一次冲洗；与工程师控制台那根 0–100% 滑杆共用同一个 prefs 键，
+            // 在那里拖过任意中间值的话，这一行会显示「自定义 xx%」而不是吸附回档位。
+            com.filmcam.app.develop.ColorStrength.cycle(this@MainActivity)
+            refreshValues()
+        }
         row(R.id.rowSetAbout).hapticClick {
             dialog.dismiss()
             startActivity(android.content.Intent(this, AboutActivity::class.java))
@@ -861,6 +869,22 @@ class MainActivity : AppCompatActivity() {
         FilmStockMapper.FrameFormat.FULL -> getString(R.string.frame_full)
         FilmStockMapper.FrameFormat.WHITE -> getString(R.string.frame_white)
         else -> getString(R.string.common_off)
+    }
+
+    /** 设置面板「色彩浓度」当前档位：标准 / 淡 / 原始 / 自定义（工程师滑杆细调过） */
+    private fun colorStrengthName(): String {
+        val cs = com.filmcam.app.develop.ColorStrength
+        val v = cs.load(this)
+        return when (cs.levelOf(v)) {
+            com.filmcam.app.develop.ColorStrength.Level.STANDARD ->
+                getString(R.string.color_strength_standard)
+            com.filmcam.app.develop.ColorStrength.Level.SOFT ->
+                getString(R.string.color_strength_soft)
+            com.filmcam.app.develop.ColorStrength.Level.ORIGINAL ->
+                getString(R.string.color_strength_original)
+            com.filmcam.app.develop.ColorStrength.Level.CUSTOM ->
+                getString(R.string.color_strength_custom, (v * 100f).roundToInt())
+        }
     }
 
     /**

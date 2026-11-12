@@ -93,6 +93,11 @@ App 版本：%1$s (%2$d)
     <string name="set_frame">胶片相框</string>
     <string name="frame_full">全画幅 3:2</string>
     <string name="frame_white">白边相框</string>
+    <string name="set_color">色彩浓度</string>
+    <string name="color_strength_standard">标准</string>
+    <string name="color_strength_soft">淡</string>
+    <string name="color_strength_original">原始</string>
+    <string name="color_strength_custom">自定义 %1$d%%</string>
     <string name="set_frame_probe_failed">这一格片门引擎不认，冲洗时这一卷不会带片框；详情见机身外部存储 spektra_frame_probe.txt</string>
     <string name="set_slow">慢门</string>
     <string name="set_wb">白平衡</string>
@@ -121,6 +126,7 @@ App 版本：%1$s (%2$d)
         <item>@string/set_language</item>
         <item>@string/set_quality</item>
         <item>@string/set_frame</item>
+        <item>@string/set_color</item>
         <item>@string/set_about</item>
     </string-array>
     <string-array name="set_hints">
@@ -131,6 +137,7 @@ App 版本：%1$s (%2$d)
         <item>跟随系统 / 简体中文 / English</item>
         <item>完整＝原始分辨率，慢；标准≈1200 万像素，快约 3 倍</item>
         <item>成片一律按 135 片门出片（竖拍走竖置那一格）：关＝只出画面；全画幅 3:2 连片基齿孔一起扫；白边＝暗房相纸留白</item>
+        <item>退掉手机 ISP 多加的那层色彩：标准 / 淡 / 原始，仅 JPG 与导入照片，RAW 不变；工程师控制台可细调 0–100%</item>
         <item>机身铭牌与许可证</item>
     </string-array>
 
@@ -306,7 +313,7 @@ App 版本：%1$s (%2$d)
     <string name="eng_lens_note">0 = 关（纯数码锐）· 4 察觉不到 · 8 轻微 · 12 默认 · 20 明显柔 · 35 奶油。改完下一次冲洗生效</string>
     <string name="eng_jpeg_norm">JPEG 输入校正</string>
     <string name="eng_jpeg_norm_hint">退掉手机 ISP 多加的那层色彩（仅 JPG / 导入）</string>
-    <string name="eng_jpeg_norm_note">默认 60%（同场景真机标定：多余饱和退约 15~29%，亮度几乎不变）· 0 = 关（与旧版逐像素一致）· 100% 会偏淡偏亮。整卷统一：由首帧统计定一个基准，一卷 36 张共用，不会忽浓忽淡；平淡、夜景与近单色画面会自动减弱甚至不校正。不认机型：只量输入被 ISP 调了多少，不同手机自动得到不同强度。只作用 JPG 与导入照片，RAW 不受影响，也不动胶片和印相参数。改完下一次冲洗生效</string>
+    <string name="eng_jpeg_norm_note">默认 70%（v73：用户反馈 JPG 仍偏浓，按 11-08 真机三档插值上调；满档上限同步由 35% 提到 45%）· 0 = 关（与旧版逐像素一致）· 100% 会偏淡偏亮。机身设置面板的「色彩浓度」三档与这根滑杆共用同一档位，面板上显示标准 / 淡 / 原始；拖到中间值则显示「自定义」。整卷统一：由首帧统计定一个基准，一卷 36 张共用，不会忽浓忽淡；平淡、夜景与近单色画面会自动减弱甚至不校正。不认机型：只量输入被 ISP 调了多少，不同手机自动得到不同强度。只作用 JPG 与导入照片，RAW 不受影响，也不动胶片和印相参数。改完下一次冲洗生效</string>
     <string name="eng_jpeg_norm_off">关</string>
     <string name="eng_raw_negative">RAW 负片</string>
     <string name="eng_raw_hint">快门同时收 RAW（16bit Bayer，绕过 ISP 的色调映射/自动白平衡/多帧合成），DNG 作底片存私有目录（约 25–40MB/张），冲洗走引擎 RAW 会话。失败自动落回 JPEG 通路，帧不丢</string>

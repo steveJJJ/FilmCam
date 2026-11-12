@@ -536,7 +536,7 @@ object FilmStockMapper {
             ccScale = if (sp.contains("filmcam_dev_cc_scale")) {
                 sp.getFloat("filmcam_dev_cc_scale", CC_SCALE_DEFAULT).takeIf { it > 0f }
             } else CC_SCALE_DEFAULT,
-            // 输入侧归一化：v53 默认 60%（同场景三档标定），0 仍可关。脏值收进 [0,1]。
+            // 输入侧归一化：v73 默认 70%（同场景三档标定 + 11-12 反馈上调），0 仍可关。\n            // 机身「色彩浓度」三档与工程师滑杆写的是同一个键。脏值收进 [0,1]。
             jpegNormalizeStrength = sp.getFloat(
                 "filmcam_dev_jpeg_normalize", JpegNormalizer.DEFAULT_STRENGTH
             ).coerceIn(0f, JpegNormalizer.MAX_STRENGTH),
