@@ -600,6 +600,8 @@ class MainActivity : AppCompatActivity() {
         wbIndex = prefs.getInt("wbIndex", 0).coerceIn(0, wbPresets.size - 1)
         // 白平衡是常驻设置，与闪不闪光无关：恢复时一律下发，成片与预览一致
         cameraController?.setAwbMode(wbPresets[wbIndex].awbMode)
+        // v74 P2：冷启动也把 UI 档位写进诊断报告
+        runCatching { DeviceGeometryReport.put("flash.uiMode", flash.mode.name) }
         if (flash.mode == FlashMode.BUILT_IN) {
             // 上次退出时开着内置闪光：相机建好会话后补挂（会话未建立时由 startCamera 兜底）
             cameraController?.setFlashEnabled(true)
@@ -1365,6 +1367,8 @@ class MainActivity : AppCompatActivity() {
         // 与 FlashDiag 的 keyDown / shutterDown 对齐，才能分清是「没切档」
         // 还是「切了档但灯没响」。
         android.util.Log.i("FlashDiag", "cycleFlashMode $from -> ${flash.mode}")
+        // v74 P2：诊断报告记录 UI 档位，便于区分「没切档」与「切了档 HAL 没关灯」
+        runCatching { DeviceGeometryReport.put("flash.uiMode", flash.mode.name) }
         binding.tvFlashStatus.text = when (flash.mode) {
             FlashMode.OFF -> getString(R.string.main_flash_off)
             FlashMode.BUILT_IN -> getString(R.string.main_flash_internal)
@@ -1462,6 +1466,8 @@ class MainActivity : AppCompatActivity() {
         super.onPause()
         saveSettings()  // 兜底：退出/后台时保存设置
         // 进后台：释放相机 + 暂停 GL 渲染，避免回前台时相机会话冲突导致预览卡死
+        // v74 P0：会话还活着时先显式取消预闪/灭灯，不能只靠 stop() 的 close 断电
+        cameraController?.setFlashEnabled(false)
         cameraController?.stop()
         cameraController = null
         binding.glSurfaceView.onPause()

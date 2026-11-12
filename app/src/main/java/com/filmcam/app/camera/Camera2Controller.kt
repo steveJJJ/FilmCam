@@ -329,6 +329,18 @@ class Camera2Controller(private val context: Context) {
                         " expNs=${result.get(android.hardware.camera2.CaptureResult.SENSOR_EXPOSURE_TIME)}" +
                         " flashEnabled=$flashEnabled manualIso=$manualIso manualExp=$manualExposure ev=$exposureComp"
                 )
+                // v74 P0：拍照帧一结束就把 HAL 从预闪状态拉回来，否则小米 13U 等
+                // HAL 会把 LED 一直点在「预闪常亮」上（切档也关不掉，只有关会话才灭）。
+                resetFlashPrecapture("stillCaptureCompleted")
+            }
+
+            override fun onCaptureFailed(
+                session: android.hardware.camera2.CameraCaptureSession,
+                request: CaptureRequest,
+                failure: android.hardware.camera2.CaptureFailure
+            ) {
+                // 拍照失败也不能把预闪状态留在 HAL 里
+                resetFlashPrecapture("stillCaptureFailed")
             }
         }
 
@@ -426,6 +438,14 @@ class Camera2Controller(private val context: Context) {
 
     /** 无闪光灯单元时的兜底：torch 常亮的开启状态 */
     @Volatile private var torchOn: Boolean = false
+
+    // ---- v74 P0：AE 预闪状态跟踪（只用于收尾与诊断，不改成像） ----
+    /** 是否发出过 PRECAPTURE_START 却还没 CANCEL —— 小米 13U 常亮的直接诱因 */
+    @Volatile private var precapturePending = false
+    @Volatile private var flashPrecaptureStarts = 0
+    @Volatile private var flashPrecaptureCancels = 0
+    @Volatile private var lastAeState: Int? = null
+    @Volatile private var lastFlashResetReason = "none"
 
     // ---------------- 慢门（胶片曝光模型）的能力与测光快照 ----------------
 
@@ -824,6 +844,7 @@ class Camera2Controller(private val context: Context) {
                 "camera.previewCandidates" to candidates,
                 "camera.maxJpeg" to "${maxJpeg.width}x${maxJpeg.height}",
             )
+            reportFlashState()
             com.filmcam.app.develop.DeviceGeometryReportIo.flush(context)
         }
 
@@ -1367,6 +1388,11 @@ class Camera2Controller(private val context: Context) {
                 android.hardware.camera2.CameraMetadata.CONTROL_AE_PRECAPTURE_TRIGGER_START
             )
         }
+        // v74 P0：打点 + 置 pending，拍照结果回调必须配对发 CANCEL（见 resetFlashPrecapture）
+        precapturePending = true
+        flashPrecaptureStarts++
+        android.util.Log.i("FlashDiag", "PRECAPTURE START count=$flashPrecaptureStarts")
+        reportFlashState()
         val preCb = object : android.hardware.camera2.CameraCaptureSession.CaptureCallback() {
             override fun onCaptureCompleted(
                 s: android.hardware.camera2.CameraCaptureSession,
@@ -1390,6 +1416,94 @@ class Camera2Controller(private val context: Context) {
     }
 
     /**
+     * v74 P0：把 HAL 从 AE 预闪状态拉回来，熄灭内置闪光 LED。
+     *
+     * Camera2 规范要求 precapture 序列结束或放弃时显式发 CANCEL；vc73 只发过 START，
+     * 全库没有 CANCEL，小米 13U 等 HAL 就把 LED 保持在预闪常亮，切档时只把
+     * CONTROL_AE_MODE 拨回 ON 也终止不了这个状态机。
+     *
+     * 两段式（与 Camera2Basic 官方 sample 同构）：
+     *  1) 一次性 capture 发 CANCEL + FLASH_MODE_OFF + AE_ON，让 HAL 立刻收灯；
+     *  2) 预览 repeating 回到 trigger=IDLE、FLASH_MODE=OFF，AE 按当前档决定。
+     *
+     * ⚠️ 只动预览请求，不动 TEMPLATE_STILL_CAPTURE 的成像参数：闪光成片曝光 /
+     * AWB 钉日光 / 线性 tonemap / FLASH_EV_BIAS 全部不受影响，也不碰外置闪光
+     * （EXTERNAL）与慢门通路。P1「预览不再常驻 ALWAYS_FLASH」不在本轮范围内。
+     */
+    private fun resetFlashPrecapture(reason: String, force: Boolean = false) {
+        if (!force && !precapturePending) return
+        val session = captureSession ?: return
+        val camera = cameraDevice ?: return
+        val surface = previewSurface ?: return
+        val builder = previewRequestBuilder ?: return
+        val handler = backgroundHandler
+        runCatching {
+            val cancel = camera.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW).apply {
+                addTarget(surface)
+                set(
+                    CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER,
+                    android.hardware.camera2.CameraMetadata.CONTROL_AE_PRECAPTURE_TRIGGER_CANCEL
+                )
+                set(
+                    CaptureRequest.FLASH_MODE,
+                    android.hardware.camera2.CameraMetadata.FLASH_MODE_OFF
+                )
+                set(
+                    CaptureRequest.CONTROL_AE_MODE,
+                    android.hardware.camera2.CameraMetadata.CONTROL_AE_MODE_ON
+                )
+            }
+            session.capture(cancel.build(), null, handler)
+            builder.set(
+                CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER,
+                android.hardware.camera2.CameraMetadata.CONTROL_AE_PRECAPTURE_TRIGGER_IDLE
+            )
+            builder.set(
+                CaptureRequest.FLASH_MODE,
+                android.hardware.camera2.CameraMetadata.FLASH_MODE_OFF
+            )
+            builder.set(
+                CaptureRequest.CONTROL_AE_MODE,
+                if (flashEnabled && hasFlashUnit && manualIso == null && manualExposure == null)
+                    android.hardware.camera2.CameraMetadata.CONTROL_AE_MODE_ON_ALWAYS_FLASH
+                else android.hardware.camera2.CameraMetadata.CONTROL_AE_MODE_ON
+            )
+            session.setRepeatingRequest(builder.build(), previewMetaCallback, handler)
+            precapturePending = false
+            flashPrecaptureCancels++
+            lastFlashResetReason = reason
+            android.util.Log.i(
+                "FlashDiag",
+                "PRECAPTURE CANCEL ($reason) starts=$flashPrecaptureStarts cancels=$flashPrecaptureCancels"
+            )
+            reportFlashState()
+        }.onFailure {
+            android.util.Log.w("FlashDiag", "PRECAPTURE CANCEL 失败 ($reason): ${it.message}")
+        }
+    }
+
+    /** v74 P2：把闪光灯状态写进诊断报告（状态变化时才落盘，随反馈邮件正文发出） */
+    private fun reportFlashState() {
+        runCatching {
+            val b = previewRequestBuilder
+            com.filmcam.app.develop.DeviceGeometryReport.putAll(
+                "flash.unitAvailable" to hasFlashUnit,
+                "flash.builtInEnabled" to flashEnabled,
+                "flash.previewAeMode" to (b?.get(CaptureRequest.CONTROL_AE_MODE)?.toString() ?: "?"),
+                "flash.previewFlashMode" to (b?.get(CaptureRequest.FLASH_MODE)?.toString() ?: "?"),
+                "flash.aeStateLast" to (lastAeState?.toString() ?: "?"),
+                "flash.precapturePending" to precapturePending,
+                "flash.precaptureStarts" to flashPrecaptureStarts,
+                "flash.precaptureCancels" to flashPrecaptureCancels,
+                "flash.resetLastReason" to lastFlashResetReason,
+            )
+            // 有变化才落盘（flush 内部用 snapshotIfDirty）；反馈邮件走 read() 拿内存全文，
+            // 这里保证文件导出也能看到最新的 flash 状态。
+            com.filmcam.app.develop.DeviceGeometryReportIo.flush(context)
+        }
+    }
+
+    /**
      * 闪光请求参数：必须在 applyManualSettings 之后调用，否则会被自动测光分支覆盖。
      * 只在自动曝光下生效 —— 手动 ISO/快门（外置闪光灯那条路）AE 是 OFF，HAL 不闪。
      */
@@ -1403,32 +1517,42 @@ class Camera2Controller(private val context: Context) {
         )
     }
 
-    /** 内置闪光灯开关：切换后预览立即刷新（HAL 会在随后的拍照里打闪光脉冲） */
+    /**
+     * 内置闪光灯开关。v74 P0：
+     * - 关灯不再只把 AE 拨回 ON，而是走 [resetFlashPrecapture] 显式发
+     *   PRECAPTURE_CANCEL + FLASH_MODE_OFF，否则小米 13U 等 HAL 的预闪 LED 关不掉；
+     * - 去掉 vc73 的「同值就不下发」早退判断：同值也下发一次，杜绝「切档无效」；
+     * - 只改预览请求，STILL_CAPTURE 的成像参数一个不动。
+     */
     fun setFlashEnabled(enabled: Boolean) {
         val changed = flashEnabled != enabled
         flashEnabled = enabled
+        android.util.Log.i(
+            "FlashDiag",
+            "setFlashEnabled($enabled) changed=$changed hasFlashUnit=$hasFlashUnit"
+        )
         if (!hasFlashUnit) {
-            // 设备没有闪光灯单元：HAL 闪光模式无效，退回常亮手电补光
-            if (torchOn != enabled) {
+            // 设备没有闪光灯单元：HAL 闪光模式无效，退回常亮手电补光。
+            // 这条路径本来就会写 FLASH_MODE_OFF，能正常关灯；关灯时强制再下发一次。
+            if (torchOn != enabled || !enabled) {
                 torchOn = enabled
                 enableFlash(enabled)
             }
+            reportFlashState()
             return
         }
-        if (!changed) return
-        previewRequestBuilder?.let {
-            if (!enabled) {
-                // 关闪光：把 AE 模式从 ALWAYS_FLASH 拨回普通自动
-                it.set(
-                    CaptureRequest.CONTROL_AE_MODE,
-                    android.hardware.camera2.CameraMetadata.CONTROL_AE_MODE_ON
-                )
-            }
-            applyFlashSettings(it)
-            runCatching {
-                captureSession?.setRepeatingRequest(it.build(), previewMetaCallback, backgroundHandler)
+        if (!enabled) {
+            // 关闪光：显式取消预闪 + 灭灯（reset 内部已下发 repeating request）
+            resetFlashPrecapture("setFlashEnabled(false)", force = true)
+        } else {
+            previewRequestBuilder?.let {
+                applyFlashSettings(it)
+                runCatching {
+                    captureSession?.setRepeatingRequest(it.build(), previewMetaCallback, backgroundHandler)
+                }
             }
         }
+        reportFlashState()
     }
 
     private fun applyManualSettings(builder: CaptureRequest.Builder) {
@@ -1626,6 +1750,12 @@ class Camera2Controller(private val context: Context) {
             // 慢门决策要用同一对 (t, ISO)：只存曝光时间不够，亮度是两者的乘积
             val isoAe = result.get(android.hardware.camera2.CaptureResult.SENSOR_SENSITIVITY) ?: 0
             val aeState = result.get(android.hardware.camera2.CaptureResult.CONTROL_AE_STATE)
+            // v74 P2：AE 状态只在变化时上报，避免每帧置脏；闪光时它会在
+            // SEARCHING / PRECAPTURE / FLASH_REQUIRED / CONVERGED 之间跳，是判异常的关键。
+            if (aeState != null && aeState != lastAeState) {
+                lastAeState = aeState
+                reportFlashState()
+            }
             if (exposureSec > 0f && isoAe > 0) {
                 lastAeSec = exposureSec
                 lastAeIso = isoAe
@@ -1710,6 +1840,8 @@ class Camera2Controller(private val context: Context) {
     fun supportsSlowShutter(): Boolean = hasManualSensor
 
     fun stop() {
+        // v74 P0：关会话之前先显式收灯，别只依赖 HAL 断电（不同 HAL 时序不一致）
+        resetFlashPrecapture("stop", force = true)
         captureSession?.close()
         cameraDevice?.close()
         imageReader?.close()

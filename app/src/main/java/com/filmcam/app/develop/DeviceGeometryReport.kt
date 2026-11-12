@@ -27,8 +27,9 @@ object DeviceGeometryReport {
     /** 与报告的 3 位小数精度对齐：小于半个最小显示单位的变化不会改文本 */
     private const val MATRIX_EPS = 0.0005f
 
+    /** v74 P2：flash 段（闪光灯状态）排在 camera 之后、gl 之前 */
     private val groupOrder = listOf(
-        "device", "app", "window", "insets", "content", "chrome", "camera", "gl"
+        "device", "app", "window", "insets", "content", "chrome", "camera", "flash", "gl"
     )
 
     /** @return 值是否发生了变化（变化才会置脏） */
