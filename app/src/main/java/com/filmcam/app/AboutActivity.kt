@@ -16,6 +16,7 @@ import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import com.filmcam.app.ui.attachEdgeHaptics
 import com.filmcam.app.update.UpdateChecker
 import kotlin.math.roundToInt
 
@@ -26,6 +27,10 @@ import kotlin.math.roundToInt
  * 之后点一下就能进，想重新藏起来在控制台里关掉开关。
  */
 class AboutActivity : AppCompatActivity() {
+
+    // 触感：关于页所有可点/可拖的东西都接全局口径（三档强度随机身设置）
+    private fun tick(ms: Long = 18, amp: Int = 150) =
+        com.filmcam.app.ui.Haptics.vibrate(this, ms, amp)
 
     private var tapCount = 0
     private var versionText = ""
@@ -49,6 +54,10 @@ class AboutActivity : AppCompatActivity() {
         // 边到边：滚动内容顶部/底部让出状态栏与导航栏
         val aRoot = com.filmcam.app.ui.EdgeToEdge.contentRoot(this)
         com.filmcam.app.ui.EdgeToEdge.setup(this, aRoot, aRoot)
+
+        // 关于页滑动：滚到顶/底再给一记「机械限位」轻震，像转盘拨到头；
+        // 滚动途中不震（长列表每格震一下会吵，限位震只在乎「到头了」这件事）
+        (aRoot as? android.widget.ScrollView)?.attachEdgeHaptics()
 
         val pi = runCatching { packageManager.getPackageInfo(packageName, 0) }.getOrNull()
         val verName = pi?.versionName ?: "?"
@@ -79,6 +88,7 @@ class AboutActivity : AppCompatActivity() {
         val tvVersion = findViewById<TextView>(R.id.tvSpecVersion)
         tvVersion.text = versionText
         tvVersion.setOnClickListener {
+            tick(14, 130)   // 连点解锁的每一下都给回馈，不然十连点像没按到
             if (EngineerMode.isOn(this)) {
                 tapCount = 0
                 showEngineerConsole()
@@ -107,7 +117,7 @@ class AboutActivity : AppCompatActivity() {
 
     /** v65 检查更新：Play 安装走应用内更新，侧载包跳下载页（零新增权限） */
     private fun bindUpdateCheck() {
-        findViewById<View>(R.id.rowCheckUpdate).setOnClickListener { updateChecker.check() }
+        findViewById<View>(R.id.rowCheckUpdate).setOnClickListener { tick(); updateChecker.check() }
     }
 
     /** 把版本号刻字恢复回来（连点提示超时） */
@@ -132,6 +142,7 @@ class AboutActivity : AppCompatActivity() {
             runOnUiThread { Toast.makeText(this, msg, Toast.LENGTH_SHORT).show() }
         }
         findViewById<TextView>(R.id.tvSpecPro).setOnClickListener {
+            tick()
             if (ProManager.isPro(this) || EngineerMode.isOn(this)) {
                 showEngineerConsole()
             } else {
@@ -252,6 +263,7 @@ class AboutActivity : AppCompatActivity() {
                 ta.recycle()
                 row.isClickable = true
                 row.setOnClickListener {
+                    com.filmcam.app.ui.Haptics.vibrate(row.context, 18, 150)
                     runCatching {
                         startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
                     }
@@ -303,6 +315,7 @@ class AboutActivity : AppCompatActivity() {
 
     /** 用系统浏览器打开外部链接，失败时给出提示。 */
     private fun openExternal(view: View, url: String) {
+        com.filmcam.app.ui.Haptics.vibrate(view.context, 18, 150)
         val started = runCatching {
             startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
         }.isSuccess
@@ -318,7 +331,7 @@ class AboutActivity : AppCompatActivity() {
      *  · 加微信进群：复制微信号（LazyRofin）到剪贴板，用户去微信加群当面反馈。
      */
     private fun bindFeedback() {
-        findViewById<TextView>(R.id.tvFeedback).setOnClickListener { showFeedbackOptions() }
+        findViewById<TextView>(R.id.tvFeedback).setOnClickListener { tick(); showFeedbackOptions() }
     }
 
     private fun showFeedbackOptions() {
@@ -330,6 +343,7 @@ class AboutActivity : AppCompatActivity() {
         androidx.appcompat.app.AlertDialog.Builder(this, com.filmcam.app.ui.BodyTheme.dialogTheme)
             .setTitle(R.string.about_feedback)
             .setItems(channels) { _, which ->
+                tick()
                 if (which == 0) sendFeedback() else copyWechatId()
             }
             .setNegativeButton(R.string.main_cancel, null)
@@ -458,6 +472,7 @@ class AboutActivity : AppCompatActivity() {
                 ta.recycle()
                 isClickable = true
                 setOnClickListener {
+                    tick()
                     runCatching {
                         startActivity(
                             Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:$email")).putExtra(
@@ -485,6 +500,7 @@ class AboutActivity : AppCompatActivity() {
             ta.recycle()
             isClickable = true
             setOnClickListener {
+                tick()
                 runCatching {
                     startActivity(
                         Intent(Intent.ACTION_VIEW, Uri.parse("https://www.gnu.org/licenses/gpl-3.0.html"))
@@ -601,17 +617,20 @@ class AboutActivity : AppCompatActivity() {
         // 慢门：档位与触发机制是一体的，收进同一个子面板
         // （触发机制就是「多大概率算慢门」，放在慢门外面等于把一件事拆成两处调）
         rowSlow.setOnClickListener {
+            tick()
             consoleRef?.dismiss()
             showSlowShutterDialog { showEngineerConsole() }
         }
         // 输出风格：印相 → Frontier → Noritsu，只影响下一次冲洗
         rowStyle.setOnClickListener {
+            tick(20, 160)   // 就地翻档，触感不跟着翻就是纯字幕切换
             app.spektralab.engine.FilmStockMapper.cycleOutputStyle(this)
             saveStyleName()
             refreshColorRow()
         }
         // 冲洗参数：另开一层（颗粒/辉光/眩光/印相曝光/相纸），关掉后回到本控制台
         rowDev.setOnClickListener {
+            tick()
             consoleRef?.dismiss()
             com.filmcam.app.develop.DevParamsDialog.show(
                 this, currentStockId, onClose = { showEngineerConsole() }
@@ -619,16 +638,19 @@ class AboutActivity : AppCompatActivity() {
         }
         // 镜头柔度：机身属性，单独一层（不随胶卷换，所以不进按卷分组的冲洗参数）
         rowLens.setOnClickListener {
+            tick()
             consoleRef?.dismiss()
             showLensBlurDialog { showEngineerConsole() }
         }
         // 色彩微调（印相档专属）：整体成色（肤色偏黄这类），同样全局存、单独一层
         rowColor.setOnClickListener {
+            tick()
             consoleRef?.dismiss()
             showColorBalanceDialog { showEngineerConsole() }
         }
         // v50 JPEG 输入校正：输入层属性，所有档位通用，全局存、单独一层
         rowJpeg.setOnClickListener {
+            tick()
             consoleRef?.dismiss()
             showJpegNormalizeDialog { showEngineerConsole() }
         }
@@ -667,10 +689,12 @@ class AboutActivity : AppCompatActivity() {
         val prob = prefs.getInt("softFocus_prob", DefaultSettings.SOFT_FOCUS_PROB)
         sbProb.progress = prob
         tvProb.text = getString(R.string.percent_fmt, prob)
+        val probTick = com.filmcam.app.ui.SliderTick(this)
         sbProb.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(sb: SeekBar?, value: Int, fromUser: Boolean) {
                 tvProb.text = getString(R.string.percent_fmt, value)
                 if (fromUser) {
+                    probTick.onUserProgress()
                     prefs.edit()
                         .putInt("softFocus_prob", value)
                         .putBoolean("softFocus", value > 0)
@@ -689,6 +713,7 @@ class AboutActivity : AppCompatActivity() {
         } else {
             tvDiag.text = diagText
             tvDiag.setOnClickListener {
+                tick()
                 (getSystemService(android.content.Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager)
                     ?.setPrimaryClip(android.content.ClipData.newPlainText("dev-diag", diagText))
                 Toast.makeText(this, R.string.hidden_diag_copied, Toast.LENGTH_SHORT).show()
@@ -702,7 +727,7 @@ class AboutActivity : AppCompatActivity() {
             tvCrash.text = getString(R.string.hidden_crash_none)
         } else {
             tvCrash.text = crashText.takeLast(600)
-            tvCrash.setOnClickListener { showCrashLog(crashText) }
+            tvCrash.setOnClickListener { tick(); showCrashLog(crashText) }
         }
 
         val dialog = androidx.appcompat.app.AlertDialog.Builder(this, com.filmcam.app.ui.BodyTheme.dialogTheme)
@@ -745,6 +770,7 @@ class AboutActivity : AppCompatActivity() {
         }
         saveMode(currentMode())
         rowMode.setOnClickListener {
+            tick(20, 160)   // 档位就地循环：慢门拨杆的手感
             saveMode(
                 when (currentMode()) {
                     com.filmcam.app.camera.FilmExposure.Mode.OFF ->
@@ -769,6 +795,7 @@ class AboutActivity : AppCompatActivity() {
             }
         )
         rg.setOnCheckedChangeListener { _, checkedId ->
+            tick()
             val trigger = when (checkedId) {
                 R.id.rbSlowReal -> com.filmcam.app.camera.FilmExposure.Trigger.REAL
                 R.id.rbSlowMix -> com.filmcam.app.camera.FilmExposure.Trigger.REAL_MIX
@@ -805,9 +832,11 @@ class AboutActivity : AppCompatActivity() {
         ) * 100f).roundToInt().coerceIn(0, 100)
         sb.progress = current
         tv.text = if (current == 0) getString(R.string.eng_jpeg_norm_off) else "$current%"
+        val sliderTick = com.filmcam.app.ui.SliderTick(this)
         sb.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(sb: SeekBar?, progress: Int, fromUser: Boolean) {
                 if (fromUser) {
+                    sliderTick.onUserProgress()
                     prefs.edit().putFloat("filmcam_dev_jpeg_normalize", progress / 100f).apply()
                 }
                 tv.text = if (progress == 0) getString(R.string.eng_jpeg_norm_off) else "$progress%"
@@ -843,9 +872,11 @@ class AboutActivity : AppCompatActivity() {
             .coerceIn(0f, mapper.LENS_BLUR_MAX_UM)
         sb.progress = current.roundToInt()
         tv.text = "${sb.progress}μm"
+        val sliderTick = com.filmcam.app.ui.SliderTick(this)
         sb.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(sb: SeekBar?, progress: Int, fromUser: Boolean) {
                 if (fromUser) {
+                    sliderTick.onUserProgress()
                     prefs.edit().putFloat("filmcam_dev_lens_blur", progress.toFloat()).apply()
                 }
                 tv.text = "${progress}μm"
@@ -892,9 +923,13 @@ class AboutActivity : AppCompatActivity() {
             prefs.getFloat("filmcam_dev_cc_y", mapper.CC_Y_DEFAULT).coerceIn(-1f, 1f)
         )
         tvY.text = fmt(shiftOf(sbY.progress))
+        val ccTickY = com.filmcam.app.ui.SliderTick(this)
         sbY.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(sb: SeekBar?, progress: Int, fromUser: Boolean) {
-                if (fromUser) prefs.edit().putFloat("filmcam_dev_cc_y", shiftOf(progress)).apply()
+                if (fromUser) {
+                    ccTickY.onUserProgress()
+                    prefs.edit().putFloat("filmcam_dev_cc_y", shiftOf(progress)).apply()
+                }
                 tvY.text = fmt(shiftOf(progress))
             }
             override fun onStartTrackingTouch(sb: SeekBar?) {}
@@ -905,9 +940,13 @@ class AboutActivity : AppCompatActivity() {
             prefs.getFloat("filmcam_dev_cc_m", mapper.CC_M_DEFAULT).coerceIn(-1f, 1f)
         )
         tvM.text = fmt(shiftOf(sbM.progress))
+        val ccTickM = com.filmcam.app.ui.SliderTick(this)
         sbM.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(sb: SeekBar?, progress: Int, fromUser: Boolean) {
-                if (fromUser) prefs.edit().putFloat("filmcam_dev_cc_m", shiftOf(progress)).apply()
+                if (fromUser) {
+                    ccTickM.onUserProgress()
+                    prefs.edit().putFloat("filmcam_dev_cc_m", shiftOf(progress)).apply()
+                }
                 tvM.text = fmt(shiftOf(progress))
             }
             override fun onStartTrackingTouch(sb: SeekBar?) {}
@@ -923,9 +962,13 @@ class AboutActivity : AppCompatActivity() {
         sbS.progress = (scaleNow / 0.5f).roundToInt()
         tvS.text = if (sbS.progress == 0) getString(R.string.eng_cc_off)
         else String.format(java.util.Locale.US, "%.1f", sbS.progress * 0.5f)
+        val ccTickS = com.filmcam.app.ui.SliderTick(this)
         sbS.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(sb: SeekBar?, progress: Int, fromUser: Boolean) {
-                if (fromUser) prefs.edit().putFloat("filmcam_dev_cc_scale", progress * 0.5f).apply()
+                if (fromUser) {
+                    ccTickS.onUserProgress()
+                    prefs.edit().putFloat("filmcam_dev_cc_scale", progress * 0.5f).apply()
+                }
                 tvS.text = if (progress == 0) getString(R.string.eng_cc_off)
                 else String.format(java.util.Locale.US, "%.1f", progress * 0.5f)
             }

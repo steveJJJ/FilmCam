@@ -95,7 +95,10 @@ class GalleryActivity : AppCompatActivity() {
         // 这里刻意不做 BodyTheme 重映射，保持原来的暗房配色。
 
         btnImport = findViewById(R.id.btnImport)
-        btnImport.setOnClickListener { pickPhotos.launch(arrayOf("image/*")) }
+        btnImport.setOnClickListener {
+            com.filmcam.app.ui.Haptics.vibrate(this, 24, 175)
+            pickPhotos.launch(arrayOf("image/*"))
+        }
     }
 
     // ---------- 导入本地照片冲洗 ----------
@@ -413,6 +416,7 @@ class GalleryActivity : AppCompatActivity() {
                 tvDevProgress.text = getString(R.string.pf_dev_bar_done, st.done)
                 pbDevProgress.progress = 100
                 devProgressCard.setOnClickListener {
+                    com.filmcam.app.ui.Haptics.vibrate(this@GalleryActivity, 20, 150)
                     // 点完成条 = 看刚出片的结果：刷新后隐藏
                     devProgressCard.visibility = View.GONE
                     cancelDevBarAutoHide()
@@ -437,7 +441,10 @@ class GalleryActivity : AppCompatActivity() {
                 tvDevProgress.text = getString(R.string.pf_dev_bar_failed)
                 pbDevProgress.progress =
                     if (st.total > 0) (st.done * 100 / st.total) else 0
-                devProgressCard.setOnClickListener { openDevelopmentScreen(rollId) }
+                devProgressCard.setOnClickListener {
+                    com.filmcam.app.ui.Haptics.vibrate(this@GalleryActivity, 20, 150)
+                    openDevelopmentScreen(rollId)
+                }
                 if (lastDevPhase != st.phase) loadUndevelopedRolls()
             }
             else -> {
@@ -460,7 +467,10 @@ class GalleryActivity : AppCompatActivity() {
                     }
                 pbDevProgress.progress =
                     if (st.total > 0) (done * 100 / st.total) else 0
-                devProgressCard.setOnClickListener { openDevelopmentScreen(rollId) }
+                devProgressCard.setOnClickListener {
+                    com.filmcam.app.ui.Haptics.vibrate(this@GalleryActivity, 20, 150)
+                    openDevelopmentScreen(rollId)
+                }
             }
         }
         lastDevPhase = st.phase
@@ -566,10 +576,16 @@ class GalleryActivity : AppCompatActivity() {
                 // 这一卷已经在冲洗了：再点「冲洗」只会被服务防重入拒绝（什么也不发生），
                 // 按钮直接改成看进度，用户才知道去哪儿看它洗到哪了。
                 btn.text = ctx.getString(R.string.pf_dev_view_progress)
-                btn.setOnClickListener { openDevelopmentScreen(roll.rollId) }
+                btn.setOnClickListener {
+                    com.filmcam.app.ui.Haptics.vibrate(ctx, 22, 160)
+                    openDevelopmentScreen(roll.rollId)
+                }
             } else {
                 btn.text = ctx.getString(R.string.pf_develop)
-                btn.setOnClickListener { DevelopController.startDevelopment(ctx, roll.rollId) }
+                btn.setOnClickListener {
+                    com.filmcam.app.ui.Haptics.vibrate(ctx, 26, 190)   // 送进暗房：比普通点击重
+                    DevelopController.startDevelopment(ctx, roll.rollId)
+                }
             }
         }
 
@@ -647,6 +663,7 @@ class GalleryActivity : AppCompatActivity() {
             iv.setOnClickListener {
                 val pos = holder.bindingAdapterPosition
                 if (pos != RecyclerView.NO_POSITION) {
+                    com.filmcam.app.ui.Haptics.vibrate(iv.context, 18, 150)
                     val intent = android.content.Intent(this@GalleryActivity, PhotoViewerActivity::class.java).apply {
                         putStringArrayListExtra(PhotoViewerActivity.EXTRA_URIS, ArrayList(items.map { it.toString() }))
                         putExtra(PhotoViewerActivity.EXTRA_POSITION, pos)

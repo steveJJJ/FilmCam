@@ -12,6 +12,8 @@ import androidx.fragment.app.FragmentActivity
 import androidx.viewpager2.adapter.FragmentStateAdapter
 import androidx.viewpager2.widget.ViewPager2
 import com.filmcam.app.develop.ExifReader
+import com.filmcam.app.ui.Haptics
+import com.filmcam.app.ui.hapticClick
 
 /**
  * 成片查看器：ViewPager2 左右滑 + 点击展开胶卷信息面板。
@@ -48,13 +50,17 @@ class PhotoViewerActivity : AppCompatActivity() {
         viewPager.adapter = PhotoPagerAdapter(this, uris)
         viewPager.setCurrentItem(position, false)
 
-        // 拍摄同款：把这张的胶卷 + 冲洗参数带回取景器
-        findViewById<View>(R.id.btnShootSame).setOnClickListener { shootSame() }
+        // 拍摄同款：把这张的胶卷 + 冲洗参数带回取景器。
+        // 这是「带着这卷胶卷回机身」的确认动作，触感给得比普通点击重一档
+        findViewById<View>(R.id.btnShootSame).hapticClick(ms = 30, amp = 210) { shootSame() }
 
-        // 切换照片时同步刷新面板内容
+        // 切换照片时同步刷新面板内容；顺手给一记轻 tick ——
+        // 左右拨片是看片的核心动作，纯视觉滑动会觉得「这页没反应」。
+        // setCurrentItem 在挂回调之前，冷启动不会误震
         viewPager.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
             override fun onPageSelected(position: Int) {
                 super.onPageSelected(position)
+                Haptics.vibrate(this@PhotoViewerActivity, 12, 110)
                 if (panelVisible) renderPanel(position)
             }
         })
@@ -102,6 +108,7 @@ class PhotoViewerActivity : AppCompatActivity() {
     /** 由 Fragment 在图片被点击时回调，切换面板可见性。 */
     fun onPhotoTapped() {
         if (!::panelInfo.isInitialized) return
+        Haptics.vibrate(this, 18, 150)   // 翻面板：与机身按钮同级的确认感
         panelVisible = !panelVisible
         if (panelVisible) {
             renderPanel(viewPager.currentItem)

@@ -103,6 +103,11 @@ class DevelopmentActivity : AppCompatActivity(), SensorEventListener {
     /** 上一次摇动触感的时刻，用于节流 */
     private var lastHapticMs: Long = 0L
 
+    /** 胶卷条手动拨动中（DRAGGING 起、IDLE 止）：拨动才 tick，自动推进不震 */
+    private var stripDragged = false
+    /** 拨动累计像素：走过一格清一次账，给一记齿轮 tick */
+    private var stripTickAccum = 0f
+
     /** 单帧显影进度 0..1：0 = 一片乳剂色，1 = 完全显影 */
     private var reveal = 0f
     /** 晃动强度 0..1：由摇动速度累加、随时间衰减 */
@@ -170,12 +175,31 @@ class DevelopmentActivity : AppCompatActivity(), SensorEventListener {
         stripAdapter = FilmStripAdapter(STRIP_CELLS)
         rvFilmStrip.layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
         rvFilmStrip.adapter = stripAdapter
+        // 手动拨胶卷条：走过一格给一记轻 tick，像过片齿轮。
+        // 自动推进（scrollToPosition）不经 DRAGGING，不会误震；
+        // 松手后的惯性滑动（SETTLING）继续 tick —— 胶卷还在走，齿轮就该响。
+        rvFilmStrip.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+            override fun onScrollStateChanged(rv: RecyclerView, newState: Int) {
+                if (newState == RecyclerView.SCROLL_STATE_DRAGGING) stripDragged = true
+                else if (newState == RecyclerView.SCROLL_STATE_IDLE) stripDragged = false
+            }
+            override fun onScrolled(rv: RecyclerView, dx: Int, dy: Int) {
+                if (!stripDragged || dx == 0) return
+                stripTickAccum += abs(dx)
+                val cell = rv.getChildAt(0)?.width ?: (rv.width / 6)
+                if (cell > 0 && stripTickAccum >= cell) {
+                    stripTickAccum -= cell
+                    vibrate(10)
+                }
+            }
+        })
 
         // 5) 按钮
-        btnBackground.setOnClickListener { finish() }
+        btnBackground.setOnClickListener { vibrate(20); finish() }
         // 按当前状态分发：ERROR → 重试冲洗同一卷；否则 → 进相册
         btnViewGallery.setOnClickListener {
             val currentRollId = rollId ?: return@setOnClickListener
+            vibrate(24)
             if (DevelopmentState.phase == DevelopmentState.PHASE_ERROR) {
                 // 重试：服务会 reset 状态重新跑整卷
                 DevelopController.developRollInBackground(this, currentRollId)

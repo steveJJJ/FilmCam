@@ -8,6 +8,8 @@ import app.spektralab.engine.FilmStockMapper
 import com.filmcam.app.R
 import com.filmcam.app.filter.FilmRoll
 import com.filmcam.app.filter.FilmRollRepository
+import com.filmcam.app.ui.Haptics
+import com.filmcam.app.ui.SliderTick
 import kotlin.math.roundToInt
 
 /**
@@ -51,6 +53,8 @@ object DevParamsDialog {
         val tvRoll = view.findViewById<android.widget.TextView>(R.id.tvDevRollValue)
         val btnReset = view.findViewById<android.widget.Button>(R.id.btnDevReset)
         btnReset.text = activity.getString(R.string.main_dev_reset)
+        // 滑杆拖动棘轮 tick；同步 UI 的程序回填（syncUi）不会误震
+        val sliderTick = SliderTick(activity)
 
         // 相纸选项：第一项自动（""），其后 9 款 catalog prints
         val paperOptions = try {
@@ -97,6 +101,7 @@ object DevParamsDialog {
 
         // 切胶卷：单选 9 款 FilmRoll
         rowRoll.setOnClickListener {
+            Haptics.vibrate(activity, 20, 150)
             val rolls = FilmRollRepository.rolls
             val items = arrayOfNulls<String>(rolls.size)
             val ids = arrayOfNulls<String>(rolls.size)
@@ -121,6 +126,7 @@ object DevParamsDialog {
         sbGrain.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(sb: SeekBar?, progress: Int, fromUser: Boolean) {
                 val v = progress / 100f
+                if (fromUser) sliderTick.onUserProgress()
                 prefs.edit().putFloat(devKey("grain"), v).apply()
                 tvGrain.text = String.format("%.2f", v)
             }
@@ -130,6 +136,7 @@ object DevParamsDialog {
         sbHalation.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(sb: SeekBar?, progress: Int, fromUser: Boolean) {
                 val v = progress / 100f
+                if (fromUser) sliderTick.onUserProgress()
                 prefs.edit().putFloat(devKey("halation"), v).apply()
                 tvHalation.text = String.format("%.2f", v)
             }
@@ -139,6 +146,7 @@ object DevParamsDialog {
         sbGlare.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(sb: SeekBar?, progress: Int, fromUser: Boolean) {
                 val v = progress / 100f
+                if (fromUser) sliderTick.onUserProgress()
                 prefs.edit().putFloat(devKey("glare"), v).apply()
                 tvGlare.text = String.format("%.2f", v)
             }
@@ -148,6 +156,7 @@ object DevParamsDialog {
         sbExposure.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(sb: SeekBar?, progress: Int, fromUser: Boolean) {
                 val v = FilmStockMapper.INPUT_EV_MIN + progress / 100f
+                if (fromUser) sliderTick.onUserProgress()
                 prefs.edit().putFloat(devKey("exposure_ev"), v).apply()
                 tvExposure.text = String.format("%+.2f", v)
             }
@@ -157,6 +166,7 @@ object DevParamsDialog {
 
         // 相纸选择：单选弹窗（自动 + 9 款）
         rowPaper.setOnClickListener {
+            Haptics.vibrate(activity, 20, 150)
             val current = prefs.getString(devKey("paper"), "") ?: ""
             val items = arrayOfNulls<String>(paperOptions.size + 1)
             items[0] = activity.getString(R.string.main_dev_paper_auto)
@@ -176,6 +186,7 @@ object DevParamsDialog {
 
         // 恢复该款默认：移除当前 stockId 对应的 5 个后缀键（=回落冻结默认）
         btnReset.setOnClickListener {
+            Haptics.vibrate(activity, 28, 200)
             prefs.edit()
                 .remove(devKey("grain"))
                 .remove(devKey("halation"))
