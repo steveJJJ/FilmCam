@@ -428,8 +428,11 @@ class Camera2Controller(private val context: Context) {
      * 注意语义变化：以前「闪光灯」是用常亮手电（FLASH_MODE_TORCH）在快门那一刻亮 200ms
      * 顶一下 —— torch 是降功率常亮，亮度远低于真正的拍照闪光脉冲，且拍照的 capture
      * request 压根不带闪光参数，所以成片几乎看不出闪过。现在改成相机 HAL 的拍照闪光：
-     * 预览与拍照都挂 CONTROL_AE_MODE_ON_ALWAYS_FLASH，HAL 会在快门开启的瞬间打满功率
-     * 脉冲，并按「有闪光」重新测光（主体提亮、背景压暗），这才是直闪该有的样子。
+     * v75 P1 起：ALWAYS_FLASH **只挂在 STILL_CAPTURE 那一帧**，预览与预闪请求保持
+     * AE_ON + FLASH_MODE_OFF。理由是 Camera2 允许 HAL 在 ALWAYS_FLASH 下于预览/预闪
+     * 测光阶段点亮 LED，小米 13U 点亮后不会自己收（拍完常亮、切档无效、关会话才灭）；
+     * 而 v74 的一次性 CANCEL 会被随后常驻的 repeating 请求立刻覆盖，等于边关边开。
+     * 拍照帧仍按「有闪光」重新测光（主体提亮、背景压暗），直闪成片味道不变。
      */
     @Volatile private var flashEnabled: Boolean = false
 
@@ -956,7 +959,7 @@ class Camera2Controller(private val context: Context) {
             addTarget(previewSurface)
             set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
             applyManualSettings(this)
-            applyFlashSettings(this)
+            applyPreviewFlashSettings(this)
             // 白平衡预设可能在相机开启前就被设置（restoreSettings 早于会话建立），此处补挂
             set(
                 CaptureRequest.CONTROL_AWB_MODE,
@@ -1017,7 +1020,7 @@ class Camera2Controller(private val context: Context) {
                     set(CaptureRequest.CONTROL_AF_MODE, android.hardware.camera2.CameraMetadata.CONTROL_AF_MODE_OFF)
                     set(CaptureRequest.LENS_FOCUS_DISTANCE, minFocusDistance * 0.6f)
                 }
-                applyFlashSettings(this)
+                applyStillFlashSettings(this)
                 // 采集端「不加工」：胶片模拟要从最生的像素开始
                 applyCaptureTuning(this)
                 // 直闪帧的专属调优（AWB 钉日光 / 线性色调曲线 / 负 EV），
@@ -1378,7 +1381,7 @@ class Camera2Controller(private val context: Context) {
         val preBuilder = camera.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW).apply {
             addTarget(surface)
             applyManualSettings(this)
-            applyFlashSettings(this)
+            applyPreviewFlashSettings(this)
             set(
                 CaptureRequest.CONTROL_AWB_MODE,
                 currentAwbMode ?: CaptureRequest.CONTROL_AWB_MODE_AUTO
@@ -1424,11 +1427,15 @@ class Camera2Controller(private val context: Context) {
      *
      * 两段式（与 Camera2Basic 官方 sample 同构）：
      *  1) 一次性 capture 发 CANCEL + FLASH_MODE_OFF + AE_ON，让 HAL 立刻收灯；
-     *  2) 预览 repeating 回到 trigger=IDLE、FLASH_MODE=OFF，AE 按当前档决定。
+     *  2) 预览 repeating 回到 trigger=IDLE、FLASH_MODE=OFF、AE_ON。
+     *
+     * ⚠️ v75 P1：第 2 步**绝不再按当前档挂回 ALWAYS_FLASH** —— v74 在这里
+     * 发完 CANCEL 又把预览挂回 ALWAYS_FLASH，一次性 CANCEL 被常驻 repeating
+     * 立刻覆盖，是「拍完第一张常亮」在 v74 上仍会复现的直接原因。
      *
      * ⚠️ 只动预览请求，不动 TEMPLATE_STILL_CAPTURE 的成像参数：闪光成片曝光 /
      * AWB 钉日光 / 线性 tonemap / FLASH_EV_BIAS 全部不受影响，也不碰外置闪光
-     * （EXTERNAL）与慢门通路。P1「预览不再常驻 ALWAYS_FLASH」不在本轮范围内。
+     * （EXTERNAL）与慢门通路。
      */
     private fun resetFlashPrecapture(reason: String, force: Boolean = false) {
         if (!force && !precapturePending) return
@@ -1462,11 +1469,10 @@ class Camera2Controller(private val context: Context) {
                 CaptureRequest.FLASH_MODE,
                 android.hardware.camera2.CameraMetadata.FLASH_MODE_OFF
             )
+            // v75 P1：恒为 AE_ON。只要这里再挂 ALWAYS_FLASH，上面的 CANCEL 就白发了。
             builder.set(
                 CaptureRequest.CONTROL_AE_MODE,
-                if (flashEnabled && hasFlashUnit && manualIso == null && manualExposure == null)
-                    android.hardware.camera2.CameraMetadata.CONTROL_AE_MODE_ON_ALWAYS_FLASH
-                else android.hardware.camera2.CameraMetadata.CONTROL_AE_MODE_ON
+                android.hardware.camera2.CameraMetadata.CONTROL_AE_MODE_ON
             )
             session.setRepeatingRequest(builder.build(), previewMetaCallback, handler)
             precapturePending = false
@@ -1504,10 +1510,36 @@ class Camera2Controller(private val context: Context) {
     }
 
     /**
-     * 闪光请求参数：必须在 applyManualSettings 之后调用，否则会被自动测光分支覆盖。
-     * 只在自动曝光下生效 —— 手动 ISO/快门（外置闪光灯那条路）AE 是 OFF，HAL 不闪。
+     * v75 P1：预览 / 预闪请求专用的闪光参数。
+     *
+     * Camera2 允许 HAL 在 CONTROL_AE_MODE_ON_ALWAYS_FLASH 下于预览、预闪测光阶段
+     * 点亮 LED；小米 13U 点亮后不自己收 —— 这就是「INT 档拍完第一张常亮、切档无效、
+     * 进暗房（close 会话断电）才灭」的根因。把 ALWAYS_FLASH 从预览链路上彻底拿掉，
+     * HAL 就没有点灯理由，v74 P0 的一次性 CANCEL 也不会再被 repeating 覆盖。
+     *
+     * ⚠️ 手动曝光（EXTERNAL / 慢门）时 CONTROL_AE_MODE 必须由 applyManualSettings
+     * 保持 OFF，这里只写 FLASH_MODE_OFF，绝不覆写 AE 模式。
      */
-    private fun applyFlashSettings(builder: CaptureRequest.Builder) {
+    private fun applyPreviewFlashSettings(builder: CaptureRequest.Builder) {
+        builder.set(
+            CaptureRequest.FLASH_MODE,
+            android.hardware.camera2.CameraMetadata.FLASH_MODE_OFF
+        )
+        if (manualIso == null && manualExposure == null) {
+            builder.set(
+                CaptureRequest.CONTROL_AE_MODE,
+                android.hardware.camera2.CameraMetadata.CONTROL_AE_MODE_ON
+            )
+        }
+    }
+
+    /**
+     * 闪光请求参数：⚠️ v75 P1 起 **只允许用于 TEMPLATE_STILL_CAPTURE 的拍照帧**。
+     * 必须在 applyManualSettings 之后调用，否则会被自动测光分支覆盖。
+     * 只在自动曝光下生效 —— 手动 ISO/快门（外置闪光灯那条路）AE 是 OFF，HAL 不闪。
+     * 这里挂 ALWAYS_FLASH 是成片直闪效果的来源，一字不改。
+     */
+    private fun applyStillFlashSettings(builder: CaptureRequest.Builder) {
         if (!flashEnabled) return
         if (!hasFlashUnit) return          // 没有闪光灯单元：走 torch，见 setFlashEnabled
         if (manualIso != null || manualExposure != null) return
@@ -1546,7 +1578,7 @@ class Camera2Controller(private val context: Context) {
             resetFlashPrecapture("setFlashEnabled(false)", force = true)
         } else {
             previewRequestBuilder?.let {
-                applyFlashSettings(it)
+                applyPreviewFlashSettings(it)
                 runCatching {
                     captureSession?.setRepeatingRequest(it.build(), previewMetaCallback, backgroundHandler)
                 }

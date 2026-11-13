@@ -1570,7 +1570,9 @@ class MainActivity : AppCompatActivity() {
         // applyExposure 全是空操作。这里必须把机身状态重新压回新控制器，否则
         // 设置悄悄退回「AE 自动 + EV0 / AUTO 白平衡」：真机 00:29 那张外置闪光
         // 黑片就是旋转后 AE 未收敛造成的（EXIF ISO239 1/100）。
-        // 顺序不能反：setFlashEnabled 在后面，ALWAYS_FLASH 才不会被 AE_ON 覆盖。
+        // v75 P1：setFlashEnabled 仍在最后补挂当前档位，但现在预览只下发
+        // AE_ON + FLASH_MODE_OFF（ALWAYS_FLASH 已收进 STILL_CAPTURE 帧），
+        // 不会再出现「预览常驻点灯」的状态。
         cameraController?.setAwbMode(wbPresets[wbIndex].awbMode)
         applyExposure()
         // RAW 能力检测 + UI 明示：用户开了 RAW 负片但本机不支持时，

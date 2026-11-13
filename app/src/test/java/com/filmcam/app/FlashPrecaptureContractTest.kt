@@ -84,14 +84,73 @@ class FlashPrecaptureContractTest {
     }
 
     @Test
-    fun `P0 不动成像链路 拍照帧仍挂 ALWAYS_FLASH 且不下发 P1 改动`() {
+    fun `v75 P1 只改预览路径 拍照帧成像链路一字不动`() {
         val s = camera() ?: return
-        // 建会话 / STILL_CAPTURE / precapture builder 三处都要保留 applyFlashSettings
-        val hits = Regex("applyFlashSettings\\(this\\)").findAll(s).count()
-        assertTrue("三处闪光参数下发不能少，实际 $hits 处", hits >= 3)
+        // ALWAYS_FLASH 只允许出现在 STILL_CAPTURE 那一帧（且只出现一次）
+        val still = Regex("applyStillFlashSettings\\(this\\)").findAll(s).count()
+        assertTrue("拍照帧必须且只能有一处闪光参数下发，实际 $still 处", still == 1)
+        val stillBlock = s.substringAfter("CameraDevice.TEMPLATE_STILL_CAPTURE", "")
+            .substringBefore("submitStillCapture(", "")
+        assertTrue("拍照帧必须保留 applyStillFlashSettings",
+            stillBlock.contains("applyStillFlashSettings(this)"))
+        assertTrue("拍照帧不能再走 preview 版",
+            !stillBlock.contains("applyPreviewFlashSettings"))
+
+        val stillFn = s.substringAfter("private fun applyStillFlashSettings", "")
+            .substringBefore("\n    }", "")
+        assertTrue("直闪效果来自拍照帧的 ALWAYS_FLASH",
+            stillFn.contains("CONTROL_AE_MODE_ON_ALWAYS_FLASH"))
         assertTrue("直闪成片调优仍在", s.contains("applyFlashCaptureTuning(this, slow)"))
         assertTrue("外置闪光同步仍在", s.contains("applyExternalFlashSync(this)"))
-        assertTrue("慢门仍在闪光之后覆盖", s.contains("if (slow) applySlowShutter(this, slowExposureNs, slowIso)"))
+        assertTrue("慢门仍在闪光之后覆盖",
+            s.contains("if (slow) applySlowShutter(this, slowExposureNs, slowIso)"))
+    }
+
+    @Test
+    fun `v75 P1 预览 预闪 复位三条链路都不得挂 ALWAYS_FLASH`() {
+        val s = camera() ?: return
+        val banned = "CONTROL_AE_MODE_ON_ALWAYS_FLASH"
+
+        // 1) 预览 repeating builder
+        val preview = s.substringAfter(
+            "previewRequestBuilder = camera.createCaptureRequest", "")
+            .substringBefore("camera.createCaptureSession", "")
+        assertTrue("预览 builder 必须走 preview 版",
+            preview.contains("applyPreviewFlashSettings(this)"))
+        assertFalse("预览 builder 不得挂 ALWAYS_FLASH", preview.contains(banned))
+
+        // 2) 拍照前的 precapture 请求
+        val pre = s.substringAfter("val preBuilder = camera.createCaptureRequest", "")
+            .substringBefore("// v74 P0", "")
+        assertTrue("precapture 必须走 preview 版",
+            pre.contains("applyPreviewFlashSettings(this)"))
+        assertFalse("precapture 不得挂 ALWAYS_FLASH", pre.contains(banned))
+
+        // 3) CANCEL 之后的 repeating：v74 就是在这里把灯又打开的
+        val reset = s.substringAfter("private fun resetFlashPrecapture", "")
+            .substringBefore("/** v74 P2", "")
+        assertTrue("复位必须把预览 AE 设回 ON", reset.contains("CONTROL_AE_MODE_ON"))
+        assertFalse("复位绝不能再挂回 ALWAYS_FLASH", reset.contains(banned))
+
+        // 4) 切到 INT 档时补挂预览请求，也必须是 preview 版
+        val setBody = s.substringAfter("fun setFlashEnabled(enabled: Boolean) {", "")
+            .substringBefore("private fun applyManualSettings", "")
+        assertTrue("切档启用闪光走 preview 版",
+            setBody.contains("applyPreviewFlashSettings(it)"))
+        assertFalse("切档路径不得挂 ALWAYS_FLASH", setBody.contains(banned))
+    }
+
+    @Test
+    fun `v75 P1 preview 版只写 FLASH_MODE_OFF 与 AE_ON 且不覆写手动曝光`() {
+        val s = camera() ?: return
+        val fn = s.substringAfter("private fun applyPreviewFlashSettings", "")
+            .substringBefore("\n    }", "")
+        assertTrue("必须写 FLASH_MODE_OFF", fn.contains("FLASH_MODE_OFF"))
+        assertTrue("自动曝光时写 AE_ON", fn.contains("CONTROL_AE_MODE_ON"))
+        assertFalse("preview 版绝不含 ALWAYS_FLASH",
+            fn.contains("CONTROL_AE_MODE_ON_ALWAYS_FLASH"))
+        assertTrue("手动曝光时不得覆写 AE 模式",
+            fn.contains("manualIso == null && manualExposure == null"))
     }
 
     @Test
