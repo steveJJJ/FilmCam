@@ -134,13 +134,13 @@
             android:includeFontPadding="false"
             android:contentDescription="@string/main_darkroom" />
 
-        <!-- 中：快门（与两翼留 28dp，避免误触暗房/胶卷） -->
+        <!-- 中：快门（与两翼各留 56dp，与竖屏水平口径一致；上下相等保证三件等距） -->
         <View
             android:id="@+id/btnShutter"
             android:layout_width="72dp"
             android:layout_height="72dp"
-            android:layout_marginTop="28dp"
-            android:layout_marginBottom="28dp"
+            android:layout_marginTop="56dp"
+            android:layout_marginBottom="56dp"
             android:background="@drawable/bg_shutter" />
 
         <!-- 下：当前胶卷图标（点击换胶卷） -->

@@ -482,6 +482,9 @@ class MainActivity : AppCompatActivity() {
     private fun wireChrome() {
         // 胶卷图标（预览不做 LUT 调色：光学取景器看不到成片效果，是产品设计）
         binding.tvFilmName.setImageResource(currentRoll.iconResId)
+        // vc77：把方形胶卷图裁成与 DARKROOM 同款 14dp 圆角方牌（横竖统一）。
+        // ⚠️ 换朝向会重新 inflate bottomBar / tvFilmName，必须在这里幂等重设。
+        com.filmcam.app.ui.FilmIconBadge.apply(binding.tvFilmName)
         binding.btnShutter.hapticClick(ms = 32, amp = 235) { triggerShutter() }
         binding.tvFilmName.hapticClick { showFilmRollPicker() }
         binding.tvFlashStatus.hapticClick { cycleFlashMode() }
@@ -510,8 +513,18 @@ class MainActivity : AppCompatActivity() {
      * 错误带进横屏（layout-land 里这两项分别是 0 / 不适用）。
      */
     private fun setupEdgeToEdge() {
+        // vc77：竖屏 bottomBar 是贴底栏，必须补底部 inset 避开导航栏；
+        // 但横屏 bottomBar 是 `end|center_vertical` 的**垂直居中侧栏**，给它加
+        // bottomMargin 会让 FrameLayout 的 center_vertical 把整列上推 margin/2
+        // （S25U 横屏实测 40px），快门就偏离屏幕中心。横屏系统导航栏在右侧
+        // （sb.right），sb.bottom 对这个侧栏没有意义，所以横屏干脆不补偿它。
+        // 换朝向时 swapChrome 已经重新 inflate 过 bottomBar，基准仍从 0 起，不叠加。
+        val landscape = resources.configuration.orientation ==
+            android.content.res.Configuration.ORIENTATION_LANDSCAPE
         com.filmcam.app.ui.EdgeToEdge.setup(
-            this, binding.topBar, binding.bottomBar, bottomAsMargin = true,
+            this, binding.topBar,
+            if (landscape) null else binding.bottomBar,
+            bottomAsMargin = true,
             extraBottomMarginViews = listOf(binding.brandLogo),
             onSystemBarInsets = { t, b, vt, vb ->
                 sbTopPx = t

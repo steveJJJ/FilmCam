@@ -303,7 +303,6 @@ App 版本：%1$s (%2$d)
     <string name="about_gpl_full">GNU GPL-3.0 全文</string>
     <string name="hidden_title">工程师模式</string>
     <string name="eng_mode_title">工程师模式</string>
-    <string name="eng_mode_note">开着：关于页点一下版本号就能进这个控制台。关掉：重新隐藏，要连点 10 次。</string>
     <string name="eng_mode_on_toast">工程师模式已开启：关于页点一下版本号即可进入</string>
     <string name="eng_mode_off_toast">工程师模式已关闭，需在关于页连点版本号 10 次重新开启</string>
     <string name="eng_slow_hint">暗光按胶卷快门速度拍，抖那一下才是胶片</string>

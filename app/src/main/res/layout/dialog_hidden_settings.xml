@@ -18,7 +18,9 @@
         android:orientation="vertical"
         android:paddingTop="8dp">
 
-        <!-- 工程师模式开关：关掉之后这些旋钮重新藏起来，入口回到"连点 10 次" -->
+        <!-- 工程师模式开关：关掉之后这些旋钮重新藏起来，入口回到"连点 10 次"。
+             11-14：开关正下方那行灰字说明按用户要求关掉（控件与中英文文案一并移除）；
+             paddingBottom 从 2dp 补到 12dp，避免下方分隔线紧贴开关。 -->
         <Switch
             android:id="@+id/swEngineerMode"
             android:layout_width="match_parent"
@@ -26,19 +28,9 @@
             android:paddingStart="24dp"
             android:paddingTop="6dp"
             android:paddingEnd="24dp"
-            android:paddingBottom="2dp"
+            android:paddingBottom="12dp"
             android:text="@string/eng_mode_title"
             android:textSize="15sp" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:paddingStart="24dp"
-            android:paddingEnd="24dp"
-            android:paddingBottom="10dp"
-            android:text="@string/eng_mode_note"
-            android:textColor="#888"
-            android:textSize="11.5sp" />
 
         <!-- 会影响出片的三项：与设置面板同一套行样式，读数就在右边 -->
         <View

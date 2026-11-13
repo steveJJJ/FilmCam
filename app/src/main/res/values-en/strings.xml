@@ -290,7 +290,6 @@ Memory available: %10$d MB / %11$d MB total
     <string name="about_gpl_full">GNU GPL-3.0 full text</string>
     <string name="hidden_title">Engineer mode</string>
     <string name="eng_mode_title">Engineer mode</string>
-    <string name="eng_mode_note">On: one tap on the version number opens this console. Off: hidden again, needs 10 taps.</string>
     <string name="eng_mode_on_toast">Engineer mode on — one tap on the version number opens it</string>
     <string name="eng_mode_off_toast">Engineer mode off — tap the version number 10 times to unlock again</string>
     <string name="eng_slow_hint">Shoot at film shutter speed in low light — the shake is the point</string>
