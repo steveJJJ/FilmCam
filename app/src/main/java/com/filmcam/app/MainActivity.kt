@@ -55,6 +55,16 @@ import kotlin.math.roundToInt
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
+    /**
+     * vc76 B：Manifest 声明 configChanges 后旋转不再重建 Activity，但系统也**不会**
+     * 重选 layout-land。机身 chrome（顶栏/铭牌/底栏）由 onConfigurationChanged 手动换，
+     * 这个标记记录当前 root 上挂的是哪一套，避免同朝向 180° 翻转也去换一遍。
+     */
+    private var chromeLandscape = false
+    /** 系统栏 inset（忽略可见性口径），由 setupEdgeToEdge 回写、refitChrome 消费。 */
+    private var sbTopPx = 0
+    private var sbBottomPx = 0
+    private var chromeDiagWritten = false
     private var cameraController: Camera2Controller? = null
     private lateinit var flash: FlashController
     private var shutterSoundPool: android.media.SoundPool? = null
@@ -64,14 +74,15 @@ class MainActivity : AppCompatActivity() {
     private var currentRoll: FilmRoll = FilmRollRepository.rolls[0]
     /** 拍照保存单线程池：保证帧写入顺序，避免连拍时多个裸线程并发写 */
     private val saveExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
-    private var dateStampEnabled = true
+    /** 日期水印：11-13 起新装默认关；老用户已存过的档位照旧。 */
+    private var dateStampEnabled = DefaultSettings.DATE_STAMP_ENABLED
     private var exposureComp = 0  // 曝光补偿 -3 ~ +3
-    private var softFocusEnabled = false  // 模拟失焦：拍摄时对焦故意不准
-    private var softFocusProb = 0         // 模拟失焦概率 0-100（工程师模式可调；0=关）
+    private var softFocusEnabled = DefaultSettings.SOFT_FOCUS_ENABLED  // 模拟失焦：2% 默认开
+    private var softFocusProb = DefaultSettings.SOFT_FOCUS_PROB         // 0-100（工程师可调；0=关）
     /** 慢门档位（胶片曝光模型）：关 / 自然 / 偏慢 —— 决定暗光下「糊一下」的概率 */
-    private var slowShutterMode = FilmExposure.Mode.OFF
+    private var slowShutterMode = DefaultSettings.slowMode
     /** 慢门触发机制：纯概率 / 纯真实 / 真实+轻随机（工程师模式可切） */
-    private var slowTrigger = FilmExposure.Trigger.PROBABILITY
+    private var slowTrigger = DefaultSettings.slowTrigger
     /** 本次拍摄的参数快照 JSON（闪光/白平衡/EV/快门/失焦），拍照线程写入、落盘线程读取 */
     @Volatile private var lastShotJson = ""
     private var filmRollMode = false  // 胶卷模式开关（旧设置保留兼容，计数改由 UndevelopedFilmStore 权威）
@@ -162,6 +173,8 @@ class MainActivity : AppCompatActivity() {
         UndevelopedFilmStore.init(this)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        chromeLandscape = resources.configuration.orientation ==
+            android.content.res.Configuration.ORIENTATION_LANDSCAPE
         runCatching { recordDeviceBasics() }
 
         // 边到边：顶栏/底栏推出状态栏与导航栏（相机预览保持全屏）。
@@ -171,81 +184,20 @@ class MainActivity : AppCompatActivity() {
         // v58：机身控件按「预览留白」自适应定位。布局里的 150dp / 48dp / 16dp
         // 是在 S25U 上调出来的固定值，短屏 / 大状态栏 / 三键导航 / 大显示尺寸
         // 都会把它们顶进预览画面。ChromeSafeArea 只在越界时收，基准机型逐像素等价。
-        var sbTopPx = 0
-        var sbBottomPx = 0
-        var chromeDiagWritten = false
-        val refitChrome = {
-            val changed = com.filmcam.app.ui.ChromeSafeArea.apply(
-                binding.root, binding.topBar, binding.bottomBar, binding.brandLogo,
-                binding.lcdDisplay, binding.evKey, binding.settingsKey,
-                binding.viewfinderFrame.contentRect(), sbTopPx, sbBottomPx
-            )
-            // v63：ChromeSafeArea 已把几何记进聚合器，这里补一次落盘（字段没变不会写）
-            runCatching {
-                DeviceGeometryReport.put("chrome.changed", changed)
-                DeviceGeometryReportIo.flush(this)
-            }
-            // 一次性布局快照，写到外部 filesDir 便于 adb pull / 文件管理器导出：
-            //   adb pull /sdcard/Android/data/com.filmcam.app/files/filmcam_layout.txt
-            if (!chromeDiagWritten && sbTopPx > 0 && sbBottomPx > 0 &&
-                binding.viewfinderFrame.width > 0
-            ) {
-                chromeDiagWritten = true
-                runCatching {
-                    val dir = getExternalFilesDir(null) ?: filesDir
-                    val logoM = (binding.brandLogo.layoutParams as? android.widget.FrameLayout.LayoutParams)?.bottomMargin
-                    val barM = (binding.bottomBar.layoutParams as? android.widget.FrameLayout.LayoutParams)?.bottomMargin
-                    java.io.File(dir, "filmcam_layout.txt").appendText(
-                        "chrome changed=$changed " +
-                            "view=${binding.root.width}x${binding.root.height} " +
-                            "density=${resources.displayMetrics.density} " +
-                            "sb=$sbTopPx/$sbBottomPx " +
-                            "content=${binding.viewfinderFrame.contentRect()} " +
-                            "topPad=${binding.topBar.paddingTop} logoMargin=$logoM barMargin=$barM\n"
-                    )
-                }
-            }
-            Unit
-        }
-        com.filmcam.app.ui.EdgeToEdge.setup(
-            this, binding.topBar, binding.bottomBar, bottomAsMargin = true,
-            extraBottomMarginViews = listOf(binding.brandLogo),
-            onSystemBarInsets = { t, b, vt, vb ->
-                sbTopPx = t
-                sbBottomPx = b
-                runCatching {
-                    DeviceGeometryReport.putAll(
-                        // v68：t/b 是 getInsetsIgnoringVisibility 的最大 inset（隐藏栏后不跳），
-                        // vt/vb 是当前可见 inset；对比历史报告请认准这两个口径。
-                        "insets.topPx" to t,
-                        "insets.bottomPx" to b,
-                        "insets.visibleTopPx" to vt,
-                        "insets.visibleBottomPx" to vb,
-                        "insets.immersive" to true,
-                    )
-                    DeviceGeometryReportIo.flush(this)
-                }
-                binding.root.post { refitChrome() }
-            },
-            // 只在取景器页隐藏系统栏：拍摄更沉浸，其余 4 页保留时间与通知
-            immersive = true,
-        )
-        // 旋转 / 分辨率 / 显示大小变化后重新量一次（值不变时不写，不会自激循环）
+        setupEdgeToEdge()
+        // 旋转 / 分辨率 / 显示大小变化后重新量一次（值不变时不写，不会自激循环）。
+        // 只挂在 root 上：root 及其上的 GL Surface 在换 chrome 时始终不换实例。
         binding.root.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> refitChrome() }
 
-        // 胶卷图标（预览不做 LUT 调色：光学取景器看不到成片效果，是产品设计）
-        binding.tvFilmName.setImageResource(currentRoll.iconResId)
-
-        // 等待 GL 线程就绪，拿到 SurfaceTexture 后启动 Camera2
+        // 等待 GL 线程就绪，拿到 SurfaceTexture 后启动 Camera2。
+        // vc76 B：这个回调只在 GL Surface 首次创建 / 重建时触发；旋转不重建 Activity，
+        // GL Surface 也就不重建，相机会话全程不关。
         binding.glSurfaceView.onSurfaceTextureReady = { surfaceTexture ->
             runOnUiThread { startCamera(surfaceTexture) }
         }
 
-        // 屏幕快门按钮（快门键行程更长、更实，给一记比功能键更重的触感）
-        binding.btnShutter.hapticClick(ms = 32, amp = 235) { triggerShutter() }
-
-        // 点击胶卷名 → 打开胶卷选择器
-        binding.tvFilmName.hapticClick { showFilmRollPicker() }
+        // 机身控件监听：冷启动、以及朝向切换换新 chrome 后都走同一套（幂等）
+        wireChrome()
 
         // 闪光灯控制器
         flash = FlashController(this)
@@ -294,21 +246,6 @@ class MainActivity : AppCompatActivity() {
         // 首次进入引导（只弹一次）
         binding.glSurfaceView.postDelayed({ maybeShowFirstRunGuide() }, 500)
 
-        // 闪光灯模式切换
-        binding.tvFlashStatus.hapticClick { cycleFlashMode() }
-
-        // 相册回看
-        binding.btnGallery.hapticClick {
-            startActivity(android.content.Intent(this, GalleryActivity::class.java))
-        }
-
-        // 设置按钮
-        binding.settingsKey.hapticClick { showSettings() }
-
-        // 顶部功能键：闪光灯 / 曝光补偿
-        binding.flashKey.hapticClick { cycleFlashMode() }
-        binding.evKey.hapticClick { cycleEvValue() }
-        binding.filmInfoText.hapticClick { showFilmRollPicker() }
         updateLcd()
         updateFilmInfo()
 
@@ -442,27 +379,194 @@ class MainActivity : AppCompatActivity() {
             true
         }
 
-        // 曝光补偿按钮
+        // 机身按键监听统一在 wireChrome() 里绑（朝向切换换新 chrome 时会重绑）。
+
+        // 「拍摄同款」从暗房带参数跳回（进程被杀后冷启动也走这里）
+        // 参数每次都照常套用（幂等），但机身提示只在「真正新的一次跳转」给：
+        // vc76 起横竖屏切换不再重建 Activity，savedInstanceState != null 只剩
+        // 进程被杀后恢复 / 语言·显示大小变化重建这几种情况，仍不该重复提示。
+        // Activity 重建时旧弹窗已随实例销毁，这里必须复位，否则取景器会永久失联
+        dialogDepth = 0
+        applySameRecipe(intent, announce = savedInstanceState == null)
+    }
+
+    /**
+     * vc76 B：Manifest 给 MainActivity 声明了 configChanges，旋转不再销毁重建，
+     * 相机 / GL Surface / 拨盘状态全程保留。但系统**不会**替已 inflate 的 View
+     * 重新选 `layout-land` —— 横竖两套机身 chrome 必须在这里手动换。
+     *
+     * 只换三块（topBar / brandLogo / bottomBar）：glSurfaceView、viewfinderFrame、
+     * 隐藏控件与过卷遮罩在两套 XML 里完全一致，原样留在 root 上，因此相机会话、
+     * SurfaceTexture、触摸监听、过卷动画引用都不动。
+     *
+     * 成片方向 / 点屏对焦 / GL uMode 都是实时读 display.rotation 的
+     * （Camera2Controller.jpegRotationDegrees、focusAt、LutGLSurfaceView.onDrawFrame），
+     * 不依赖 Activity 重建，所以 B 不动片门口径、不改 EXIF、不废横屏布局。
+     * 同一朝向内的 180° 翻转、键盘、折叠屏尺寸变化不换 chrome，只重算几何。
+     */
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        val landscape = newConfig.orientation ==
+            android.content.res.Configuration.ORIENTATION_LANDSCAPE
+        if (landscape == chromeLandscape) {
+            // 同族方向变化：layout 资源不变，只重采诊断 + 重算安全区
+            runCatching { recordDeviceBasics() }
+            binding.root.post { refitChrome() }
+            return
+        }
+        chromeLandscape = landscape
+        val swapped = runCatching { swapChromeForOrientation() }
+            .onFailure { android.util.Log.w("FilmCam", "swapChrome failed", it) }
+            .isSuccess
+        if (!swapped) {
+            // 换 chrome 失败就保持现状（相机仍不关），只重采诊断，别把半套状态再刷一遍
+            runCatching { recordDeviceBasics() }
+            binding.root.post { refitChrome() }
+            return
+        }
+        // 新 chrome 是全新 View 实例：inset 补偿基准、机身配色、读数都要重新压回去
+        setupEdgeToEdge()
+        applyBodyTheme()
+        updateLcd()
+        updateFilmInfo()
+        runCatching { recordDeviceBasics() }
+        binding.root.post { refitChrome() }
+    }
+
+    /**
+     * 按当前 resources.configuration 重新解析 activity_main（自动落到 layout / layout-land），
+     * 只把机身 chrome 三块搬进正在显示的 root。绝不 touch glSurfaceView。
+     */
+    private fun swapChromeForOrientation() {
+        val root = binding.root
+        val frame = binding.viewfinderFrame
+        val oldTop = binding.topBar
+        val oldBar = binding.bottomBar
+        val oldLogo = root.findViewById<android.view.View>(R.id.brandLogo)
+
+        val fresh = layoutInflater.inflate(R.layout.activity_main, null) as android.widget.FrameLayout
+        val newTop = fresh.findViewById<android.view.View>(R.id.topBar)
+        val newBar = fresh.findViewById<android.view.View>(R.id.bottomBar)
+        val newLogo = fresh.findViewById<android.view.View>(R.id.brandLogo)
+
+        // 旧 chrome 先摘掉：横屏铭牌是 topBar 的子项，会随 topBar 一起走
+        if (oldLogo.parent === root) root.removeView(oldLogo)
+        root.removeView(oldTop)
+        root.removeView(oldBar)
+
+        // 新 chrome 也要从临时 root 摘下来，才能挂进真正显示的 root
+        val moving = mutableListOf<android.view.View>()
+        fresh.removeView(newTop); moving += newTop
+        if (newLogo.parent === fresh) { fresh.removeView(newLogo); moving += newLogo }
+        fresh.removeView(newBar); moving += newBar
+
+        // 插在取景框之后、隐藏控件 / 过卷遮罩之前，保证遮罩仍在最上层
+        var index = root.indexOfChild(frame) + 1
+        moving.forEach { root.addView(it, index++) }
+
+        binding = ActivityMainBinding.bind(root)
+        wireChrome()
+        // 真机验证用：topBar 宽度 -1(match_parent)=竖版 / -2(wrap_content)=横版。
+        // 若是 Resources 配置没跟上导致选错 layout，反馈邮件里一眼能看出来。
+        runCatching {
+            DeviceGeometryReport.putAll(
+                "rotation.swapTo" to if (chromeLandscape) "landscape" else "portrait",
+                "rotation.topBarWidth" to newTop.layoutParams.width,
+                "rotation.recreated" to false,
+            )
+            DeviceGeometryReportIo.flush(this)
+        }
+    }
+
+    /** 机身控件监听；冷启动与换 chrome 后各调一次，全是 setOnClickListener 覆盖，幂等。 */
+    private fun wireChrome() {
+        // 胶卷图标（预览不做 LUT 调色：光学取景器看不到成片效果，是产品设计）
+        binding.tvFilmName.setImageResource(currentRoll.iconResId)
+        binding.btnShutter.hapticClick(ms = 32, amp = 235) { triggerShutter() }
+        binding.tvFilmName.hapticClick { showFilmRollPicker() }
+        binding.tvFlashStatus.hapticClick { cycleFlashMode() }
+        binding.btnGallery.hapticClick {
+            startActivity(android.content.Intent(this, GalleryActivity::class.java))
+        }
+        binding.settingsKey.hapticClick { showSettings() }
+        binding.flashKey.hapticClick { cycleFlashMode() }
+        binding.evKey.hapticClick { cycleEvValue() }
+        binding.filmInfoText.hapticClick { showFilmRollPicker() }
         binding.btnEvPlus.hapticClick {
             setEv(if (exposureComp >= 3) -3 else exposureComp + 1)
         }
         binding.btnEvMinus.hapticClick {
             setEv(if (exposureComp <= -3) 3 else exposureComp - 1)
         }
-
-        // 专业模式
         binding.tvProToggle.hapticClick { toggleProMode() }
         binding.tvIso.hapticClick { cycleIso() }
         binding.tvShutter.hapticClick { cycleShutter() }
         binding.tvExposure.hapticClick { cycleEv() }
+    }
 
-        // 「拍摄同款」从暗房带参数跳回（进程被杀后冷启动也走这里）
-        // 参数每次都照常套用（幂等），但机身提示只在「真正新的一次跳转」给：
-        // 横竖屏切换会重建 Activity，此时 savedInstanceState != null，
-        // 再提示一遍就成了骚扰。
-        // Activity 重建时旧弹窗已随实例销毁，这里必须复位，否则取景器会永久失联
-        dialogDepth = 0
-        applySameRecipe(intent, announce = savedInstanceState == null)
+    /**
+     * 边到边 + 安全区自适应：冷启动一次，朝向切换换新 chrome 后再来一次。
+     * 每次都读新控件的 padding / margin 基准，避免把竖屏的 48dp / 150dp
+     * 错误带进横屏（layout-land 里这两项分别是 0 / 不适用）。
+     */
+    private fun setupEdgeToEdge() {
+        com.filmcam.app.ui.EdgeToEdge.setup(
+            this, binding.topBar, binding.bottomBar, bottomAsMargin = true,
+            extraBottomMarginViews = listOf(binding.brandLogo),
+            onSystemBarInsets = { t, b, vt, vb ->
+                sbTopPx = t
+                sbBottomPx = b
+                runCatching {
+                    DeviceGeometryReport.putAll(
+                        // v68：t/b 是 getInsetsIgnoringVisibility 的最大 inset（隐藏栏后不跳），
+                        // vt/vb 是当前可见 inset；对比历史报告请认准这两个口径。
+                        "insets.topPx" to t,
+                        "insets.bottomPx" to b,
+                        "insets.visibleTopPx" to vt,
+                        "insets.visibleBottomPx" to vb,
+                        "insets.immersive" to true,
+                    )
+                    DeviceGeometryReportIo.flush(this)
+                }
+                binding.root.post { refitChrome() }
+            },
+            // 只在取景器页隐藏系统栏：拍摄更沉浸，其余 4 页保留时间与通知
+            immersive = true,
+        )
+    }
+
+    /** 旋转 / 分辨率 / 显示大小变化后重新量一次（值不变时不写，不会自激循环）。 */
+    private fun refitChrome() {
+        val changed = com.filmcam.app.ui.ChromeSafeArea.apply(
+            binding.root, binding.topBar, binding.bottomBar, binding.brandLogo,
+            binding.lcdDisplay, binding.evKey, binding.settingsKey,
+            binding.viewfinderFrame.contentRect(), sbTopPx, sbBottomPx
+        )
+        // v63：ChromeSafeArea 已把几何记进聚合器，这里补一次落盘（字段没变不会写）
+        runCatching {
+            DeviceGeometryReport.put("chrome.changed", changed)
+            DeviceGeometryReportIo.flush(this)
+        }
+        // 一次性布局快照，写到外部 filesDir 便于 adb pull / 文件管理器导出：
+        //   adb pull /sdcard/Android/data/com.filmcam.app/files/filmcam_layout.txt
+        if (!chromeDiagWritten && sbTopPx > 0 && sbBottomPx > 0 &&
+            binding.viewfinderFrame.width > 0
+        ) {
+            chromeDiagWritten = true
+            runCatching {
+                val dir = getExternalFilesDir(null) ?: filesDir
+                val logoM = (binding.brandLogo.layoutParams as? android.widget.FrameLayout.LayoutParams)?.bottomMargin
+                val barM = (binding.bottomBar.layoutParams as? android.widget.FrameLayout.LayoutParams)?.bottomMargin
+                java.io.File(dir, "filmcam_layout.txt").appendText(
+                    "chrome changed=$changed " +
+                        "view=${binding.root.width}x${binding.root.height} " +
+                        "density=${resources.displayMetrics.density} " +
+                        "sb=$sbTopPx/$sbBottomPx " +
+                        "content=${binding.viewfinderFrame.contentRect()} " +
+                        "topPad=${binding.topBar.paddingTop} logoMargin=$logoM barMargin=$barM\n"
+                )
+            }
+        }
     }
 
     override fun onNewIntent(intent: android.content.Intent) {
@@ -578,16 +682,18 @@ class MainActivity : AppCompatActivity() {
     /** 恢复上次退出的设置 */
     private fun restoreSettings() {
         val prefs = getSharedPreferences("filmcam", MODE_PRIVATE)
-        dateStampEnabled = prefs.getBoolean("dateStamp", true)
+        dateStampEnabled = prefs.getBoolean("dateStamp", DefaultSettings.DATE_STAMP_ENABLED)
         exposureComp = prefs.getInt("ev", 0)
-        softFocusEnabled = prefs.getBoolean("softFocus", false)
-        // 失焦概率缺省：开过模拟失焦的老用户 → 40%（旧版硬编码值）；否则 0
-        softFocusProb = prefs.getInt("softFocus_prob", if (softFocusEnabled) 40 else 0)
+        softFocusEnabled = prefs.getBoolean("softFocus", DefaultSettings.SOFT_FOCUS_ENABLED)
+        // 11-13 起新装缺省 2%（工程师滑杆文案「0% = 关闭」）；已存过的键不覆盖
+        softFocusProb = prefs.getInt("softFocus_prob", DefaultSettings.SOFT_FOCUS_PROB)
         filmRollMode = prefs.getBoolean("filmRollMode", false)
         hapticLevel = prefs.getInt("hapticLevel", 1).coerceIn(0, 2)
-        slowShutterMode = FilmExposure.Mode.fromPrefs(prefs.getInt("slowShutter", 0))
+        slowShutterMode = FilmExposure.Mode.fromPrefs(
+            prefs.getInt("slowShutter", DefaultSettings.slowMode.prefs)
+        )
         slowTrigger = FilmExposure.Trigger.fromPrefs(
-            prefs.getInt("slowTrigger", FilmExposure.Trigger.PROBABILITY.prefs)
+            prefs.getInt("slowTrigger", DefaultSettings.slowTrigger.prefs)
         )
         com.filmcam.app.ui.BodyTheme.load(this)
         com.filmcam.app.ui.AppLocale.load(this)
@@ -1506,9 +1612,11 @@ class MainActivity : AppCompatActivity() {
             showLcdNotice(getString(R.string.lcd_notice_raw_unavailable))
         }
         val newTrigger = FilmExposure.Trigger.fromPrefs(
-            prefs.getInt("slowTrigger", FilmExposure.Trigger.PROBABILITY.prefs)
+            prefs.getInt("slowTrigger", DefaultSettings.slowTrigger.prefs)
         )
-        val newMode = FilmExposure.Mode.fromPrefs(prefs.getInt("slowShutter", 0))
+        val newMode = FilmExposure.Mode.fromPrefs(
+            prefs.getInt("slowShutter", DefaultSettings.slowMode.prefs)
+        )
         if (newTrigger != slowTrigger || newMode != slowShutterMode) {
             slowTrigger = newTrigger
             slowShutterMode = newMode

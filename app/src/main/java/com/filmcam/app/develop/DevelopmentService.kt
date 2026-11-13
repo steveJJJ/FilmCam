@@ -23,6 +23,7 @@ import app.spektralab.engine.EngineResources
 import app.spektralab.engine.FilmStockMapper
 import app.spektralab.engine.FrameBorderLock
 import app.spektralab.engine.SpektraProcessor
+import com.filmcam.app.DefaultSettings
 import com.filmcam.app.GalleryActivity
 import com.filmcam.app.R
 import com.filmcam.app.film.RollInfo
@@ -1447,9 +1448,14 @@ class DevelopmentService : Service() {
         Canvas(bmp).drawRect(0f, 0f, w.toFloat(), h.toFloat(), paint)
     }
 
-    /** 日期水印开关（与拍摄侧共用 "filmcam" 偏好；默认开） */
+    /**
+     * 日期水印开关（与拍摄侧共用 "filmcam" 偏好）。
+     * 11-13 起新装默认**关闭**，与 MainActivity 同一口径；老用户手动存过的 true 不被覆盖。
+     * JPEG 与 RAW 两条通路都走这里，改一处即可。
+     */
     private fun isDateStampEnabled(): Boolean =
-        getSharedPreferences("filmcam", MODE_PRIVATE).getBoolean("dateStamp", true)
+        getSharedPreferences("filmcam", MODE_PRIVATE)
+            .getBoolean("dateStamp", DefaultSettings.DATE_STAMP_ENABLED)
 
     private fun finishWithError(msg: String) {
         DevelopmentState.phase = DevelopmentState.PHASE_ERROR

@@ -41,6 +41,12 @@ object FilmExposure {
     /** 本档最慢快门：1/8 秒。再慢废片率太高，也超出多数手机传感器的机械上限 */
     const val MAX_SLOW_SEC = 1f / 8f
 
+    /** 新装 / 清数据后的默认慢门档位（用户 2026-11-13 指定：自然）。 */
+    val DEFAULT_MODE: Mode get() = Mode.NATURAL
+
+    /** 新装 / 清数据后的默认触发机制（用户 2026-11-13 指定：真实派 + 轻随机）。 */
+    val DEFAULT_TRIGGER: Trigger get() = Trigger.REAL_MIX
+
     /** 慢门档位（设置面板「慢门」那一行的三个读数） */
     enum class Mode(val prefs: Int, private val baseProb: Float) {
         OFF(0, 0f),

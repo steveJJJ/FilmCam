@@ -535,7 +535,9 @@ class AboutActivity : AppCompatActivity() {
         val tvJpeg = bindRow(rowJpeg, R.string.eng_jpeg_norm, R.string.eng_jpeg_norm_hint)
 
         fun slowMode(): com.filmcam.app.camera.FilmExposure.Mode =
-            com.filmcam.app.camera.FilmExposure.Mode.fromPrefs(prefs.getInt("slowShutter", 0))
+            com.filmcam.app.camera.FilmExposure.Mode.fromPrefs(
+                prefs.getInt("slowShutter", DefaultSettings.slowMode.prefs)
+            )
 
         fun saveSlow(mode: com.filmcam.app.camera.FilmExposure.Mode) {
             prefs.edit().putInt("slowShutter", mode.prefs).apply()
@@ -577,12 +579,12 @@ class AboutActivity : AppCompatActivity() {
             tvColor.text = if (y == 0f && mm == 0f) getString(R.string.eng_cc_off)
             else String.format(java.util.Locale.US, "%+.2f/%+.2f", y, mm)
         }
-        // v50 输入侧反 ISP 归一化：v73 默认 70%（同场景三档标定 + 11-12 反馈上调），0 仍可关。
+        // v50 输入侧反 ISP 归一化：11-13 起默认「淡」＝滑杆满档（0.7 标准档仍可切回）。
         // 机身设置面板「色彩浓度」三档与这根滑杆共用一个 prefs，拖到中间值面板显示自定义
         run {
             val pct = (prefs.getFloat(
                 "filmcam_dev_jpeg_normalize",
-                app.spektralab.engine.JpegNormalizer.DEFAULT_STRENGTH
+                DefaultSettings.colorStrength
             ) * 100f).roundToInt()
             tvJpeg.text = if (pct == 0) getString(R.string.eng_jpeg_norm_off) else "$pct%"
         }
@@ -661,11 +663,8 @@ class AboutActivity : AppCompatActivity() {
             }
         }
 
-        // 概率缺省：老用户开过模拟失焦 → 40%（旧版硬编码值）；否则 0（关）
-        val prob = prefs.getInt(
-            "softFocus_prob",
-            if (prefs.getBoolean("softFocus", false)) 40 else 0
-        )
+        // 11-13 起新装默认 2%（面板文案「0% = 关闭」，滑杆 >0 会同步把 softFocus 写 true）
+        val prob = prefs.getInt("softFocus_prob", DefaultSettings.SOFT_FOCUS_PROB)
         sbProb.progress = prob
         tvProb.text = getString(R.string.percent_fmt, prob)
         sbProb.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
@@ -731,7 +730,9 @@ class AboutActivity : AppCompatActivity() {
         val rg = view.findViewById<android.widget.RadioGroup>(R.id.rgSlowTrigger)
 
         fun currentMode(): com.filmcam.app.camera.FilmExposure.Mode =
-            com.filmcam.app.camera.FilmExposure.Mode.fromPrefs(prefs.getInt("slowShutter", 0))
+            com.filmcam.app.camera.FilmExposure.Mode.fromPrefs(
+                prefs.getInt("slowShutter", DefaultSettings.slowMode.prefs)
+            )
         fun saveMode(m: com.filmcam.app.camera.FilmExposure.Mode) {
             prefs.edit().putInt("slowShutter", m.prefs).apply()
             tvMode.setText(
@@ -756,13 +757,11 @@ class AboutActivity : AppCompatActivity() {
             )
         }
 
-        // 触发机制（默认纯概率派）；先 check 再挂监听，避免初始化那一下被当成用户操作
+        // 触发机制（11-13 起默认真实派 + 轻随机）；先 check 再挂监听，
+        // 避免初始化那一下被当成用户操作
         rg.check(
             when (com.filmcam.app.camera.FilmExposure.Trigger.fromPrefs(
-                prefs.getInt(
-                    "slowTrigger",
-                    com.filmcam.app.camera.FilmExposure.Trigger.PROBABILITY.prefs
-                )
+                prefs.getInt("slowTrigger", DefaultSettings.slowTrigger.prefs)
             )) {
                 com.filmcam.app.camera.FilmExposure.Trigger.PROBABILITY -> R.id.rbSlowProb
                 com.filmcam.app.camera.FilmExposure.Trigger.REAL -> R.id.rbSlowReal
@@ -802,7 +801,7 @@ class AboutActivity : AppCompatActivity() {
 
         val current = (prefs.getFloat(
             "filmcam_dev_jpeg_normalize",
-            app.spektralab.engine.JpegNormalizer.DEFAULT_STRENGTH
+            DefaultSettings.colorStrength
         ) * 100f).roundToInt().coerceIn(0, 100)
         sb.progress = current
         tv.text = if (current == 0) getString(R.string.eng_jpeg_norm_off) else "$current%"

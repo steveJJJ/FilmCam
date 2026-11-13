@@ -54,10 +54,16 @@
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@style/Theme.FilmCam">
+        <!-- vc76 B：取景器旋转不再重建 Activity —— 相机会话 / GL Surface / 拨盘状态全程保留。
+             注意系统此时**不会**自动重选 layout-land，机身顶栏/铭牌/底栏由
+             MainActivity.onConfigurationChanged 手动换（见 swapChromeForOrientation）。
+             density / uiMode / locale 故意不声明：显示大小、深浅色、语言变化仍走框架重建，
+             避免已 inflate 的 dp 值与新 density 不一致。 -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:screenOrientation="fullSensor" />
+            android:screenOrientation="fullSensor"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden" />
 
         <!-- 启动图标：Relic Cam 银色相机图（11-07 用户指定，白底方形、已去水印），单一静态入口。
              保留 .LauncherBlack 这个组件名只为兼容：v24/v25 已放上桌面的快捷方式

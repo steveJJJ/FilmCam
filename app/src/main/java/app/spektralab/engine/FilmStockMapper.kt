@@ -113,6 +113,13 @@ object FilmStockMapper {
     }
 
     /**
+     * 新装 / 清数据后的默认成片出口（用户 2026-11-13 指定：Frontier 店扫）。
+     * ⚠️ 只用于「prefs 里没有这个键」的回落；`OutputStyle.fromPrefs` 对脏值仍回退 PRINT，
+     * `DevSettings.outputStyle` 的数据类默认值也仍是 PRINT（冻结模板，不随用户默认改）。
+     */
+    val DEFAULT_OUTPUT_STYLE: OutputStyle = OutputStyle.FRONTIER
+
+    /**
      * 片框档位：成片要不要把片基一起扫进来，扫哪一格。
      *
      * 真机那卷胶卷是"一整条"——画面之外还有齿孔、片基边缘印的胶卷型号和帧号。
@@ -179,6 +186,12 @@ object FilmStockMapper {
             }
         }
     }
+
+    /**
+     * 新装 / 清数据后的默认片框档位（用户 2026-11-13 指定：白边相框）。
+     * 旧包升级仍优先按 `filmcam_frame_border` 迁移成 FULL，见 [readFrameFormat]。
+     */
+    val DEFAULT_FRAME_FORMAT: FrameFormat = FrameFormat.WHITE
 
     /**
      * 引擎已知参数名白名单（逐条对照 libspektrafilm_engine.so 字符串表核过）。
@@ -277,7 +290,9 @@ object FilmStockMapper {
          * 0 = 完全关闭，逐像素行为与 v49 一致；>0 时由**首帧**统计定出整卷基准
          * （见 [JpegNormalizer.suggestStrength]），整卷共用同一强度再乘这个倍率。
          * 一卷胶卷是整卷一起冲的，逐帧各算各的会让同卷浓淡不一（v53 修正）。
-         * 默认 [JpegNormalizer.DEFAULT_STRENGTH]，依据见该常量注释的真机标定数据。
+         * 数据类默认值仍是 [JpegNormalizer.DEFAULT_STRENGTH]（「标准」档），用于
+         * 冻结模板 / 引擎能力探测；**实际冲洗**由 [readDevSettings] 注入用户档位，
+         * 新装默认是 [JpegNormalizer.DEFAULT_LEVEL_STRENGTH]（「淡」）。
          * 只作用 JPEG 通路，RAW 通路不经过；不按机型存，也不改任何胶片参数。
          * 全局一个值，工程模式滑杆可改，下一次冲洗生效。
          */
@@ -524,7 +539,7 @@ object FilmStockMapper {
             // 出口是整卷统一的口味，不按胶卷存；脏值回退印相
             // 片框是整卷统一的输出样式（跟出口档位一样），不按胶卷存
             frameFormat = readFrameFormat(context),
-            outputStyle = OutputStyle.fromPrefs(sp.getInt("filmcam_output_style", OutputStyle.PRINT.prefs)),
+            outputStyle = OutputStyle.fromPrefs(sp.getInt("filmcam_output_style", DEFAULT_OUTPUT_STYLE.prefs)),
             // 镜头柔度同样全局存（机身的一部分），工程师面板标定用；区间 = 引擎真机验证过的接受范围
             lensBlurUm = sp.getFloat("filmcam_dev_lens_blur", LENS_BLUR_UM).coerceIn(0f, LENS_BLUR_MAX_UM),
             // 色彩微调同样全局存（整体成色，不按胶卷）：y 正=冷/白、负=暖/黄；
@@ -536,9 +551,11 @@ object FilmStockMapper {
             ccScale = if (sp.contains("filmcam_dev_cc_scale")) {
                 sp.getFloat("filmcam_dev_cc_scale", CC_SCALE_DEFAULT).takeIf { it > 0f }
             } else CC_SCALE_DEFAULT,
-            // 输入侧归一化：v73 默认 70%（同场景三档标定 + 11-12 反馈上调），0 仍可关。\n            // 机身「色彩浓度」三档与工程师滑杆写的是同一个键。脏值收进 [0,1]。
+            // 输入侧归一化：11-13 起默认「淡」＝滑杆满档（DEFAULT_LEVEL_STRENGTH）；
+            // 0.7 仍是机身「标准」档的算法强度（DEFAULT_STRENGTH），两者别混。
+            // 机身「色彩浓度」三档与工程师滑杆写的是同一个键。脏值收进 [0,1]。
             jpegNormalizeStrength = sp.getFloat(
-                "filmcam_dev_jpeg_normalize", JpegNormalizer.DEFAULT_STRENGTH
+                "filmcam_dev_jpeg_normalize", JpegNormalizer.DEFAULT_LEVEL_STRENGTH
             ).coerceIn(0f, JpegNormalizer.MAX_STRENGTH),
         )
     }
@@ -551,8 +568,10 @@ object FilmStockMapper {
         val sp = context.getSharedPreferences("filmcam", Context.MODE_PRIVATE)
         val saved = sp.getString(PREF_FRAME_FORMAT, null)
         if (saved != null) return FrameFormat.fromKey(saved)
-        // 旧包升级：以前开着片框的用户，档位就是当时那个（半格串由 fromKey 归一成 135）
-        return if (sp.getBoolean(PREF_FRAME_BORDER, false)) FrameFormat.FULL else FrameFormat.OFF
+        // 旧包升级：以前开着片框的用户，档位就是当时那个（半格串由 fromKey 归一成 135）。
+        // 从没存过任何片框设置的新装用户 → 11-13 指定的白边相框。
+        return if (sp.getBoolean(PREF_FRAME_BORDER, false)) FrameFormat.FULL
+        else DEFAULT_FRAME_FORMAT
     }
 
     fun saveFrameFormat(context: Context, format: FrameFormat) {
@@ -655,7 +674,7 @@ object FilmStockMapper {
     fun readOutputStyle(context: Context): OutputStyle =
         OutputStyle.fromPrefs(
             context.getSharedPreferences("filmcam", Context.MODE_PRIVATE)
-                .getInt("filmcam_output_style", OutputStyle.PRINT.prefs)
+                .getInt("filmcam_output_style", DEFAULT_OUTPUT_STYLE.prefs)
         )
 
     fun saveOutputStyle(context: Context, style: OutputStyle) {

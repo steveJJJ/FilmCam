@@ -26,12 +26,24 @@ class ColorStrengthTest {
     }
 
     @Test
-    fun `工程师滑杆拖到中间值时机身显示自定义且循环回标准`() {
+    fun `工程师滑杆拖到中间值时机身显示自定义且循环回默认档`() {
         assertEquals(ColorStrength.Level.CUSTOM, cs.levelOf(0.37f))
         assertEquals(ColorStrength.Level.CUSTOM, cs.levelOf(0.85f))
-        // 不擅自把用户的细调值吸附到最近的档位：下一次点击从标准重新开始
-        assertEquals(cs.STANDARD, cs.next(0.37f), 1e-6f)
-        assertEquals(cs.STANDARD, cs.next(0.85f), 1e-6f)
+        // 不擅自把用户的细调值吸附到最近的档位：下一次点击从默认档（11-13 起＝淡）重新开始
+        assertEquals(cs.DEFAULT_VALUE, cs.next(0.37f), 1e-6f)
+        assertEquals(cs.DEFAULT_VALUE, cs.next(0.85f), 1e-6f)
+    }
+
+    @Test
+    fun `11-13 新装默认档是淡且标准档仍可手动切回`() {
+        assertEquals(1f, cs.DEFAULT_VALUE, 1e-6f)
+        assertEquals(cs.SOFT, cs.DEFAULT_VALUE, 1e-6f)
+        assertEquals(ColorStrength.Level.SOFT, cs.levelOf(cs.DEFAULT_VALUE))
+        // 默认淡 → 点一下原始 → 再点标准 → 再点回淡，三档没因为改默认而塌掉
+        assertEquals(cs.ORIGINAL, cs.next(cs.DEFAULT_VALUE), 1e-6f)
+        assertEquals(cs.STANDARD, cs.next(cs.ORIGINAL), 1e-6f)
+        assertEquals(cs.SOFT, cs.next(cs.STANDARD), 1e-6f)
+        assertTrue(cs.STANDARD < cs.SOFT)
     }
 
     @Test
