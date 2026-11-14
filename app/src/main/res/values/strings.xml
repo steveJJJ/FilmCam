@@ -281,8 +281,14 @@ App 版本：%1$s (%2$d)
     <!-- ===== 关于页（AboutActivity 代码内文案） ===== -->
     <string name="about_tap_more">%1$s · 再点 %2$d 次</string>
     <string name="about_no_browser">没有可用的浏览器</string>
-    <string name="about_feedback_email_channel">发邮件反馈（自动附诊断报告）</string>
+    <string name="about_feedback_email_channel">发邮件反馈</string>
     <string name="about_feedback_wechat_channel">加微信进群反馈</string>
+    <!-- v81 反馈弹窗：机身铭牌风格（副题 / 副蚀刻说明 / 两行 hint / 底部备注） -->
+    <string name="about_feedback_subtitle">反馈渠道</string>
+    <string name="about_feedback_hint">选一种方式把问题交给我们</string>
+    <string name="about_feedback_mail_hint">自动附上版本、机型与设备诊断报告</string>
+    <string name="about_feedback_wechat_hint">复制微信号 LazyRofin，进群当面说</string>
+    <string name="about_feedback_note">邮件由系统邮件应用发出，诊断报告在正文，可自行删除</string>
     <string name="feedback_diag_header">—— 设备诊断报告（自动生成，已随本邮件附上；如不便可删除）——</string>
     <string name="feedback_diag_unavailable">（设备诊断报告暂不可用，请在反馈中说明机型与系统版本）</string>
     <string name="about_spec_update">更新 UPDATE</string>

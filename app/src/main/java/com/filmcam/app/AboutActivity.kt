@@ -335,19 +335,67 @@ class AboutActivity : AppCompatActivity() {
     }
 
     private fun showFeedbackOptions() {
-        // v67：诊断导出合并进邮件反馈，列表回到两项，不再有复制/分享重复入口
-        val channels = arrayOf(
-            getString(R.string.about_feedback_email_channel),
-            getString(R.string.about_feedback_wechat_channel)
+        // v81：从系统 AlertDialog 的 setItems 纯文字列表换成机身铭牌面板 ——
+        // 和设置面板 / 关于页同一套语言（2dp 圆角外框、1dp 蚀刻线、等宽读数、
+        // 副蚀刻小字、BodyTheme 黑钛/钛银映射）。两个渠道与邮件逻辑一字不动。
+        val theme = com.filmcam.app.ui.BodyTheme
+        theme.load(this)
+        val view = layoutInflater.inflate(R.layout.dialog_feedback, null)
+
+        fun row(id: Int): View = view.findViewById(id)
+        fun fill(id: Int, label: Int, hint: Int, code: String) {
+            val r = row(id)
+            r.findViewById<TextView>(R.id.tvSetLabel).text = getString(label)
+            r.findViewById<TextView>(R.id.tvSetHint).text = getString(hint)
+            r.findViewById<TextView>(R.id.tvSetValue).text = code
+        }
+        fill(
+            R.id.rowFeedbackMail, R.string.about_feedback_email_channel,
+            R.string.about_feedback_mail_hint, "EMAIL"
         )
-        androidx.appcompat.app.AlertDialog.Builder(this, com.filmcam.app.ui.BodyTheme.dialogTheme)
-            .setTitle(R.string.about_feedback)
-            .setItems(channels) { _, which ->
-                tick()
-                if (which == 0) sendFeedback() else copyWechatId()
-            }
-            .setNegativeButton(R.string.main_cancel, null)
-            .show()
+        fill(
+            R.id.rowFeedbackWechat, R.string.about_feedback_wechat_channel,
+            R.string.about_feedback_wechat_hint, "WECHAT"
+        )
+
+        // 主题重映射：面板底 / 刻线 / 字色一起翻成当前机身档位
+        theme.applyToViewTree(view)
+        listOf(R.id.rowFeedbackMail, R.id.rowFeedbackWechat).forEach { id ->
+            row(id).findViewById<android.widget.ImageView>(R.id.ivSetChevron)
+                .setColorFilter(theme.panelTextSecondary)
+            // 右侧等宽读数是「渠道代号」，压成次要色，别用琥珀抢标题
+            row(id).findViewById<TextView>(R.id.tvSetValue)
+                .setTextColor(theme.panelTextSecondary)
+        }
+        view.findViewById<android.widget.ImageView>(R.id.ivFeedbackLogo).setImageResource(
+            if (theme.isTitan) R.drawable.ic_t3_logo_ink else R.drawable.ic_t3_logo
+        )
+        val tvClose = view.findViewById<TextView>(R.id.tvFeedbackClose)
+        tvClose.setTextColor(theme.panelText)
+        tvClose.background = GradientDrawable().apply {
+            setColor(android.graphics.Color.TRANSPARENT)
+            cornerRadius = 2f * resources.displayMetrics.density
+            setStroke(1, theme.cardStroke)
+        }
+
+        val dialog = androidx.appcompat.app.AlertDialog.Builder(this, theme.dialogTheme)
+            .setView(view)
+            .create()
+        dialog.setOnShowListener {
+            // 与设置面板同一口径：宽度留两侧余量、外框换成机加工面板
+            val dm = resources.displayMetrics
+            val w = (dm.widthPixels * 0.86f).toInt().coerceAtMost((400 * dm.density).toInt())
+            dialog.window?.setLayout(w, android.view.ViewGroup.LayoutParams.WRAP_CONTENT)
+            dialog.window?.setBackgroundDrawable(theme.panelDrawable())
+        }
+        row(R.id.rowFeedbackMail).setOnClickListener {
+            tick(); dialog.dismiss(); sendFeedback()
+        }
+        row(R.id.rowFeedbackWechat).setOnClickListener {
+            tick(); dialog.dismiss(); copyWechatId()
+        }
+        tvClose.setOnClickListener { tick(); dialog.dismiss() }
+        dialog.show()
     }
 
     /** v67：诊断报告全文随「发邮件反馈」自动带走；不受工程模式 PRO 限制 */

@@ -140,11 +140,17 @@ class Camera2Controller(private val context: Context) {
         }
 
         /**
-         * 直闪帧的曝光偏置（EV，负 = 更暗）。ALWAYS_FLASH 的测光只保「主体正常」，
-         * 再压 2/3 档让被闪光够不着的背景进一步沉黑——负片肩部宽，主体欠这点无妨。
-         * 实际下发时按设备 AE 补偿步长换算成整档（1/2 步长机型 ≈ -0.5EV，1/3 步长 ≈ -0.67EV）。
+         * 直闪帧的曝光偏置（EV，负 = 更暗）。
+         *
+         * ⚠️ v81（11-14 用户拍板）：从 -2/3 归零。真机同场景 A/B 定量——
+         * `ALWAYS_FLASH` 本身就把环境光砍了约 4.5 EV（iso 202/1:23 → 23/1:60），
+         * 成片均值 89.8→27.0、暗像素 46%→83%、四角 49→10（背景几乎纯黑）；
+         * 再叠 -0.7 EV 属于过冲，主体虽正常但整幅观感太黑。
+         * 归零后保留 HAL 重测光 + 线性 tonemap + AWB 钉日光，直闪味不丢。
+         *
+         * 下发逻辑（按设备 AE 补偿步长换算整档）原样留着，以后要微调只改这个常量。
          */
-        const val FLASH_EV_BIAS = -2f / 3f
+        const val FLASH_EV_BIAS = 0f
         const val TAG = "Camera2Controller"
     }
 
@@ -584,6 +590,10 @@ class Camera2Controller(private val context: Context) {
     private var previewSize: Size = Size(1920, 1440)
 
     fun setExposureComp(comp: Int) {
+        // v81：值没变就不要重发 repeating。切闪光灯档位会连着调
+        // setManualIso / setManualExposure / setExposureComp，三次都是旧值，
+        // 白白往 HAL 塞三条重复请求，预览会出现一帧可感知的抖动。
+        if (exposureComp == comp) return
         exposureComp = comp
         previewRequestBuilder?.let {
             it.set(
@@ -1095,8 +1105,16 @@ class Camera2Controller(private val context: Context) {
      *  2. AWB 钉日光：氙气闪光 ≈ 5500K。AUTO 模式在闪光瞬间会把钨丝背景往中性拉，
      *     钉死后主体中性、背景留暖橙——这就是 T3 直闪的冷暖分离。
      *     用户手动选了白平衡预设时不抢（那是用户自己的口味）。
-     *  3. 压 [FLASH_EV_BIAS]：ALWAYS_FLASH 测光只保主体正常，再压一点让背景
-     *     进一步沉黑（负片肩部宽，主体欠这点无妨）。按设备 AE 步长换算成整档。
+     *  3. 曝光偏置 [FLASH_EV_BIAS]：v81 起常量为 0，默认不再额外压暗（HAL 的
+     *     闪光重测光已经足够沉黑，再压会过冲，见常量注释里的真机定量）。
+     *     换算成整档下发的代码保留，非零时仍生效。
+     *  4. 关掉零快门延迟（v81，真机实锤）：S25U 的 HAL 对 STILL_CAPTURE +
+     *     ALWAYS_FLASH 照样走 CheckZslStillCapture —— LED 主闪序列确实跑了
+     *     （led mode 2→0），但**输出帧取自主闪前的 ZSL 历史暗帧**：连拍 4 张的
+     *     RAW 底片全部贴着黑电平（净信号 ≈30/1023，98% 像素暗于 +256），
+     *     而成片参数是闪光档（iso=23、1/60s、flashState=FIRED）——参数与帧内容
+     *     严重错配。关 ZSL 强制 HAL 在提交时刻现拍一帧，主闪光自然落到成像帧上。
+     *     [canDisableZsl] 的口径与 [applySlowShutter] 一致：设不进去就静默跳过。
      */
     private fun applyFlashCaptureTuning(builder: CaptureRequest.Builder, slow: Boolean) {
         if (!flashEnabled || !hasFlashUnit) return
@@ -1130,6 +1148,11 @@ class Camera2Controller(private val context: Context) {
             }.isSuccess
         } else false
 
+        // v81 断点②：关掉这一帧的 ZSL，见方法注释第 4 条。
+        val zslOff = if (canDisableZsl) {
+            runCatching { builder.set(CaptureRequest.CONTROL_ENABLE_ZSL, false) }.isSuccess
+        } else false
+
         var evBiasSteps = 0
         val stepEv = aeCompStep.numerator.toFloat() / aeCompStep.denominator
         if (stepEv > 0f) {
@@ -1146,7 +1169,8 @@ class Camera2Controller(private val context: Context) {
         }
         android.util.Log.i(
             "FlashTuning",
-            "capture awbDaylight=$awbDaylight tonemapLinear=$tonemapLinear evBiasSteps=$evBiasSteps"
+            "capture awbDaylight=$awbDaylight tonemapLinear=$tonemapLinear " +
+                "evBiasSteps=$evBiasSteps zslOff=$zslOff"
         )
     }
 
@@ -1381,7 +1405,12 @@ class Camera2Controller(private val context: Context) {
         val preBuilder = camera.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW).apply {
             addTarget(surface)
             applyManualSettings(this)
-            // v79：one-shot precapture 必须挂 ALWAYS_FLASH，否则 HAL 不打主闪（见函数注释）
+            // v81 回退（11-14 用户拍板）：恢复 vc80 的 ALWAYS_FLASH one-shot
+            // precapture。v81 SINGLE 试验轮真机定量：S25U 在 SINGLE 下 aeState
+            // 正常收敛（不再 700ms 超时），但出图口径与 ALWAYS_FLASH 完全相同
+            //（iso=23/1/60s、背景物理死黑）、无预闪（用户明确要预闪手感）、
+            // 亮度观感无改善——SINGLE 在这台 HAL 上没有解锁任何厂商闪光管线，
+            // 反而丢了 ALWAYS_FLASH 已验证可用的预闪→主闪序列。
             applyPrecaptureFlashSettings(this)
             set(
                 CaptureRequest.CONTROL_AWB_MODE,
@@ -1441,31 +1470,37 @@ class Camera2Controller(private val context: Context) {
     private fun resetFlashPrecapture(reason: String, force: Boolean = false) {
         if (!force && !precapturePending) return
         val session = captureSession ?: return
-        val camera = cameraDevice ?: return
-        val surface = previewSurface ?: return
+        if (previewSurface == null) return
         val builder = previewRequestBuilder ?: return
         val handler = backgroundHandler
         runCatching {
-            val cancel = camera.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW).apply {
-                addTarget(surface)
-                set(
-                    CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER,
-                    android.hardware.camera2.CameraMetadata.CONTROL_AE_PRECAPTURE_TRIGGER_CANCEL
-                )
-                set(
-                    CaptureRequest.FLASH_MODE,
-                    android.hardware.camera2.CameraMetadata.FLASH_MODE_OFF
-                )
-                set(
-                    CaptureRequest.CONTROL_AE_MODE,
-                    android.hardware.camera2.CameraMetadata.CONTROL_AE_MODE_ON
-                )
-            }
-            session.capture(cancel.build(), null, handler)
+            // v81：CANCEL 这一帧必须复用常驻预览 builder 的**全部参数**。
+            // 旧写法用 TEMPLATE_PREVIEW 新建 builder、只塞 3 个 key 就 addTarget(预览
+            // surface)，这一帧会真的投到取景器，却缺 EV / AWB / AF / zoom 等成像参数，
+            // 画面瞬间跳变 —— 就是「切换闪光灯档位时预览闪一下」的直接来源。
+            // 现在这一帧与前后预览帧参数完全一致，只有 trigger 不同。
             builder.set(
                 CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER,
-                android.hardware.camera2.CameraMetadata.CONTROL_AE_PRECAPTURE_TRIGGER_IDLE
+                android.hardware.camera2.CameraMetadata.CONTROL_AE_PRECAPTURE_TRIGGER_CANCEL
             )
+            builder.set(
+                CaptureRequest.FLASH_MODE,
+                android.hardware.camera2.CameraMetadata.FLASH_MODE_OFF
+            )
+            builder.set(
+                CaptureRequest.CONTROL_AE_MODE,
+                android.hardware.camera2.CameraMetadata.CONTROL_AE_MODE_ON
+            )
+            try {
+                session.capture(builder.build(), null, handler)
+            } finally {
+                // 无论 capture 成败都把 trigger 放回 IDLE：repeating 不允许带 CANCEL，
+                // 否则会话已关闭时下一次 setRepeatingRequest 会被 HAL 整条拒绝。
+                builder.set(
+                    CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER,
+                    android.hardware.camera2.CameraMetadata.CONTROL_AE_PRECAPTURE_TRIGGER_IDLE
+                )
+            }
             builder.set(
                 CaptureRequest.FLASH_MODE,
                 android.hardware.camera2.CameraMetadata.FLASH_MODE_OFF
@@ -1535,13 +1570,17 @@ class Camera2Controller(private val context: Context) {
     }
 
     /**
-     * 闪光 precapture 的**一次性**请求（AE_PRECAPTURE_TRIGGER_START）专用。
+     * one-shot precapture 的**一次性**请求（AE_PRECAPTURE_TRIGGER_START）专用。
      *
-     * ⚠️ v79 真机取证（S25U / vc78）：P1 把这一路也改成 AE_ON 后，HAL 不做闪光
-     * 测光与充电，700ms 超时才放快门；HAL 只把 LED 点 34ms 做测光（led mode 2→0），
-     * 拍照结果 flashState=READY（**不是 FIRED**）且走 ZSL 历史帧 —— 用户看到「不闪」。
-     * Camera2 规范要求 precapture 请求本身就是 ON_ALWAYS_FLASH，HAL 才会跑完整的
+     * vc80 真机取证（S25U）：P1 把这一路也改成 AE_ON 后，HAL 不做闪光测光与
+     * 充电，700ms 超时才放快门；HAL 只把 LED 点 34ms 做测光，拍照结果
+     * flashState=READY（不是 FIRED）且走 ZSL 历史帧 —— 用户看到「不闪」。
+     * Camera2 要求 precapture 请求本身就是 ON_ALWAYS_FLASH，HAL 才会跑完整的
      * 预闪→测光→退出 ZSL→主闪序列。
+     *
+     * v81 SINGLE 试验已回退（11-14 用户拍板：要预闪手感、SINGLE 出图口径与
+     * ALWAYS_FLASH 相同无收益）：这一路恢复 ALWAYS_FLASH，是用户实机验证过
+     * 「预闪→主闪→FIRED」全序列可用的方案。
      *
      * 这里**只允许用于 submitStillCaptureNow 里那一个 one-shot 请求**；常驻预览
      * repeating 仍走 applyPreviewFlashSettings（AE_ON + FLASH_MODE_OFF），收尾仍由
@@ -1562,6 +1601,14 @@ class Camera2Controller(private val context: Context) {
      * 闪光请求参数：⚠️ v75 P1 起 **只允许用于 TEMPLATE_STILL_CAPTURE 的拍照帧**。
      * 必须在 applyManualSettings 之后调用，否则会被自动测光分支覆盖。
      * 只在自动曝光下生效 —— 手动 ISO/快门（外置闪光灯那条路）AE 是 OFF，HAL 不闪。
+     *
+     * v81 回退（11-14 用户拍板）：恢复 vc80 的 ALWAYS_FLASH——用户实机验证过
+     * 「预闪→主闪→flashState=FIRED」全序列可用，且**要预闪手感**。v81 SINGLE
+     * 试验轮真机定量：aeState 正常收敛（不再 700ms 超时）但出图口径与 ALWAYS_FLASH
+     * 完全相同（iso=23/1/60s、背景按平方反比死黑）、isFlashCapture 仍 0、无预闪、
+     * 亮度观感无改善——SINGLE 在 S25U HAL 上没有解锁任何厂商闪光管线，收益为零
+     * 代价为负。SINGLE 方案见 git 历史 v81（若未来某机型 ALWAYS_FLASH 表现异常可
+     * 作为候选 A/B）。
      * 这里挂 ALWAYS_FLASH 是成片直闪效果的来源，一字不改。
      */
     private fun applyStillFlashSettings(builder: CaptureRequest.Builder) {
@@ -1599,6 +1646,17 @@ class Camera2Controller(private val context: Context) {
             return
         }
         if (!enabled) {
+            // v81：本次会话从未起过 precapture → 没有预闪状态机要取消，
+            // 一次一次性 CANCEL 帧都不该发（那帧会投到预览 surface）。
+            // 判据只看 precapture 状态，不看 changed —— BUILT_IN→EXTERNAL 虽然
+            // changed=true，但从未拍过闪光照片时同样没有灯要收。
+            // 预览 builder 的 AE_ON + FLASH_MODE_OFF 在切进档位时已经设好，早退不改它。
+            // ⚠️ 只要拍过照 / 有 pending，仍强制走两段式 CANCEL —— v74 P0 治好的
+            // 小米 13U 常亮、v75 P1 的复位一个都不能少。
+            if (!precapturePending && flashPrecaptureStarts == 0) {
+                reportFlashState()
+                return
+            }
             // 关闪光：显式取消预闪 + 灭灯（reset 内部已下发 repeating request）
             resetFlashPrecapture("setFlashEnabled(false)", force = true)
         } else {
@@ -1863,6 +1921,7 @@ class Camera2Controller(private val context: Context) {
     }
 
     fun setManualIso(iso: Int?) {
+        if (manualIso == iso) return   // v81：同值不重发预览请求
         manualIso = iso
         previewRequestBuilder?.let {
             applyManualSettings(it)
@@ -1871,6 +1930,7 @@ class Camera2Controller(private val context: Context) {
     }
 
     fun setManualExposure(exposureNs: Long?) {
+        if (manualExposure == exposureNs) return   // v81：同值不重发预览请求
         manualExposure = exposureNs
         previewRequestBuilder?.let {
             applyManualSettings(it)

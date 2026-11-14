@@ -54,20 +54,28 @@ class FlashPrecaptureContractTest {
     }
 
     @Test
-    fun `切档关灯必须强制下发且不再有 changed 早退`() {
+    fun `切档关灯必须强制复位 早退只能用于从未起过 precapture 的关灯`() {
         val s = camera() ?: return
         // 只看函数体，别被注释里引用的旧代码误伤
         val setBody = s.substringAfter("fun setFlashEnabled(enabled: Boolean) {", "")
             .substringBefore("private fun applyManualSettings", "")
-        assertFalse(
-            "vc73 的同值早退判断会让切档完全不下发，是「切档无效」的一环",
-            setBody.contains("!changed")
-        )
         assertTrue(
             "关闪光必须走显式复位",
             setBody.contains("resetFlashPrecapture(\"setFlashEnabled(false)\", force = true)")
         )
         assertTrue("切档要留 FlashDiag 日志", s.contains("setFlashEnabled(\$enabled) changed="))
+        // v81：早退只能按 precapture 状态判断，不能退回 vc73 的裸 `if (!changed) return`
+        assertTrue("早退必须守 precapturePending", setBody.contains("!precapturePending"))
+        assertTrue("早退必须守本次会话起过 precapture",
+            setBody.contains("flashPrecaptureStarts == 0"))
+        val guard = setBody.substringAfter(
+            "if (!precapturePending && flashPrecaptureStarts == 0) {", "")
+            .substringBefore("}", "")
+        assertTrue("早退前仍要刷新诊断", guard.contains("reportFlashState()"))
+        assertFalse(
+            "早退不得再附加 changed 条件：BUILT_IN→EXTERNAL 虽 changed=true，但没起过 precapture 也不该发帧",
+            setBody.contains("if (!changed && !precapturePending")
+        )
     }
 
     @Test
@@ -81,6 +89,34 @@ class FlashPrecaptureContractTest {
         val off = main.indexOf("cameraController?.setFlashEnabled(false)")
         val stop = main.indexOf("cameraController?.stop()", off.coerceAtLeast(0))
         assertTrue("onPause 必须先显式关灯再 stop", off > 0 && stop > off)
+    }
+
+    @Test
+    fun `v81 CANCEL 帧复用预览参数 不得新建缺参数的请求`() {
+        val s = camera() ?: return
+        val body = s.substringAfter("private fun resetFlashPrecapture", "")
+            .substringBefore("/** v74 P2", "")
+        assertFalse("复位不得再建 TEMPLATE_PREVIEW 请求（会往预览塞缺 EV/AWB/AF 的帧，切档闪一下）",
+            body.contains("createCaptureRequest"))
+        assertTrue("CANCEL 必须由常驻预览 builder 发出",
+            body.contains("session.capture(builder.build(), null, handler)"))
+        assertTrue("capture 必须用 try/finally 把 trigger 放回 IDLE",
+            body.contains("} finally {") && body.contains("CONTROL_AE_PRECAPTURE_TRIGGER_IDLE"))
+        assertTrue("CANCEL 必须排在 IDLE 之前",
+            body.indexOf("CONTROL_AE_PRECAPTURE_TRIGGER_CANCEL")
+                < body.indexOf("CONTROL_AE_PRECAPTURE_TRIGGER_IDLE"))
+    }
+
+    @Test
+    fun `v81 三个曝光 setter 同值不重发预览请求`() {
+        val s = camera() ?: return
+        listOf(
+            "if (exposureComp == comp) return",
+            "if (manualIso == iso) return",
+            "if (manualExposure == exposureNs) return",
+        ).forEach { guard ->
+            assertTrue("缺同值早退：$guard", s.contains(guard))
+        }
     }
 
     @Test
@@ -98,8 +134,10 @@ class FlashPrecaptureContractTest {
 
         val stillFn = s.substringAfter("private fun applyStillFlashSettings", "")
             .substringBefore("\n    }", "")
-        assertTrue("直闪效果来自拍照帧的 ALWAYS_FLASH",
+        assertTrue("直闪效果来自拍照帧的 ALWAYS_FLASH（v81 SINGLE 试验已回退：用户要预闪手感）",
             stillFn.contains("CONTROL_AE_MODE_ON_ALWAYS_FLASH"))
+        assertFalse("v81 回退：拍照帧不得再用 FLASH_MODE_SINGLE（真机定量：出图口径与 ALWAYS_FLASH 相同、无预闪、无收益）",
+            stillFn.contains("Metadata.FLASH_MODE_SINGLE"))
         assertTrue("直闪成片调优仍在", s.contains("applyFlashCaptureTuning(this, slow)"))
         assertTrue("外置闪光同步仍在", s.contains("applyExternalFlashSync(this)"))
         assertTrue("慢门仍在闪光之后覆盖",
@@ -107,7 +145,7 @@ class FlashPrecaptureContractTest {
     }
 
     @Test
-    fun `v79 预览与复位不得挂 ALWAYS_FLASH，one-shot precapture 必须挂`() {
+    fun `vc80 预览与复位不得挂 ALWAYS_FLASH，one-shot precapture 必须挂`() {
         val s = camera() ?: return
         val banned = "CONTROL_AE_MODE_ON_ALWAYS_FLASH"
 
@@ -119,7 +157,8 @@ class FlashPrecaptureContractTest {
             preview.contains("applyPreviewFlashSettings(this)"))
         assertFalse("预览 builder 不得挂 ALWAYS_FLASH", preview.contains(banned))
 
-        // 2) one-shot precapture：v79 修复点，必须挂 ALWAYS_FLASH 才有主闪
+        // 2) one-shot precapture：vc80 修复点，必须挂 ALWAYS_FLASH 才有完整预闪→主闪
+        //    序列（v81 SINGLE 试验已回退：无预闪手感、出图口径相同、无收益）
         val pre = s.substringAfter("val preBuilder = camera.createCaptureRequest", "")
             .substringBefore("// v74 P0", "")
         assertTrue("precapture 必须走 precapture 专用版（S25U 真机取证：AE_ON 不打主闪）",
@@ -142,7 +181,7 @@ class FlashPrecaptureContractTest {
     }
 
     @Test
-    fun `v79 precapture 专用函数只用于一次性请求且守卫齐全`() {
+    fun `vc80 precapture 专用函数只用于一次性请求且守卫齐全`() {
         val s = camera() ?: return
         val calls = Regex("applyPrecaptureFlashSettings\\(this\\)").findAll(s).count()
         assertTrue("precapture 专用版只能用在那一处一次性请求，实际 $calls 处", calls == 1)
@@ -155,6 +194,9 @@ class FlashPrecaptureContractTest {
             fn.contains("manualIso != null || manualExposure != null"))
         assertFalse("专用版不能写 FLASH_MODE（ALWAYS_FLASH 下由 HAL 控制）",
             fn.contains("FLASH_MODE_OFF"))
+        // v81 SINGLE 试验已回退：FLASH_MODE_SINGLE 不得出现在任何代码下发里
+        assertFalse("FLASH_MODE_SINGLE 已回退，代码里不得出现",
+            s.contains("Metadata.FLASH_MODE_SINGLE"))
     }
 
     @Test

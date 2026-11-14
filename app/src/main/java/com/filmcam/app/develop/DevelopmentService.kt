@@ -524,6 +524,37 @@ class DevelopmentService : Service() {
         return s
     }
 
+    /**
+     * v81：这台设备的内置直闪 RAW 底片是否「不吃光」（黑底片）。
+     *
+     * 机型无关判定（11-14 复盘：不能按 BUILT_IN 写死全跳，别的机型 RAW 多半
+     * 正常吃光，全跳=画质降级）：
+     * 1. 设备缓存（prefs `flash_raw_blind`）一旦实锤为盲 → 直接过；
+     * 2. 否则读 DNG 中心区净信号（[TiffRawFlashStat]，~10ms）：低于
+     *    白电平 5% 判黑底片 → 写缓存（HAL 行为是设备级属性，帧间稳定）；
+     * 3. 解析失败 / 净信号正常 → 不跳：正常机型每帧复检的成本可忽略，
+     *    误判方向永远朝「多走一次 RAW」，绝不误降级画质。
+     */
+    private fun isBuiltInFlashRawBlind(dng: File, index: Int): Boolean {
+        val prefs = getSharedPreferences("filmcam", MODE_PRIVATE)
+        if (prefs.getBoolean("flash_raw_blind", false)) return true
+        val net = TiffRawFlashStat.netSignalRatio(dng)
+        if (net == null) {
+            Log.i(TAG, "帧 $index [RAW] 直闪底片结构未识别（不跳 RAW，保持原通路）")
+            return false
+        }
+        return if (net < TiffRawFlashStat.BLIND_NET_RATIO) {
+            prefs.edit().putBoolean("flash_raw_blind", true).apply()
+            Log.i(TAG, "帧 $index [RAW] 直闪底片净信号 ${"%.3f".format(net)} 低于门限" +
+                "${TiffRawFlashStat.BLIND_NET_RATIO}，判定本机闪光 RAW 不吃光" +
+                "（已缓存，后续直闪帧直接回落 JPEG）")
+            true
+        } else {
+            Log.i(TAG, "帧 $index [RAW] 直闪底片净信号 ${"%.3f".format(net)}，RAW 正常吃光，照走 RAW 会话")
+            false
+        }
+    }
+
     private fun processOneFrame(
         roll: RollInfo,
         index: Int,
@@ -576,7 +607,29 @@ class DevelopmentService : Service() {
         val rawDngPath = runCatching {
             UndevelopedFilmStore.frameRawPath(roll.rollId, index)
         }.getOrNull()
-        if (rawDngPath != null) {
+        // v81：内置直闪帧的 DNG 可能是「黑底片」——S25U 的 HAL 在闪光拍照中
+        // RAW_SENSOR 流不吃光（11-14 真机定量：两轮 8 张底片净信号均 ≈30/1023，
+        // 连闪光主体的区域也贴黑；同快门 HAL JPEG 却正常吃光、曝光正确）。
+        // 在黑底片上叠任何增益都救不回闪光信息：+1EV 实测背景仍在地板、
+        // 主体先爆（用户反馈「直接过曝」）。所以**黑底片**不进 RAW 会话，
+        // 落回 JPEG 通路（同快门 HAL JPEG 才是正确曝光的参考）。
+        // ⚠️ 机型兼容（11-14 复盘用户点名）：别的机型 RAW 流多半正常吃光，
+        // 无条件按 BUILT_IN 全跳会把那些机器的直闪画质降级 —— 判定必须看
+        // DNG 原始像素（TiffRawFlashStat 中心区净信号），不能写死档位。
+        // 判定结果只缓存「盲」：HAL 行为是设备级属性，一旦实锤后续直接跳；
+        // 正常机型每帧轻量复检（~10ms），解析失败不跳（宁可不修不误降级）。
+        // EXTERNAL 不在此列：外闪帧曝光由 app 锁死（AE_OFF+固定 ISO/快门），
+        // DNG 与 JPEG 同源同亮，RAW 通路照走。
+        val rawSkipForBuiltInFlash = rawDngPath != null && runCatching {
+            val shot = UndevelopedFilmStore.frameShot(roll.rollId, index)
+            val isBuiltIn =
+                com.filmcam.app.film.ShotMeta.fromJson(shot)?.flash == "BUILT_IN"
+            isBuiltIn && isBuiltInFlashRawBlind(java.io.File(rawDngPath), index)
+        }.getOrDefault(false)
+        if (rawSkipForBuiltInFlash) {
+            Log.i(TAG, "帧 $index [RAW] 内置直闪帧跳过 RAW 会话（黑底片，回落 JPEG 通路）")
+        }
+        if (rawDngPath != null && !rawSkipForBuiltInFlash) {
             val tRaw0 = android.os.SystemClock.elapsedRealtime()
             val rawFellBack = runCatching {
                 developFrameFromRaw(

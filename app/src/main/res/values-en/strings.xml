@@ -268,8 +268,14 @@ Memory available: %10$d MB / %11$d MB total
     <!-- ===== About screen (strings set in AboutActivity code) ===== -->
     <string name="about_tap_more">%1$s · %2$d more taps</string>
     <string name="about_no_browser">No browser available</string>
-    <string name="about_feedback_email_channel">Email with diagnostics</string>
+    <string name="about_feedback_email_channel">Email support</string>
     <string name="about_feedback_wechat_channel">Join the WeChat group</string>
+    <!-- v81 feedback panel: camera nameplate styling -->
+    <string name="about_feedback_subtitle">SUPPORT CHANNELS</string>
+    <string name="about_feedback_hint">Choose how to reach us</string>
+    <string name="about_feedback_mail_hint">Attaches version, device info and diagnostics</string>
+    <string name="about_feedback_wechat_hint">Copies WeChat ID LazyRofin — join the group</string>
+    <string name="about_feedback_note">Opens your mail app. Diagnostics are in the body — remove them if you prefer.</string>
     <string name="feedback_diag_header">—— Device diagnostics (attached automatically; remove if you prefer) ——</string>
     <string name="feedback_diag_unavailable">(Device diagnostics unavailable — please include your device model and Android version)</string>
     <string name="about_spec_update">UPDATES</string>
