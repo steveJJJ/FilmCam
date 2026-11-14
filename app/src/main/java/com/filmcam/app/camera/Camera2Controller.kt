@@ -151,6 +151,89 @@ class Camera2Controller(private val context: Context) {
          * 下发逻辑（按设备 AE 补偿步长换算整档）原样留着，以后要微调只改这个常量。
          */
         const val FLASH_EV_BIAS = 0f
+
+        /**
+         * vc85 慢同步 AE 正补偿实验 —— **已证无效并归零（11-14 17:2x）**。
+         *
+         * 真机：`FlashTuning evBiasSteps=10` / `slowSyncEv=1.0` 确实下发，但
+         * `拍照完成 flashState=FIRED iso=23 expNs=16667400` 纹丝不动，五张成片
+         * mean 63~69 / p50 13~28 与基线一字不差 → 三星 HAL 在 ALWAYS_FLASH 下
+         * 忽略/钉死 AE 补偿。换算代码与预闪帧下发能力保留（别的机型可能有效），
+         * 但常量必须保持 0f，否则无 MANUAL_SENSOR 的回退路径会带一个未验证的 +1EV。
+         */
+        const val FLASH_SLOW_SYNC_EV = 0f
+
+        /**
+         * vc86：直闪帧手动锁定到「闪光前预览 AE 的实测曝光」。
+         *
+         * FIMO 运行时取证（tmp/flash_lag_1114/dumpsys_fimo_live.txt）：
+         * FIMO 预览请求 sensor.sensitivity=250 / exposureTime=1/60s，
+         * 我们 ALWAYS_FLASH 拍照结果 iso=23 / 1/60s —— 差 ≈3.4EV，
+         * 就是 FIMO 背景有环境光、我们背景死黑的全部差异。
+         * AE 补偿（vc85）被这台 HAL 忽略；这里改为 AE_OFF + 手写 SENSOR_*，
+         * 绕开 HAL 重测光。曝光值取预览回调实测，不硬编码 250，机型自适应。
+         * 置 false 即一键回退到 vc82 的 ALWAYS_FLASH 口径。
+         */
+        const val FLASH_LOCK_PREVIEW_AE = true
+
+        /**
+         * vc87：手写 AE 曝光的整体 EV 微调 —— 专治「主体高光被压成死白平板」。
+         *
+         * 取证（tmp/flash_lag_1114/vc86/，原图全分辨率、裁掉白边）：
+         * 9 张里最亮的 1/16 格 std 只有 0.7~8.8（几乎零纹理），RGB 最大值
+         * 只有 162~175、>=245 像素为 0 → **不是数值削顶，是 HAL JPEG 输入过曝后
+         * 被引擎胶片曲线肩部压成恒定平台**；FIMO 同口径亮格 std 14~22、
+         * max 255，主体有层次。目视：手掌一整片死白、皮肤纹理与明暗过渡全丢。
+         *
+         * vc86 手写 ISO 291~449 / 快门 10~30ms，比 FIMO 实测 250 / 1:60 高且
+         * 每帧大幅波动；AE_OFF 下曝光终于由 App 控制（vc85 的 AE 补偿被 HAL 忽略，
+         * 手写 SENSOR_* 有效），所以这里**只缩放 ISO**：把 291~449 拉到 179~276，
+         * 落到 FIMO 基准附近，让主体退出曲线肩部恢复层次；快门保持预览 AE 实测值
+         * （保留用户 EV 拨盘与暗光慢门策略），不硬编码任何机型常数。
+         *
+         * vc83 定稿值 -0.7EV（ISO ×0.615）：经 vc87 13 张 / vc88 5 张 /
+         * vc89 7 张真机复标后保留，定稿样张主体平台占比稳定 <2.5%、
+         * 亮格 std 23.7（FIMO 16.5）、目视无死白剪影。
+         * 置 0f 即回到 vc86 口径；置 FLASH_LOCK_PREVIEW_AE=false 回到 vc82。
+         */
+        const val FLASH_LOCK_EV_BIAS = -0.7f
+
+        /**
+         * vc88：直闪帧的**总曝光量上限**（ISO·ms）—— 主体过曝的真正判据。
+         *
+         * vc87 真机 13 张定量（tmp/flash_lag_1114/vc87/，裁白边、原图全分辨率）：
+         * 只缩 ISO 仍过曝，因为决定主体是否进引擎肩部的是 ISO×快门：
+         *   不过曝 9 张（>=150 平台占比 0%、有皮肤纹理） 1369~2108 ISO·ms
+         *   过曝   4 张（平台 35~45%、手掌成灰白剪影） 5609~30624 ISO·ms
+         *   FIMO 基准 250 × 1/60s = 4167（它的闪光功率按自身 AE 测定、配套）
+         * 我们闪光功率由 precapture 在 HAL 的 ISO23 基准下测定，功率偏大，
+         * 安全阈值必须低于 FIMO。vc88 先取 2500（平台降到 1.7%，但背景
+         * p50 只有 12、死黑），vc89 放宽到 **3600**（+0.53EV）：7 张真机
+         * 目视全部无主体过曝、平台 2.2%、亮格 std 23.7、p50 抬到 26。
+         * ⚠️ 不是机型常数：值由闪光功率基准决定，仍按 deviceIsoRange/
+         * 设备曝光范围钳制；别的机型若功率不同按同口径复标即可。
+         */
+        const val FLASH_MAX_EXPOSURE_PRODUCT = 3600f
+
+        /**
+         * vc89：直闪帧的**手写 ISO 上限** —— 单独管住主体。
+         *
+         * vc88 真机：ISO 246~253 配 10ms 快门的帧平台占比只有 0.2~0.5%
+         * （不过曝、纹理完整）；vc87 里 ISO 187 配 30ms 却过曝 35.6%。
+         * 说明主体受光由 ISO 与快门共同决定，但 ISO 是可以直接钉住的那一项。
+         * 取 vc88 已验证不过曝的上界 250，机型自适应仍靠 deviceIsoRange 夹。
+         */
+        const val FLASH_MAX_FLASH_ISO = 250
+
+        /**
+         * vc89：快门上限 1/30s（33.3ms）—— 手持慢同步的安全线。
+         * vc88 用 1/60s 把背景压得太黑（p50 12 vs FIMO 86）；这里放开上限，
+         * 快门由 目标曝光量 / 实际 ISO 反算。
+         * ⚠️ vc89 真机日志：实际只用到 14.4~16.8ms —— product 上限 3600
+         * 加 ISO 钳 250 已决定这个量级，「把增益移给快门」并未真正发生，
+         * 本质只是 +0.53EV 放宽。上限留着供后续换机制时不必再改代码。
+         */
+        const val FLASH_MAX_SHUTTER_SEC = 0.03333334f
         const val TAG = "Camera2Controller"
     }
 
@@ -1157,7 +1240,8 @@ class Camera2Controller(private val context: Context) {
         val stepEv = aeCompStep.numerator.toFloat() / aeCompStep.denominator
         if (stepEv > 0f) {
             // 除数与被除数都是 Float：Math.round(Float) 返回 Int（步长单位）
-            evBiasSteps = Math.round(FLASH_EV_BIAS / stepEv)
+            // 按设备 AE 补偿步长换算整档（S25U 实测 1/10 EV/档，+1EV = 10 档）
+            evBiasSteps = Math.round((FLASH_EV_BIAS + FLASH_SLOW_SYNC_EV) / stepEv)
             if (evBiasSteps != 0) {
                 runCatching {
                     builder.set(
@@ -1167,10 +1251,64 @@ class Camera2Controller(private val context: Context) {
                 }.onFailure { evBiasSteps = 0 }
             }
         }
+        // vc86：手动锁定直闪帧曝光到闪光前预览 AE 的实测 (ISO, 快门)，
+        // 绕开 HAL 的 ALWAYS_FLASH 重测光（它把 ISO 从 ~250 压到 23）。
+        // 放在函数最后：必须覆盖 applyStillFlashSettings 写的 ALWAYS_FLASH。
+        var lockAe = false
+        val lockIso = lastAeIso
+        val lockExpNs = (lastAeSec * 1_000_000_000f).toLong()
+        val minExpNs = (deviceMinExposureSec * 1_000_000_000f).toLong().coerceAtLeast(1L)
+        val maxExpNs = (deviceMaxExposureSec * 1_000_000_000f).toLong()
+        // vc89（vc83 定稿）：总曝光量目标钳制 + ISO 单独钳住主体。
+        // 目标取预览 AE 想给的环境光量，夹到 3600 ISO·ms（vc88 的 2500
+        // 基础上 +0.53EV，仍低于 vc87 过曝下界 5609、接近 FIMO 4167）；
+        // 快门 = 目标 / 实际 ISO 反算，再夹设备真实范围。
+        // ⚠️ 真机日志：快门实际 14.4~16.8ms，并未变长；主体不被重新推亮
+        // 靠的是 ISO 上限与总曝光量上限，不是「增益移到快门」。
+        val isoScale = Math.pow(2.0, FLASH_LOCK_EV_BIAS.toDouble()).toFloat()
+        var adjIso = Math.min(Math.round(lockIso * isoScale), FLASH_MAX_FLASH_ISO)
+            .coerceAtLeast(1)
+        val targetProduct = Math.min(
+            lockIso.toFloat() * lastAeSec * 1000f,
+            FLASH_MAX_EXPOSURE_PRODUCT
+        )
+        val adjExpSec = (targetProduct / (adjIso * 1000f))
+            .coerceIn(deviceMinExposureSec, Math.min(FLASH_MAX_SHUTTER_SEC, deviceMaxExposureSec))
+        adjIso = adjIso.coerceIn(deviceIsoRange.first, deviceIsoRange.last)
+        val adjExpNs = (adjExpSec * 1_000_000_000f).toLong()
+            .coerceIn(minExpNs, maxExpNs)
+        // 日志打钳制后的真实总曝光量（vc88 打的是钳制前值，会误导复标）
+        val expProduct = adjIso.toFloat() * adjExpNs / 1_000_000f
+        if (FLASH_LOCK_PREVIEW_AE && hasManualSensor && lockIso > 0 && lockExpNs > 0) {
+            runCatching {
+                builder.set(
+                    CaptureRequest.CONTROL_MODE,
+                    android.hardware.camera2.CameraMetadata.CONTROL_MODE_AUTO
+                )
+                builder.set(
+                    CaptureRequest.CONTROL_AE_MODE,
+                    android.hardware.camera2.CameraMetadata.CONTROL_AE_MODE_OFF
+                )
+                builder.set(CaptureRequest.SENSOR_EXPOSURE_TIME, adjExpNs)
+                builder.set(CaptureRequest.SENSOR_SENSITIVITY, adjIso)
+                // AE_OFF 下 flash.* 由 app 控制，SINGLE 让这一帧点火（不是 vc81 那次
+                // ALWAYS_FLASH→SINGLE 的同义替换：那时 AE 仍由 HAL 重测光）。
+                builder.set(
+                    CaptureRequest.FLASH_MODE,
+                    android.hardware.camera2.CameraMetadata.FLASH_MODE_SINGLE
+                )
+                lockAe = true
+            }.onFailure {
+                android.util.Log.w(TAG, "直闪手动锁定曝光失败，回落 HAL 自动: ${it.message}")
+            }
+        }
         android.util.Log.i(
             "FlashTuning",
             "capture awbDaylight=$awbDaylight tonemapLinear=$tonemapLinear " +
-                "evBiasSteps=$evBiasSteps zslOff=$zslOff"
+                "evBiasSteps=$evBiasSteps zslOff=$zslOff " +
+                "lockAe=$lockAe lockIso=$lockIso lockExpNs=$lockExpNs " +
+                "lockEvBias=$FLASH_LOCK_EV_BIAS isoScale=$isoScale lockIsoAdj=$adjIso " +
+                "adjExpNs=$adjExpNs expSec=$adjExpSec expProduct=$expProduct"
         )
     }
 
@@ -1416,6 +1554,17 @@ class Camera2Controller(private val context: Context) {
                 CaptureRequest.CONTROL_AWB_MODE,
                 currentAwbMode ?: CaptureRequest.CONTROL_AWB_MODE_AUTO
             )
+            // vc85 保留的预闪帧 AE 补偿换算能力（两帧同值才有意义）。
+            // 当前 FLASH_SLOW_SYNC_EV=0f（vc85 已证这台 HAL 忽略 AE 补偿），
+            // 不产生实际补偿；别的机型若 HAL 支持可复用这条通路。
+            val preStepEv = aeCompStep.numerator.toFloat() / aeCompStep.denominator
+            if (preStepEv > 0f) {
+                val preEvSteps = Math.round((FLASH_EV_BIAS + FLASH_SLOW_SYNC_EV) / preStepEv)
+                set(
+                    CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION,
+                    (exposureComp + preEvSteps).coerceIn(aeCompRange.first, aeCompRange.last)
+                )
+            }
             set(
                 CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER,
                 android.hardware.camera2.CameraMetadata.CONTROL_AE_PRECAPTURE_TRIGGER_START
@@ -1424,7 +1573,7 @@ class Camera2Controller(private val context: Context) {
         // v74 P0：打点 + 置 pending，拍照结果回调必须配对发 CANCEL（见 resetFlashPrecapture）
         precapturePending = true
         flashPrecaptureStarts++
-        android.util.Log.i("FlashDiag", "PRECAPTURE START count=$flashPrecaptureStarts ae=ALWAYS_FLASH(one-shot)")
+        android.util.Log.i("FlashDiag", "PRECAPTURE START count=$flashPrecaptureStarts ae=ALWAYS_FLASH(one-shot) slowSyncEv=$FLASH_SLOW_SYNC_EV")
         reportFlashState()
         val preCb = object : android.hardware.camera2.CameraCaptureSession.CaptureCallback() {
             override fun onCaptureCompleted(

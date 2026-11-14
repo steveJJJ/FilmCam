@@ -18,7 +18,6 @@ import java.io.File
  * 所以守护「关键语句必须存在 / 必须被删 / 顺序不能反」，防回退。
  */
 class FlashPrecaptureContractTest {
-
     /** Gradle test 的工作目录通常是 app/；向上找带 app/src/main 的项目根。 */
     private fun sourceRoot(): File? {
         var dir: File? = File(System.getProperty("user.dir") ?: ".").absoluteFile
@@ -194,9 +193,12 @@ class FlashPrecaptureContractTest {
             fn.contains("manualIso != null || manualExposure != null"))
         assertFalse("专用版不能写 FLASH_MODE（ALWAYS_FLASH 下由 HAL 控制）",
             fn.contains("FLASH_MODE_OFF"))
-        // v81 SINGLE 试验已回退：FLASH_MODE_SINGLE 不得出现在任何代码下发里
-        assertFalse("FLASH_MODE_SINGLE 已回退，代码里不得出现",
-            s.contains("Metadata.FLASH_MODE_SINGLE"))
+        // v81 SINGLE 试验已回退；vc86 起 SINGLE 只允许出现在「AE_OFF 手动锁定曝光」
+        // 那一个分支里（与 vc81 的同义替换不是一回事：那时 AE 仍由 HAL 重测光）
+        assertTrue("vc86 手动锁定曝光必须用 SINGLE 点火",
+            s.contains("android.hardware.camera2.CameraMetadata.FLASH_MODE_SINGLE"))
+        assertTrue("SINGLE 必须和 AE_OFF 手动曝光成对出现",
+            s.contains("CONTROL_AE_MODE_OFF") && s.contains("SENSOR_SENSITIVITY"))
     }
 
     @Test
