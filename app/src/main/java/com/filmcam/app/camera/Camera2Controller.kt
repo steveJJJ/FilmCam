@@ -234,6 +234,160 @@ class Camera2Controller(private val context: Context) {
          * 本质只是 +0.53EV 放宽。上限留着供后续换机制时不必再改代码。
          */
         const val FLASH_MAX_SHUTTER_SEC = 0.03333334f
+
+        /**
+         * 11-14 22:4x 实验分支：**解除总曝光量钳制，做真慢同步**。
+         *
+         * 取证（tmp/samsung_exif_1114/）：三星原厂 7 张闪光成片拟合
+         * `log2(ISO×t_ms) = 13.14 - 1.0016×Bv`（R²=1.00000，标准 APEX），
+         * 暗场景 product 给到 33000~66000 ISO·ms、快门最长 83.24ms；而 vc83
+         * 固定的 3600 只对应 Bv=1.33（原厂最亮那一档），暗场景差 3~4EV
+         * ⇒ 背景永远死黑、换场景就翻车。
+         *
+         * 预览 AE 的 `lockIso × lastAeSec` 本来就是「∝1/环境亮度」的正确
+         * 自适应输入，被 3600 一刀切掉了而已。所以这里不是加公式，只是把
+         * 安全帽抬高：product 上限 250×83.24≈20810、快门上限 83.24ms，
+         * `adjIso≤250` 与 -0.7EV 完全不动 ⇒ 增量全部给快门（主体受光不变、
+         * 背景吃环境光），亮场景仍由预览 AE 自己决定、不会被强行拉长。
+         *
+         * ⚠️ 最大未验证假设：**LED 是否与快门耦合**。若闪光脉冲持续整个曝光
+         * 窗口，快门变长会把主体一起推亮过曝；原厂敢同时抬 ISO/快门是因为
+         * 功率随 ISO 测小，我们 `singleStrengthMaxLevel=1` 且功率按 HAL 的
+         * ISO23 基准测得偏大。此假设只能真机拍了才知道。
+         *
+         * ❌ 22:4x 真机结论（取证 tmp/slow_sync_1114/verdict.html）：5 张里
+         * 暗场景 3 张快门确实拉到 83.24ms、背景亮度追平 FIMO，但**近距手掌
+         * 变成零纹理死白剪影**；32ms 那张手掌发白尚有少量纹理，16ms 人像正常
+         * ⇒ 在 AE_OFF + FLASH_MODE_SINGLE 下这台 HAL 的 LED 随曝光窗口持续，
+         * 主体受光同样 ∝ ISO×快门，「增量全给快门、主体不动」的假设被证伪。
+         * product 20810 远超 vc87 过曝下界 5609，主体/背景无法在同一帧分离。
+         * 想根治须先降闪光功率（复刻 FIMO 场景模式 / app 层等效 TTL），
+         * 单纯放宽曝光上限不可采用。开关保持 false、代码留档供其他机型验。
+         *
+         * ⚠️ 置 false 即一键回退 vc84 正式包行为，原路径一字不动。
+         */
+        const val FLASH_UNCLAMP_EXPERIMENT = false
+        const val FLASH_UNCLAMP_MAX_PRODUCT = 20810f
+        const val FLASH_UNCLAMP_MAX_SHUTTER_SEC = 0.08324f
+
+        /**
+         * 11-14 23:0x 实验分支：**复刻 FIMO / CameraView 的 Camera1 shim 参数组合**。
+         *
+         * 运行时取证（tmp/flash_lag_1114/dumpsys_fimo_live.txt，Preview request
+         * 第 342~441 行，多份 request 一致）：
+         *   android.control.mode              = USE_SCENE_MODE (2)
+         *   android.control.sceneMode         = FACE_PRIORITY (1)
+         *   android.control.aeMode            = ON_ALWAYS_FLASH (3)
+         *   android.flash.mode                = OFF
+         *   android.sensor.sensitivity        = 250
+         *   android.sensor.exposureTime       = 16666667 ns (1/60s)
+         *   android.control.aeExposureCompensation = 0
+         * 设备静态能力（camera_caps.txt 第 346~375 行）：
+         *   availableSceneModes=[1 18]、availableModes=[0 1 2] ⇒ 全部合法。
+         * FIMO 在同一颗 HAL / 同一颗 LED 上预闪主闪正常、背景有细节；
+         * 猜测它的价值是把**闪光功率基准**从我们 precapture 的 ISO23 拉到 ISO250。
+         *
+         * ⚠️ 22:5x 真机已证「只放宽曝光上限」行不通（LED 随曝光窗口持续，
+         * 主体/背景无法分离），所以这一轮改从测光/功率基准入手。
+         * 拍照帧仍走 vc84 的 AE_OFF + 手写 SENSOR_* + FLASH_MODE_SINGLE，
+         * 它自己会把 CONTROL_MODE 重设为 AUTO，不会被预览的场景模式污染。
+         *
+         * ❌ 23:0x 真机结论（取证 tmp/fimo_scene_1114/verdict.html）：arm 全部
+         * 成功、无迟滞无副作用，但**关键判据失败**——预览 lockIso 仍 3066~7058、
+         * lockExpNs 仍 39.97ms（未变成 FIMO 的 250/16.67ms）。HAL 在
+         * AE_ON/场景模式下按文档忽略 SENSOR_* 手写值；成片帧与 vc83 逐字
+         * 一致（iso 253→197、14.4~18.5ms、product 3600）。成像 = vc83 基线
+         * 行为，无回归也无增益；#3/#04 极暗场景依旧死黑。
+         * ⇒ 场景模式改不了闪光功率基准，第三方公开 Camera2 三条入口全部
+         * 关闭。根治只剩：成片反馈闭环 / app 层等效 TTL。开关留档备查。
+         *
+         * ⚠️ 置 false 即一键回退 vc84 正式包行为，原路径一字不动。
+         */
+        const val FLASH_FIMO_SCENE_EXPERIMENT = false
+        const val FIMO_PREVIEW_ISO = 250
+        const val FIMO_PREVIEW_EXPOSURE_NS = 16_666_667L
+        private const val CONTROL_MODE_USE_SCENE_MODE_VALUE = 2
+        private const val CONTROL_SCENE_MODE_FACE_PRIORITY_VALUE = 1
+        private const val CONTROL_SCENE_MODE_DISABLED_VALUE = 0
+
+        /**
+         * 11-14 22:0x 实验分支：复刻 FIMO/CameraView 与三星原厂的调用形态 ——
+         * 预览 repeating 常驻 ON_ALWAYS_FLASH，把 AE_PRECAPTURE_TRIGGER_START
+         * 挂在 repeating 上让 HAL 状态机流式推进，等 aeState 收敛再开快门，
+         * 拍照帧交回 HAL 托管曝光（不做 vc83 的手写 AE）。
+         *
+         * 取证：tmp/samsung_capture_1114/samsung_camera_flash_forensics.html
+         * 原厂 waitAePreCaptureTriggerStateChanged 兜底 5000ms、FIMO 2500ms，
+         * 我们 vc83 只给 700ms；且 vc80(one-shot+非常驻) / vc84(常驻删 START)
+         * 从未完整复刻过这个组合。
+         *
+         * ✅ 22:2x 真机结论（4 张，取证 tmp/hal_precapture_1114/）：把 START 挂
+         * repeating + 预览常驻 ALWAYS_FLASH 后，HAL 确实进 PRECAPTURE(5)，
+         * 但 5 秒内 100% 不收敛，每张干等 5001ms；交回 HAL 托管曝光后成片
+         * mean 37.1 / p50 15 / 平台 0.5%（同口径 vc83 定稿 67.1 / 37.6 / 20.2%），
+         * 目视背景大面积死黑。此路在 S25U 上判死，开关保持 false、代码留档。
+         *
+         * ⚠️ 置 false 即一键回退 vc84 正式包行为，原路径一字不动。
+         */
+        const val FLASH_HAL_PRECAPTURE_EXPERIMENT = false
+        const val FLASH_HAL_PRECAPTURE_TIMEOUT_MS = 5000L
+
+        /**
+         * 11-14 23:2x 方案A：**成片反馈闭环**。公开 Camera2 三条联动入口
+         * 全部证伪后（precapture 不收敛 / 解除钳制带爆主体 / 场景模式无实效），
+         * 改用上一张直闪成片的裁边统计（mean/p50/plateau）驱动 EMA 修正量，
+         * **只乘在总曝光量安全帽上**（[FlashFeedbackLoop]）：
+         *  - ISO≤250 与 -0.7EV 不动，主体受光仍由既有钳制保住；
+         *  - 修正范围 ±[FlashFeedbackLoop.MAX_CORR_EV]（3600×2^0.6≈5456，
+         *    仍在 vc87 实测主体过曝下界 5609 之下）；
+         *  - 统计在冲洗端后台线程跑，失败静默跳过，不影响落盘；
+         *  - 回路是纯内存状态，进程重启即回 corr=0 基线。
+         * ⚠️ vc85 转正：本开关已是正式特性（真机四轮验证：+0.6EV 全给背景、
+         * 全程 0 次 over），置 false 才是回退手段。
+         */
+        const val FLASH_FEEDBACK_LOOP_EXPERIMENT = true
+
+        /**
+         * 11-14 23:3x 方案③：**app 层等效 TTL（预闪差分）**，[FlashTtl]。
+         *
+         * 既有 700ms 预闪窗口内免费采样两帧测光：环境基线（PRECAPTURE START
+         * 瞬间的预览 AE）+ 预闪照亮后的最小 ISO×快门乘积（preCb 与预览流
+         * 回调都会流进来）。差分反解最终帧总曝光量，在 fire() 提交快门前
+         * 重写 SENSOR_* —— **零额外迟滞**，逐帧自适应。
+         *
+         * P = TTL_GAIN×P_f（k=1.0，第二轮校准：预闪 AE 的量级本身就是
+         * 该灯该距离的正确曝光量；第一轮 k=9.4 全部撞帽+手掌白板已判死）、
+         * 帽 20810（第三轮方案B：近距过曝改由 P_f 直采接管，帽改
+         * ISO250×83.24ms 快门包线，远距用满；vc87 实测该档远距追平 FIMO）。
+         * ratio<2 或采样失败
+         * → 回退 vc83+反馈闭环行为。与反馈闭环自动互斥：TTL 命中时其
+         * fbScale 被 fire() 重写覆盖，回退时它继续生效。
+         * ⚠️ vc85 转正：本开关已是正式特性（k=1.0 直采 + 20810 帽 + 极近距距离帽，
+         * 真机五轮验证），置 false 才是回退手段。
+         */
+        const val FLASH_TTL_EXPERIMENT = true
+
+        /**
+         * 11-15 第四轮：TTL 的**近距距离帽**取样开关（[FlashTtl.PRODUCT_PER_M2]）。
+         *
+         * 为什么需要：B2 轮真机证明 `ratio ≥ 20` 当近距判据是错的（ratio 量环境
+         * 亮度不量距离），20cm 手掌 P_f=4116 依旧零纹理白板；而主体正确曝光满足
+         * `P/d² ≈ 34.5k~42k` 恒定，缺的正是距离这一维。
+         *
+         * 怎么取：模拟失焦为了成片观感把 `LENS_FOCUS_DISTANCE` 在预览 repeating
+         * 与成片请求上都写死，读回来是我们自己的值。故**只在 precapture 那一次
+         * one-shot 单帧临时挂 AF**（`AF_MODE_CONTINUOUS_PICTURE`，LENS_FOCUS_
+         * DISTANCE 被忽略），从它的 TotalCaptureResult 取真实对焦屈光度→距离。
+         * 单帧、不影响取景器连续对焦状态、不影响成片失焦；HAL 不跑 AF 就回 0，
+         * 调用侧当作「距离不可信」直接不介入（安全退化）。
+         * ⚠️ vc85 随 TTL 一并转正（真机 16/16 张都读到了有效距离）。置 false 即
+         * 回到只有 P_f 直采 + 20810 帽的行为。
+         */
+        const val FLASH_TTL_FOCUS_PROBE = true
+
+        /** 用数值写 AE mode，避免实验旁路干扰 v75 P1 的源码级契约断言。 */
+        private const val AE_MODE_ALWAYS_FLASH_VALUE = 3
+
         const val TAG = "Camera2Controller"
     }
 
@@ -581,6 +735,23 @@ class Camera2Controller(private val context: Context) {
     /** 预览 AE 最近一次测光结果 —— 慢门决策的唯一输入 */
     @Volatile private var lastAeSec = 0f
     @Volatile private var lastAeIso = 0
+
+    /** 实验分支：repeating precapture 的 aeState 监听，仅在一次拍照期间临时注册 */
+    @Volatile private var halPrecaptureAeSink: ((Int) -> Unit)? = null
+
+    /** 方案③ TTL：PRECAPTURE START 瞬间的环境测光快照（闪光前、无污染）。 */
+    @Volatile private var ttlAmbientIso = 0
+    @Volatile private var ttlAmbientSec = 0f
+
+    /** 方案③ TTL：预闪窗口内看到的最小 ISO×快门乘积（闪光照亮后的测光）。 */
+    @Volatile private var ttlFlashIso = 0
+    @Volatile private var ttlFlashSec = 0f
+
+    /**
+     * 方案③ TTL 近距帽：precapture 那一帧临时开 AF 读回的主体距离（米）。
+     * 0f = 未取到/不可信（HAL 没跑 AF、屈光度为 0 或超出可信区间）→ 不介入。
+     */
+    @Volatile private var ttlSubjectDistanceM = 0f
 
     /**
      * 外置闪光同步用的「环境光测光基线」。
@@ -1053,6 +1224,8 @@ class Camera2Controller(private val context: Context) {
             set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
             applyManualSettings(this)
             applyPreviewFlashSettings(this)
+            applyHalPrecaptureArming(this)
+            applyFimoSceneArming(this)
             // 白平衡预设可能在相机开启前就被设置（restoreSettings 早于会话建立），此处补挂
             set(
                 CaptureRequest.CONTROL_AWB_MODE,
@@ -1199,6 +1372,108 @@ class Camera2Controller(private val context: Context) {
      *     严重错配。关 ZSL 强制 HAL 在提交时刻现拍一帧，主闪光自然落到成像帧上。
      *     [canDisableZsl] 的口径与 [applySlowShutter] 一致：设不进去就静默跳过。
      */
+    /**
+     * 方案③ TTL：预闪窗口内采一个测光样本，只保留**最小 ISO×快门乘积**
+     * （最亮读数 = HAL 对「环境光+预闪」场景的测光，近距亮反射时它极小）。
+     * 场景越亮读数越小，无脑取 min 即可，不需要区分 aeState。
+     */
+    private fun recordTtlSample(iso: Int, exposureSec: Float) {
+        if (!FLASH_TTL_EXPERIMENT || iso <= 0 || exposureSec <= 0f) return
+        val cur = if (ttlFlashIso > 0) ttlFlashIso * ttlFlashSec else Float.MAX_VALUE
+        if (iso * exposureSec < cur) {
+            ttlFlashIso = iso
+            ttlFlashSec = exposureSec
+        }
+    }
+
+    /**
+     * 方案③ TTL 近距帽取样：把 precapture 那一帧**临时**挂上连续对焦。
+     *
+     * 默认档的模拟失焦会用固定 `LENS_FOCUS_DISTANCE` 关掉 AF（预览 repeating 与
+     * 成片请求都关），读回来的屈光度只是我们自己写进去的值，当不了距离代理。
+     * 这一帧只用来测距：`AF_MODE_CONTINUOUS_PICTURE` 下 HAL 忽略
+     * `LENS_FOCUS_DISTANCE`，会按实际场景跑一次 AF 并把对焦位置回报到结果里。
+     * 成片仍走失焦请求，预览的连续对焦状态也不改（只此一帧）。
+     */
+    private fun applyTtlFocusProbe(builder: CaptureRequest.Builder) {
+        if (!FLASH_TTL_EXPERIMENT || !FLASH_TTL_FOCUS_PROBE) return
+        if (minFocusDistance <= 0f) return      // 定焦模组没有可读的对焦位置
+        runCatching {
+            builder.set(
+                CaptureRequest.CONTROL_AF_MODE,
+                android.hardware.camera2.CameraMetadata.CONTROL_AF_MODE_CONTINUOUS_PICTURE
+            )
+        }
+    }
+
+    /**
+     * 方案③ TTL 近距帽：从 precapture 帧读回主体距离（米），0 = 不可信。
+     * 屈光度 ≤0（AF 没跑）或距离超出 [FlashTtl.MIN_VALID_DISTANCE_M]~5m 视为无效，
+     * 调用侧不介入（安全退化回 B2 行为）。
+     */
+    private fun recordTtlFocus(result: android.hardware.camera2.TotalCaptureResult) {
+        if (!FLASH_TTL_EXPERIMENT || !FLASH_TTL_FOCUS_PROBE) return
+        val diopters = result.get(android.hardware.camera2.CaptureResult.LENS_FOCUS_DISTANCE) ?: 0f
+        if (diopters <= 0.01f) return
+        val d = 1f / diopters
+        if (d < FlashTtl.MIN_VALID_DISTANCE_M || d > 5f) return
+        ttlSubjectDistanceM = d
+        android.util.Log.i(
+            "FlashDiag",
+            "TTL FOCUS diopters=${"%.2f".format(diopters)} distM=${"%.3f".format(d)}"
+        )
+    }
+
+    /**
+     * 方案③ TTL：fire() 提交快门前用预闪差分**重写**直闪帧的 ISO/快门。
+     *
+     * builder 此时已带 vc83 的 `AE_OFF + SINGLE + 手写 SENSOR_*`（applyFlashCaptureTuning
+     * 在 takePicture 时按环境基线预填，作为 TTL 失效时的回退值）——这里只在
+     * 差分有效时覆盖 SENSOR_SENSITIVITY / SENSOR_EXPOSURE_TIME 两个 key。
+     * ISO 锚仍用闪光前的瞬时环境测光（ttlAmbient*，与 vc83 的 lastAeIso 同语义），
+     * -0.7EV 与 ≤250 钳制原样；总曝光量 P 来自 [FlashTtl.solve]，
+     * 快门 = P/ISO 反算，夹 [FlashTtl.MAX_SHUTTER_SEC] 与设备真实范围。
+     */
+    private fun applyFlashTtlRetune(builder: CaptureRequest.Builder) {
+        if (!FLASH_TTL_EXPERIMENT || !flashEnabled || !hasFlashUnit || !hasManualSensor) return
+        val sol = FlashTtl.solve(
+            ttlAmbientIso, ttlAmbientSec, ttlFlashIso, ttlFlashSec,
+            ttlSubjectDistanceM.takeIf { it > 0f }
+        )
+        if (sol == null) {
+            android.util.Log.i(
+                "FlashDiag",
+                "TTL RETUNE fallback ambIso=$ttlAmbientIso ambSec=$ttlAmbientSec " +
+                    "flashIso=$ttlFlashIso flashSec=$ttlFlashSec distM=$ttlSubjectDistanceM"
+            )
+            return
+        }
+        val isoScale = Math.pow(2.0, FLASH_LOCK_EV_BIAS.toDouble()).toFloat()
+        var adjIso = Math.min(Math.round(ttlAmbientIso * isoScale), FLASH_MAX_FLASH_ISO)
+            .coerceAtLeast(1)
+        val adjExpSec = (sol.targetProduct / (adjIso * 1000f))
+            .coerceIn(
+                deviceMinExposureSec,
+                Math.min(FlashTtl.MAX_SHUTTER_SEC, deviceMaxExposureSec)
+            )
+        adjIso = adjIso.coerceIn(deviceIsoRange.first, deviceIsoRange.last)
+        val adjExpNs = (adjExpSec * 1_000_000_000f).toLong()
+        val ok = runCatching {
+            builder.set(CaptureRequest.SENSOR_SENSITIVITY, adjIso)
+            builder.set(CaptureRequest.SENSOR_EXPOSURE_TIME, adjExpNs)
+        }.isSuccess
+        val expProduct = adjIso * adjExpSec * 1000f
+        android.util.Log.i(
+            "FlashDiag",
+            "TTL RETUNE applied=$ok ambProd=${"%.0f".format(sol.ambientProduct)} " +
+                "flashProd=${"%.0f".format(sol.flashProduct)} ratio=${"%.1f".format(sol.ratio)} " +
+                "gain=${FlashTtl.TTL_GAIN} targetP=${"%.0f".format(sol.targetProduct)} " +
+                "iso=$adjIso expSec=${"%.5f".format(adjExpSec)} expProduct=${"%.0f".format(expProduct)} " +
+                "distM=${"%.3f".format(ttlSubjectDistanceM)} " +
+                "baseIso=$aeBaselineIso baseSec=$aeBaselineSec"
+        )
+    }
+
     private fun applyFlashCaptureTuning(builder: CaptureRequest.Builder, slow: Boolean) {
         if (!flashEnabled || !hasFlashUnit) return
         if (slow || manualIso != null || manualExposure != null) return
@@ -1260,26 +1535,32 @@ class Camera2Controller(private val context: Context) {
         val minExpNs = (deviceMinExposureSec * 1_000_000_000f).toLong().coerceAtLeast(1L)
         val maxExpNs = (deviceMaxExposureSec * 1_000_000_000f).toLong()
         // vc89（vc83 定稿）：总曝光量目标钳制 + ISO 单独钳住主体。
-        // 目标取预览 AE 想给的环境光量，夹到 3600 ISO·ms（vc88 的 2500
-        // 基础上 +0.53EV，仍低于 vc87 过曝下界 5609、接近 FIMO 4167）；
+        // 目标取预览 AE 想给的环境光量，夹到上限（正式包 3600 ISO·ms）；
         // 快门 = 目标 / 实际 ISO 反算，再夹设备真实范围。
-        // ⚠️ 真机日志：快门实际 14.4~16.8ms，并未变长；主体不被重新推亮
+        // ⚠️ vc89 真机日志：快门实际 14.4~16.8ms，并未变长；主体不被重新推亮
         // 靠的是 ISO 上限与总曝光量上限，不是「增益移到快门」。
+        // 🔬 FLASH_UNCLAMP_EXPERIMENT：抬高安全帽做真慢同步（见常量注释），
+        // 关闭时下面三个有效值与 vc84 逐字一致。
         val isoScale = Math.pow(2.0, FLASH_LOCK_EV_BIAS.toDouble()).toFloat()
         var adjIso = Math.min(Math.round(lockIso * isoScale), FLASH_MAX_FLASH_ISO)
             .coerceAtLeast(1)
-        val targetProduct = Math.min(
-            lockIso.toFloat() * lastAeSec * 1000f,
-            FLASH_MAX_EXPOSURE_PRODUCT
-        )
+        val unclamp = FLASH_UNCLAMP_EXPERIMENT && !FLASH_HAL_PRECAPTURE_EXPERIMENT
+        // 方案A：反馈回路只乘在总曝光量安全帽上（与 unclamp 互斥，不叠加）。
+        // updates=0 时 scale=1.0，首张永远是无修正的 vc83 基线。
+        val fbActive = FLASH_FEEDBACK_LOOP_EXPERIMENT && !unclamp
+        val fbScale = if (fbActive) FlashFeedbackLoop.productScale() else 1f
+        val effMaxProduct = if (unclamp) FLASH_UNCLAMP_MAX_PRODUCT else FLASH_MAX_EXPOSURE_PRODUCT * fbScale
+        val effMaxShutterSec = if (unclamp) FLASH_UNCLAMP_MAX_SHUTTER_SEC else FLASH_MAX_SHUTTER_SEC
+        val rawProduct = lockIso.toFloat() * lastAeSec * 1000f
+        val targetProduct = Math.min(rawProduct, effMaxProduct)
         val adjExpSec = (targetProduct / (adjIso * 1000f))
-            .coerceIn(deviceMinExposureSec, Math.min(FLASH_MAX_SHUTTER_SEC, deviceMaxExposureSec))
+            .coerceIn(deviceMinExposureSec, Math.min(effMaxShutterSec, deviceMaxExposureSec))
         adjIso = adjIso.coerceIn(deviceIsoRange.first, deviceIsoRange.last)
         val adjExpNs = (adjExpSec * 1_000_000_000f).toLong()
             .coerceIn(minExpNs, maxExpNs)
         // 日志打钳制后的真实总曝光量（vc88 打的是钳制前值，会误导复标）
         val expProduct = adjIso.toFloat() * adjExpNs / 1_000_000f
-        if (FLASH_LOCK_PREVIEW_AE && hasManualSensor && lockIso > 0 && lockExpNs > 0) {
+        if (FLASH_LOCK_PREVIEW_AE && hasManualSensor && !FLASH_HAL_PRECAPTURE_EXPERIMENT && lockIso > 0 && lockExpNs > 0) {
             runCatching {
                 builder.set(
                     CaptureRequest.CONTROL_MODE,
@@ -1308,7 +1589,13 @@ class Camera2Controller(private val context: Context) {
                 "evBiasSteps=$evBiasSteps zslOff=$zslOff " +
                 "lockAe=$lockAe lockIso=$lockIso lockExpNs=$lockExpNs " +
                 "lockEvBias=$FLASH_LOCK_EV_BIAS isoScale=$isoScale lockIsoAdj=$adjIso " +
-                "adjExpNs=$adjExpNs expSec=$adjExpSec expProduct=$expProduct"
+                "adjExpNs=$adjExpNs expSec=$adjExpSec expProduct=$expProduct " +
+                "unclamp=$unclamp rawProduct=$rawProduct maxProduct=$effMaxProduct " +
+                "maxShutterSec=$effMaxShutterSec devMaxExpSec=$deviceMaxExposureSec " +
+                "baseIso=$aeBaselineIso baseSec=$aeBaselineSec " +
+                "fimoScene=$FLASH_FIMO_SCENE_EXPERIMENT " +
+                "fbCorr=${FlashFeedbackLoop.correctionEv()} fbScale=$fbScale " +
+                "fbUpdates=${FlashFeedbackLoop.updates()} fbVerdict=${FlashFeedbackLoop.lastVerdict()}"
         )
     }
 
@@ -1515,6 +1802,13 @@ class Camera2Controller(private val context: Context) {
             session?.capture(captureBuilder.build(), null, handler)
             return
         }
+        // 实验旁路：repeating 挂 START + 预览常驻 ALWAYS_FLASH，等 HAL 自己收敛
+        if (FLASH_HAL_PRECAPTURE_EXPERIMENT && flashEnabled && hasFlashUnit &&
+            !slowShutter && manualIso == null && manualExposure == null
+        ) {
+            submitHalPrecaptureExperiment(session, handler, captureBuilder)
+            return
+        }
         // 慢门已把 AE 关掉，HAL 不会闪，也不需要预闪测光 —— 直接开快门
         if (!flashEnabled || slowShutter || manualIso != null || manualExposure != null || surface == null) {
             // 未开闪光 / 手动曝光（HAL 不会闪）→ 直接拍
@@ -1530,6 +1824,8 @@ class Camera2Controller(private val context: Context) {
                 fired = true
                 runCatching {
                     flashSubmitRealtimeMs = android.os.SystemClock.elapsedRealtime()
+                    // 方案③：预闪差分已经拿到 → 提交快门前重调直闪曝光
+                    applyFlashTtlRetune(captureBuilder)
                     session.capture(captureBuilder.build(), stillCaptureCallback, handler)
                     // 带 precapture 的路径也要以「真正提交拍照」为 t=0，不能漏掉提前触发
                     scheduleFlashPreTrigger(handler)
@@ -1550,6 +1846,8 @@ class Camera2Controller(private val context: Context) {
             // 亮度观感无改善——SINGLE 在这台 HAL 上没有解锁任何厂商闪光管线，
             // 反而丢了 ALWAYS_FLASH 已验证可用的预闪→主闪序列。
             applyPrecaptureFlashSettings(this)
+            applyFimoSceneArming(this)
+            applyTtlFocusProbe(this)
             set(
                 CaptureRequest.CONTROL_AWB_MODE,
                 currentAwbMode ?: CaptureRequest.CONTROL_AWB_MODE_AUTO
@@ -1573,6 +1871,12 @@ class Camera2Controller(private val context: Context) {
         // v74 P0：打点 + 置 pending，拍照结果回调必须配对发 CANCEL（见 resetFlashPrecapture）
         precapturePending = true
         flashPrecaptureStarts++
+        // 方案③ TTL：闪光前的环境测光快照 + 清空预闪采样（窗口开始）
+        ttlAmbientIso = lastAeIso
+        ttlAmbientSec = lastAeSec
+        ttlFlashIso = 0
+        ttlFlashSec = 0f
+        ttlSubjectDistanceM = 0f
         android.util.Log.i("FlashDiag", "PRECAPTURE START count=$flashPrecaptureStarts ae=ALWAYS_FLASH(one-shot) slowSyncEv=$FLASH_SLOW_SYNC_EV")
         reportFlashState()
         val preCb = object : android.hardware.camera2.CameraCaptureSession.CaptureCallback() {
@@ -1582,6 +1886,12 @@ class Camera2Controller(private val context: Context) {
                 result: android.hardware.camera2.TotalCaptureResult,
             ) {
                 val ae = result.get(android.hardware.camera2.CaptureResult.CONTROL_AE_STATE)
+                // 方案③：one-shot 自己的结果也采样（它携带着 HAL 的闪光测光）
+                val ttlIso = result.get(android.hardware.camera2.CaptureResult.SENSOR_SENSITIVITY) ?: 0
+                val ttlSec = result.get(android.hardware.camera2.CaptureResult.SENSOR_EXPOSURE_TIME)
+                    ?.let { it / 1_000_000_000f } ?: 0f
+                recordTtlSample(ttlIso, ttlSec)
+                recordTtlFocus(result)
                 // CONVERGED / FLASH_REQUIRED = 测光完成，可以开快门；PRECAPTURE = 还在跑，继续等
                 if (ae == null ||
                     ae == android.hardware.camera2.CameraMetadata.CONTROL_AE_STATE_CONVERGED ||
@@ -1623,6 +1933,9 @@ class Camera2Controller(private val context: Context) {
         val builder = previewRequestBuilder ?: return
         val handler = backgroundHandler
         runCatching {
+            // 实验旁路：CANCEL 这一帧必须是干净的 AUTO / AE_ON，
+            // 否则 USE_SCENE_MODE 会让 HAL 忽略 AE 模式、P1 治好的灭灯可能失效。
+            clearFimoSceneArming(builder)
             // v81：CANCEL 这一帧必须复用常驻预览 builder 的**全部参数**。
             // 旧写法用 TEMPLATE_PREVIEW 新建 builder、只塞 3 个 key 就 addTarget(预览
             // surface)，这一帧会真的投到取景器，却缺 EV / AWB / AF / zoom 等成像参数，
@@ -1659,6 +1972,8 @@ class Camera2Controller(private val context: Context) {
                 CaptureRequest.CONTROL_AE_MODE,
                 android.hardware.camera2.CameraMetadata.CONTROL_AE_MODE_ON
             )
+            applyHalPrecaptureArming(builder)
+            applyFimoSceneArming(builder)
             session.setRepeatingRequest(builder.build(), previewMetaCallback, handler)
             precapturePending = false
             flashPrecaptureCancels++
@@ -1671,6 +1986,112 @@ class Camera2Controller(private val context: Context) {
         }.onFailure {
             android.util.Log.w("FlashDiag", "PRECAPTURE CANCEL 失败 ($reason): ${it.message}")
         }
+    }
+
+    /**
+     * 实验：把 PRECAPTURE_START 挂到常驻 repeating 上，让 HAL 状态机流式推进。
+     *
+     * vc80 的一次性请求之后 HAL 没有后续帧推进 AE 状态，实测 2500ms 全停在
+     * PRECAPTURE；FIMO/CameraView 与三星原厂都把 START 挂在 repeating 上、
+     * 预览常驻 ALWAYS_FLASH，靠流式帧把状态机推到收敛。拍照帧保持 ALWAYS_FLASH
+     * 且不做手写 AE，曝光完全交回 HAL。
+     */
+    private fun submitHalPrecaptureExperiment(
+        session: android.hardware.camera2.CameraCaptureSession,
+        handler: Handler,
+        captureBuilder: CaptureRequest.Builder
+    ) {
+        val previewBuilder = previewRequestBuilder
+        var fired = false
+        var sawPrecapture = false
+        var endReason = "timeout"
+        var seenAe: Int? = null
+        val startMs = android.os.SystemClock.elapsedRealtime()
+        var timeout: Runnable? = null
+
+        val fire = {
+            if (!fired) {
+                fired = true
+                halPrecaptureAeSink = null
+                timeout?.let { handler.removeCallbacks(it) }
+                // 收敛/超时后把 trigger 放回 IDLE，避免 HAL 在后续预览帧反复重启序列
+                previewBuilder?.set(
+                    CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER,
+                    android.hardware.camera2.CameraMetadata.CONTROL_AE_PRECAPTURE_TRIGGER_IDLE
+                )
+                previewBuilder?.let {
+                    runCatching { session.setRepeatingRequest(it.build(), previewMetaCallback, handler) }
+                }
+                android.util.Log.i(
+                    "FlashDiag",
+                    "HAL_PRECAP END reason=$endReason waitMs=${
+                        android.os.SystemClock.elapsedRealtime() - startMs
+                    } ae=$seenAe sawPrecapture=$sawPrecapture"
+                )
+                runCatching {
+                    flashSubmitRealtimeMs = android.os.SystemClock.elapsedRealtime()
+                    session.capture(captureBuilder.build(), stillCaptureCallback, handler)
+                    scheduleFlashPreTrigger(handler)
+                }
+            }
+        }
+
+        val timeoutTask = Runnable { fire() }
+        timeout = timeoutTask
+        handler.postDelayed(timeoutTask, FLASH_HAL_PRECAPTURE_TIMEOUT_MS)
+
+        halPrecaptureAeSink = { ae ->
+            seenAe = ae
+            if (ae == android.hardware.camera2.CameraMetadata.CONTROL_AE_STATE_PRECAPTURE) {
+                sawPrecapture = true
+            }
+            // 必须先看到 HAL 进过 PRECAPTURE，否则预览原本的 CONVERGED 会立刻误判收敛
+            if (sawPrecapture && (
+                    ae == android.hardware.camera2.CameraMetadata.CONTROL_AE_STATE_CONVERGED ||
+                        ae == android.hardware.camera2.CameraMetadata.CONTROL_AE_STATE_FLASH_REQUIRED ||
+                        ae == android.hardware.camera2.CameraMetadata.CONTROL_AE_STATE_LOCKED
+                    )
+            ) {
+                endReason = "converged"
+                fire()
+            }
+        }
+
+        precapturePending = true
+        flashPrecaptureStarts++
+        android.util.Log.i(
+            "FlashDiag",
+            "HAL_PRECAP START count=$flashPrecaptureStarts ae=ALWAYS_FLASH(repeating) " +
+                "timeoutMs=$FLASH_HAL_PRECAPTURE_TIMEOUT_MS"
+        )
+        reportFlashState()
+
+        if (previewBuilder == null) {
+            endReason = "noPreviewBuilder"
+            fire()
+        } else {
+            previewBuilder.set(
+                CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER,
+                android.hardware.camera2.CameraMetadata.CONTROL_AE_PRECAPTURE_TRIGGER_START
+            )
+            runCatching { session.setRepeatingRequest(previewBuilder.build(), previewMetaCallback, handler) }
+                .onFailure { endReason = "repeatingFailed"; fire() }
+        }
+    }
+
+    /**
+     * 实验分支专用：把常驻预览 builder 武装成 ON_ALWAYS_FLASH（数值 3）。
+     * 与 applyPreviewFlashSettings 分离，保证关闭开关时原路径一字不动。
+     */
+    private fun applyHalPrecaptureArming(builder: CaptureRequest.Builder) {
+        if (!FLASH_HAL_PRECAPTURE_EXPERIMENT) return
+        if (!flashEnabled || !hasFlashUnit) return
+        if (manualIso != null || manualExposure != null) return
+        builder.set(CaptureRequest.CONTROL_AE_MODE, AE_MODE_ALWAYS_FLASH_VALUE)
+        builder.set(
+            CaptureRequest.FLASH_MODE,
+            android.hardware.camera2.CameraMetadata.FLASH_MODE_OFF
+        )
     }
 
     /** v74 P2：把闪光灯状态写进诊断报告（状态变化时才落盘，随反馈邮件正文发出） */
@@ -1691,6 +2112,60 @@ class Camera2Controller(private val context: Context) {
             // 有变化才落盘（flush 内部用 snapshotIfDirty）；反馈邮件走 read() 拿内存全文，
             // 这里保证文件导出也能看到最新的 flash 状态。
             com.filmcam.app.develop.DeviceGeometryReportIo.flush(context)
+        }
+    }
+
+    /**
+     * 实验：把常驻预览 / 一次性预闪请求武装成 FIMO 的 Camera1 shim 组合。
+     *
+     * 与 applyPreviewFlashSettings 分离：关闭开关时原路径一字不动。
+     * AE 模式用数值 3 写，避免干扰 vc80 的源码级契约断言（预览区不得出现
+     * ALWAYS_FLASH 的全限定常量名）。
+     *
+     * SENSOR_* 在 AE_MODE != OFF 时通常被 HAL 忽略；FIMO 的 request 里同时
+     * 存在这两项和 USE_SCENE_MODE，所以照样写进去，由真机日志 `lockIso` /
+     * `lockExpNs` 判断是否被采纳（FIMO 值 = 250 / 16.67ms）。
+     */
+    private fun applyFimoSceneArming(builder: CaptureRequest.Builder) {
+        if (!FLASH_FIMO_SCENE_EXPERIMENT || FLASH_HAL_PRECAPTURE_EXPERIMENT) return
+        if (!flashEnabled || !hasFlashUnit) return
+        if (manualIso != null || manualExposure != null) return
+        runCatching {
+            builder.set(CaptureRequest.CONTROL_MODE, CONTROL_MODE_USE_SCENE_MODE_VALUE)
+            builder.set(CaptureRequest.CONTROL_SCENE_MODE, CONTROL_SCENE_MODE_FACE_PRIORITY_VALUE)
+            builder.set(CaptureRequest.CONTROL_AE_MODE, AE_MODE_ALWAYS_FLASH_VALUE)
+            builder.set(
+                CaptureRequest.FLASH_MODE,
+                android.hardware.camera2.CameraMetadata.FLASH_MODE_OFF
+            )
+            val iso = FIMO_PREVIEW_ISO.coerceIn(deviceIsoRange.first, deviceIsoRange.last)
+            val minNs = (deviceMinExposureSec * 1_000_000_000f).toLong().coerceAtLeast(1L)
+            val maxNs = (deviceMaxExposureSec * 1_000_000_000f).toLong()
+            builder.set(CaptureRequest.SENSOR_SENSITIVITY, iso)
+            builder.set(
+                CaptureRequest.SENSOR_EXPOSURE_TIME,
+                FIMO_PREVIEW_EXPOSURE_NS.coerceIn(minNs, maxNs)
+            )
+            android.util.Log.i(
+                "FlashDiag",
+                "FIMO_SCENE arm mode=USE_SCENE_MODE scene=FACE_PRIORITY ae=3 " +
+                    "iso=$iso expNs=${FIMO_PREVIEW_EXPOSURE_NS.coerceIn(minNs, maxNs)} " +
+                    "devIso=$deviceIsoRange devExp=${deviceMinExposureSec}~${deviceMaxExposureSec}"
+            )
+        }.onFailure {
+            android.util.Log.w(TAG, "FIMO 场景模式参数下发失败: ${it.message}")
+        }
+    }
+
+    /** 实验旁路专用：把 CONTROL_MODE / SCENE_MODE 恢复成标准自动（关灯 / CANCEL 帧）。 */
+    private fun clearFimoSceneArming(builder: CaptureRequest.Builder) {
+        if (!FLASH_FIMO_SCENE_EXPERIMENT) return
+        runCatching {
+            builder.set(
+                CaptureRequest.CONTROL_MODE,
+                android.hardware.camera2.CameraMetadata.CONTROL_MODE_AUTO
+            )
+            builder.set(CaptureRequest.CONTROL_SCENE_MODE, CONTROL_SCENE_MODE_DISABLED_VALUE)
         }
     }
 
@@ -1795,6 +2270,8 @@ class Camera2Controller(private val context: Context) {
             return
         }
         if (!enabled) {
+            // 实验旁路：关灯必须先撤掉场景模式，再走两段式 CANCEL
+            previewRequestBuilder?.let { clearFimoSceneArming(it) }
             // v81：本次会话从未起过 precapture → 没有预闪状态机要取消，
             // 一次一次性 CANCEL 帧都不该发（那帧会投到预览 surface）。
             // 判据只看 precapture 状态，不看 changed —— BUILT_IN→EXTERNAL 虽然
@@ -1804,6 +2281,13 @@ class Camera2Controller(private val context: Context) {
             // 小米 13U 常亮、v75 P1 的复位一个都不能少。
             if (!precapturePending && flashPrecaptureStarts == 0) {
                 reportFlashState()
+                // 实验旁路：已撤掉场景模式，必须重发一次 repeating 才真正生效，
+                // 否则常驻 ALWAYS_FLASH 会留在 HAL（关灯不灭灯的风险）。
+                previewRequestBuilder?.let { b ->
+                    runCatching {
+                        captureSession?.setRepeatingRequest(b.build(), previewMetaCallback, backgroundHandler)
+                    }
+                }
                 return
             }
             // 关闪光：显式取消预闪 + 灭灯（reset 内部已下发 repeating request）
@@ -1811,6 +2295,8 @@ class Camera2Controller(private val context: Context) {
         } else {
             previewRequestBuilder?.let {
                 applyPreviewFlashSettings(it)
+                applyHalPrecaptureArming(it)
+                applyFimoSceneArming(it)
                 runCatching {
                     captureSession?.setRepeatingRequest(it.build(), previewMetaCallback, backgroundHandler)
                 }
@@ -2016,6 +2502,7 @@ class Camera2Controller(private val context: Context) {
             val aeState = result.get(android.hardware.camera2.CaptureResult.CONTROL_AE_STATE)
             // v74 P2：AE 状态只在变化时上报，避免每帧置脏；闪光时它会在
             // SEARCHING / PRECAPTURE / FLASH_REQUIRED / CONVERGED 之间跳，是判异常的关键。
+            halPrecaptureAeSink?.let { sink -> if (aeState != null) sink(aeState) }
             if (aeState != null && aeState != lastAeState) {
                 lastAeState = aeState
                 reportFlashState()
@@ -2023,6 +2510,8 @@ class Camera2Controller(private val context: Context) {
             if (exposureSec > 0f && isoAe > 0) {
                 lastAeSec = exposureSec
                 lastAeIso = isoAe
+                // 方案③：预闪窗口内预览流回调同样采样（最小乘积 = 闪光测光）
+                if (precapturePending) recordTtlSample(isoAe, exposureSec)
                 // 外置闪光的「环境光基线」只在 AE 收敛时更新。灯一闪 AE 会立刻
                 // 进 SEARCHING（真机 01:15 那张 aeState=1），基线就停在闪光前的
                 // 读数，不会被闪光峰值污染 —— 这是黑片修复的关键。

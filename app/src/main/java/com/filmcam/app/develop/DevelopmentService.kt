@@ -861,6 +861,11 @@ class DevelopmentService : Service() {
             val uri = UndevelopedFilmStore.writeDevelopedFrame(roll.rollId, index, tmpJpeg)
             tIoMs = android.os.SystemClock.elapsedRealtime() - tIo0
             Log.d(TAG, "帧 $index 落盘完成 uri=$uri")
+            // 方案A：成片反馈闭环取样（tmpJpeg 删前；非直闪帧内部自跳过，
+            // 统计失败静默降级，绝不影响冲洗落盘）
+            runCatching {
+                com.filmcam.app.camera.FlashFeedbackLoop.onDevelopedFrame(tmpJpeg, shotJson)
+            }
             writtenOk = true
         } finally {
             bmp.recycle()
@@ -1107,6 +1112,10 @@ class DevelopmentService : Service() {
         check(tmpJpeg.exists() && tmpJpeg.length() > 0) { "RAW 冲洗后临时 JPEG 为空: $tmpJpeg" }
         val uri = UndevelopedFilmStore.writeDevelopedFrame(roll.rollId, index, tmpJpeg)
         Log.d(TAG, "帧 $index [RAW] 落盘完成 uri=$uri")
+        // 方案A：成片反馈闭环取样（非内置直闪帧内部自跳过）
+        runCatching {
+            com.filmcam.app.camera.FlashFeedbackLoop.onDevelopedFrame(tmpJpeg, shotJson)
+        }
         tmpJpeg.delete()
         return result.fellBack
     }
