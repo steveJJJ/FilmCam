@@ -904,20 +904,27 @@ class MainActivity : AppCompatActivity() {
             paintPanel()
         }
 
+        // ⚠️ 宽度必须「先触发 installDecor，再 setLayout」（11-14 S25U 窗口 dump 实证）：
+        // Dialog 主题 windowIsFloating=true，show() 时 PhoneWindow.generateLayout()
+        // 会 setLayout(WRAP_CONTENT, WRAP_CONTENT)，把 show() 前设的宽度静默重置
+        //（实测 mAttrs=(wrapxwrap)、Requested w=1024px）。create() 后先取一次
+        // decorView 触发 installDecor/generateLayout，再 setLayout(w, ...) 就不会
+        // 再被覆盖，且仍在 show() 之前 → 首帧即 842px、零跳变。
+        // ❌ 否决：把内容包进固定宽 FrameLayout —— 窗口仍 1024、内容 842 左对齐，
+        //   右边空 182px（tmp/ui_dump_2031.xml：rowSetBody=[28,557][870,693]）。
+        val dm = resources.displayMetrics
+        val w = (dm.widthPixels * 0.78f).toInt().coerceAtMost((400 * dm.density).toInt())
         val dialog = androidx.appcompat.app.AlertDialog.Builder(this, theme.dialogTheme)
             .setView(view)
             .create()
         dialog.guardDialog()
-        // 面板尺寸/背景必须在 show() **之前**定死（create() 后 window 就已存在）：
-        // 之前放在 OnShowListener 里改，首帧会先按窗口默认宽度（更宽）+ Material
-        // 大圆角卡片渲染一帧，第二帧才跳到 0.86 屏宽的机加工铭牌 —— 用户看到
-        // 「点设置弹窗会跳一下」（11-14 S25U 真机反馈）。show 前设置则第一帧
-        // 就是最终形态，零跳变。反馈弹窗（AboutActivity）同款问题同修。
-        val dm = resources.displayMetrics
-        val w = (dm.widthPixels * 0.86f).toInt().coerceAtMost((400 * dm.density).toInt())
-        dialog.window?.setLayout(w, android.view.ViewGroup.LayoutParams.WRAP_CONTENT)
-        // Material 默认给 dialog 的是大圆角卡片，换成机加工面板的外框
-        dialog.window?.setBackgroundDrawable(theme.panelDrawable())
+        val win = dialog.window
+        win?.decorView   // 提前 installDecor()，此后 setLayout 不再被重置
+        win?.setLayout(w, android.view.ViewGroup.LayoutParams.WRAP_CONTENT)
+        // 背景在 show() 之前定死（Material 大圆角卡片 → 机加工铭牌），
+        // 首帧即最终形态，零跳变。78% 屏宽在 S25U 是 842px≈321dp、
+        // 每侧约 45dp 留白盖住侧滑起手区；横屏仍由 400dp 上限兜底。
+        win?.setBackgroundDrawable(theme.panelDrawable())
 
         refreshValues()
 
@@ -999,6 +1006,8 @@ class MainActivity : AppCompatActivity() {
         tvClose.hapticClick { dialog.dismiss() }
 
         dialog.show()
+        // 兜底：个别 ROM 在 addView 阶段可能改写 attrs.width；值相同不产生可见跳变
+        dialog.window?.setLayout(w, android.view.ViewGroup.LayoutParams.WRAP_CONTENT)
     }
 
     /** 设置面板「关于」行右侧的刻字版本号（v1.2.3） */

@@ -96,9 +96,15 @@ class OnboardingGuideContractTest {
     @Test
     fun `快速上手卡 show 前定尺寸 三页翻页`() {
         val s = read("java/com/filmcam/app/ui/QuickStartCard.kt") ?: return
-        val setIdx = s.indexOf("setLayout(")
+        // vc84：show() 时 installDecor() 会重置 attrs.width；必须先取 decorView
+        // 触发 installDecor，再 setLayout(w) 才能保住宽度且零跳变。
+        val widthIdx = s.indexOf("widthPixels * 0.78f")
+        val decorIdx = s.indexOf("decorView")
+        val setIdx = s.indexOf("setLayout(w,")
         val showIdx = s.indexOf("dialog.show()")
-        assertTrue("尺寸必须 show 前定死（零跳变契约）", setIdx in 0 until showIdx)
+        assertTrue("78% 屏宽口径必须在 show 前算好", widthIdx in 0 until showIdx)
+        assertTrue("decorView 必须先于 setLayout 触发（否则宽度被重置）", decorIdx in 0 until setIdx)
+        assertTrue("宽度的确定必须在 show 之前（零跳变）", setIdx in 0 until showIdx)
         assertTrue("背景必须 show 前换铭牌", s.indexOf("panelDrawable()") in 0 until showIdx)
         assertEquals("三屏", 3, Regex("R\\.string\\.qs_title_").findAll(s).count())
         assertTrue("重看不驱动 onboarding（guard 由调用方织入 dismiss）",

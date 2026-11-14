@@ -46,6 +46,9 @@ object QuickStartCard {
                 activity.getString(if (page == 2) R.string.main_guide_start else R.string.qs_next)
         }
 
+        // 与设置/反馈弹窗同一口径：先 decorView 触发 installDecor，再 setLayout(w)。
+        val dm = activity.resources.displayMetrics
+        val w = (dm.widthPixels * 0.78f).toInt().coerceAtMost((400 * dm.density).toInt())
         val dialog = androidx.appcompat.app.AlertDialog.Builder(activity, theme.dialogTheme)
             .setView(view)
             .create()
@@ -68,11 +71,13 @@ object QuickStartCard {
             // dismiss 之后才启动段 2：说明书卡在前台时 LCD 不该抢戏
             onDismissed()
         }
-        // 尺寸/背景在 show() 之前定死：首帧即铭牌形态，零跳变
-        val dm = activity.resources.displayMetrics
-        val w = (dm.widthPixels * 0.86f).toInt().coerceAtMost((400 * dm.density).toInt())
-        dialog.window?.setLayout(w, android.view.ViewGroup.LayoutParams.WRAP_CONTENT)
-        dialog.window?.setBackgroundDrawable(theme.panelDrawable())
+        // 背景在 show() 之前定死：首帧即铭牌形态，零跳变。
+        val win = dialog.window
+        win?.decorView
+        win?.setLayout(w, android.view.ViewGroup.LayoutParams.WRAP_CONTENT)
+        win?.setBackgroundDrawable(theme.panelDrawable())
         dialog.show()
+        // 兜底：个别 ROM 在 addView 阶段可能改写 attrs.width；值相同不产生可见跳变
+        win?.setLayout(w, android.view.ViewGroup.LayoutParams.WRAP_CONTENT)
     }
 }

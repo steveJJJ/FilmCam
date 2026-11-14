@@ -383,15 +383,17 @@ class AboutActivity : AppCompatActivity() {
             setStroke(1, theme.cardStroke)
         }
 
+        // 与设置面板同一口径：先取 decorView 触发 installDecor，再 setLayout(w)，
+        // 否则 show() 时 generateLayout() 会把宽度重置成 wrap_content。
+        val dm = resources.displayMetrics
+        val w = (dm.widthPixels * 0.78f).toInt().coerceAtMost((400 * dm.density).toInt())
         val dialog = androidx.appcompat.app.AlertDialog.Builder(this, theme.dialogTheme)
             .setView(view)
             .create()
-        // 与设置面板同一口径（同修「跳一下」）：宽度/背景在 show() 之前定死，
-        // 别放 OnShowListener —— 否则首帧按默认宽度 + Material 卡片渲染一帧再跳变。
-        val dm = resources.displayMetrics
-        val w = (dm.widthPixels * 0.86f).toInt().coerceAtMost((400 * dm.density).toInt())
-        dialog.window?.setLayout(w, android.view.ViewGroup.LayoutParams.WRAP_CONTENT)
-        dialog.window?.setBackgroundDrawable(theme.panelDrawable())
+        val win = dialog.window
+        win?.decorView
+        win?.setLayout(w, android.view.ViewGroup.LayoutParams.WRAP_CONTENT)
+        win?.setBackgroundDrawable(theme.panelDrawable())
         row(R.id.rowFeedbackMail).setOnClickListener {
             tick(); dialog.dismiss(); sendFeedback()
         }
@@ -400,6 +402,8 @@ class AboutActivity : AppCompatActivity() {
         }
         tvClose.setOnClickListener { tick(); dialog.dismiss() }
         dialog.show()
+        // 兜底：个别 ROM 在 addView 阶段可能改写 attrs.width；值相同不产生可见跳变
+        dialog.window?.setLayout(w, android.view.ViewGroup.LayoutParams.WRAP_CONTENT)
     }
 
     /** v67：诊断报告全文随「发邮件反馈」自动带走；不受工程模式 PRO 限制 */
