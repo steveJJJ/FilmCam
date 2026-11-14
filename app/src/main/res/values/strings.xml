@@ -94,6 +94,8 @@ App 版本：%1$s (%2$d)
     <string name="frame_full">全画幅 3:2</string>
     <string name="frame_white">白边相框</string>
     <string name="set_color">色彩浓度</string>
+    <string name="set_raw">RAW 底片</string>
+    <string name="raw_unavailable">不支持</string>
     <string name="color_strength_standard">标准</string>
     <string name="color_strength_soft">淡</string>
     <string name="color_strength_original">原始</string>
@@ -127,6 +129,7 @@ App 版本：%1$s (%2$d)
         <item>@string/set_quality</item>
         <item>@string/set_frame</item>
         <item>@string/set_color</item>
+        <item>@string/set_raw</item>
         <item>@string/set_about</item>
     </string-array>
     <string-array name="set_hints">
@@ -138,6 +141,7 @@ App 版本：%1$s (%2$d)
         <item>完整＝原始分辨率，慢；标准≈1200 万像素，快约 3 倍</item>
         <item>成片一律按 135 片门出片（竖拍走竖置那一格）：关＝只出画面；全画幅 3:2 连片基齿孔一起扫；白边＝暗房相纸留白</item>
         <item>退掉手机 ISP 多加的那层色彩：标准 / 淡 / 原始，仅 JPG 与导入照片，RAW 不变；工程师控制台可细调 0–100%</item>
+        <item>拍摄时同时保存 RAW 底片（DNG），冲洗绕过手机 ISP，细节与颗粒更接近真实底片；本机不支持时自动回落 JPEG，工程师控制台同款开关</item>
         <item>机身铭牌与许可证</item>
     </string-array>
 
@@ -148,8 +152,28 @@ App 版本：%1$s (%2$d)
     <string name="main_cancel">取消</string>
 
     <!-- 首次进入引导 -->
-    <string name="main_guide_body">像使用真实胶卷一样拍照：\n\n· 点按屏幕对焦，上下滑动调整曝光\n· 一卷 36 张，拍完去暗房冲洗\n· 冲洗前看不到成片——胶片的惊喜就在这里</string>
     <string name="main_guide_start">开拍</string>
+
+    <!-- v82 快速上手卡（段1，三屏翻页） -->
+    <string name="qs_title_1">这是一台胶片相机</string>
+    <string name="qs_body_1">装卷、过片、按快门，和真胶卷一样。36 张拍满一卷，冲洗之前看不到任何成片——惊喜留在暗房。\n\n· 点一下取景框：对焦\n· 取景框内上下滑：调曝光\n· 按快门：过片进卷</string>
+    <string name="qs_title_2">拍完去暗房冲洗</string>
+    <string name="qs_body_2">一卷拍满后机身提示回卷，打开暗房页冲洗，出片自动进相册。\n\n冲洗前相册里空空的不量坏了——底片都还卷在胶卷里。首卷相机会提醒你去冲洗。</string>
+    <string name="qs_title_3">机身上的可调项</string>
+    <string name="qs_body_3">快门条循环：闪光灯 / 外置闪光。\n\n设置面板（机身右侧键）：白平衡、RAW 底片、色彩浓度、冲洗画质、胶片相框。\n\n开拍前拨好档，成片风格都在冲洗里定。</string>
+    <string name="qs_next">下一页</string>
+    <string name="about_spec_quickstart">快速上手</string>
+    <string name="about_quickstart_action">重看</string>
+
+    <!-- v82 段2：机顶 LCD 实操引导（做对自动前进，超时 15s 跳过） -->
+    <string name="guide_focus">点一下取景框 · 对焦</string>
+    <string name="guide_ev">框内上下滑 · 调曝光</string>
+    <string name="guide_shoot">好了，按快门拍第一张</string>
+
+    <!-- v82 段3：首卷护栏 -->
+    <string name="guide_first_frame">第 1/36 张 · 拍完整卷去暗房冲洗</string>
+    <string name="guide_third_frame">已 12/36 · 拍完可去暗房，冲完才能看成片</string>
+    <string name="lcd_notice_first_dev_done">第一卷冲好了 · 出片 %1$d 张</string>
 
     <!-- 胶卷拍完：引导去暗房 -->
     <string name="main_roll_finished_title">胶卷已拍完</string>

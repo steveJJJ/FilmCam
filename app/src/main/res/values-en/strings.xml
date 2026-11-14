@@ -86,6 +86,8 @@ Memory available: %10$d MB / %11$d MB total
     <string name="frame_full">Full 3:2</string>
     <string name="frame_white">White border</string>
     <string name="set_color">Colour strength</string>
+    <string name="set_raw">RAW negative</string>
+    <string name="raw_unavailable">Not supported</string>
     <string name="color_strength_standard">Standard</string>
     <string name="color_strength_soft">Soft</string>
     <string name="color_strength_original">Original</string>
@@ -119,6 +121,7 @@ Memory available: %10$d MB / %11$d MB total
         <item>@string/set_quality</item>
         <item>@string/set_frame</item>
         <item>@string/set_color</item>
+        <item>@string/set_raw</item>
         <item>@string/set_about</item>
     </string-array>
     <string-array name="set_hints">
@@ -130,6 +133,7 @@ Memory available: %10$d MB / %11$d MB total
         <item>Full = original resolution, slower; Standard ≈ 12 MP, ~3x faster</item>
         <item>Frames always follow the 135 gate (portrait shots use the upright gate): Off = image only; Full 3:2 scans the base and sprocket holes; White = darkroom paper margin</item>
         <item>Undo the extra colour added by the phone ISP: Standard / Soft / Original. JPG and imports only; RAW is untouched. Fine-tune 0-100% in the engineer console</item>
+        <item>Save a RAW negative (DNG) with each shot; developing bypasses the phone ISP for truer detail and grain. Falls back to JPEG on unsupported devices; same switch as the engineer console</item>
         <item>Nameplate and licenses</item>
     </string-array>
 
@@ -140,8 +144,28 @@ Memory available: %10$d MB / %11$d MB total
     <string name="main_cancel">Cancel</string>
 
     <!-- First-run guide -->
-    <string name="main_guide_body">Shoot it like a real film camera:\n\n· Tap to focus, swipe up or down for exposure\n· 36 frames to a roll, then off to the darkroom\n· Nothing to see until it is developed — that\'s the fun of film</string>
     <string name="main_guide_start">Start shooting</string>
+
+    <!-- v82 Quick start card (stage 1, three pages) -->
+    <string name="qs_title_1">This is a film camera</string>
+    <string name="qs_body_1">Load, wind, shoot — like real film. 36 frames to a roll; nothing to see until it is developed. That\'s the fun of film.\n\n· Tap the viewfinder: focus\n· Swipe up or down inside the frame: exposure\n· Press the shutter: film advances</string>
+    <string name="qs_title_2">Then off to the darkroom</string>
+    <string name="qs_body_2">When a roll is full the body prompts to rewind. Open the darkroom and develop — finished frames land in the gallery.\n\nAn empty gallery before developing isn\'t a bug: the negatives are still in the roll. The first roll comes with reminders.</string>
+    <string name="qs_title_3">What you can adjust</string>
+    <string name="qs_body_3">Shutter bar cycles the flash. Settings panel (side key): white balance, RAW negative, colour strength, develop quality, film border.\n\nSet your dials before you shoot; the look is fixed in development.</string>
+    <string name="qs_next">Next</string>
+    <string name="about_spec_quickstart">Quick start</string>
+    <string name="about_quickstart_action">Replay</string>
+
+    <!-- v82 stage 2: LCD hands-on guide (auto-advance on success, 15s skip) -->
+    <string name="guide_focus">Tap the viewfinder to focus</string>
+    <string name="guide_ev">Swipe up or down inside the frame for exposure</string>
+    <string name="guide_shoot">Now press the shutter for your first frame</string>
+
+    <!-- v82 stage 3: first-roll guardrails -->
+    <string name="guide_first_frame">Frame 1/36 · develop the full roll in the darkroom</string>
+    <string name="guide_third_frame">12/36 · darkroom is open once the roll is full</string>
+    <string name="lcd_notice_first_dev_done">First roll developed · %1$d frames</string>
 
     <!-- Roll shot to the end: send it to the darkroom -->
     <string name="main_roll_finished_title">Roll finished</string>

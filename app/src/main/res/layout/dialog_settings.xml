@@ -161,6 +161,13 @@
 
             <View style="@style/AboutSpecDivider" />
 
+            <!-- v81：RAW 底片，对外开放（原先藏在工程师控制台）。就地翻转 -->
+            <include
+                android:id="@+id/rowSetRaw"
+                layout="@layout/item_setting_row" />
+
+            <View style="@style/AboutSpecDivider" />
+
             <include
                 android:id="@+id/rowSetAbout"
                 layout="@layout/item_setting_row" />

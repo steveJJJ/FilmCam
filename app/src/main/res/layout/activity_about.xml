@@ -220,6 +220,22 @@
                         style="@style/AboutSpecValue"
                         android:text="@string/about_update_action" />
                 </LinearLayout>
+
+                <View style="@style/AboutSpecDivider" />
+
+                <!-- v82 快速上手重看：重播首次引导的说明书卡（不驱动 onboarding 进度） -->
+                <LinearLayout
+                    android:id="@+id/rowQuickStart"
+                    style="@style/AboutSpecRow"
+                    android:clickable="true"
+                    android:focusable="true">
+                    <TextView
+                        style="@style/AboutSpecLabel"
+                        android:text="@string/about_spec_quickstart" />
+                    <TextView
+                        style="@style/AboutSpecValue"
+                        android:text="@string/about_quickstart_action" />
+                </LinearLayout>
             </LinearLayout>
         </LinearLayout>
 

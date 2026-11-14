@@ -292,7 +292,11 @@ class MainActivity : AppCompatActivity() {
                     cameraController?.focusAt(
                         fx, fy,
                         binding.glSurfaceView.width, binding.glSurfaceView.height
-                    ) { vibrate(24, 185) }
+                    ) {
+                        vibrate(24, 185)
+                        // v82 段 2 检测点：新手第一次对焦成功 → LCD 接力下一条
+                        if (OnboardingGuide.onFocusDone(this@MainActivity)) showOnboardingHint()
+                    }
                     return true
                 }
             }
@@ -364,6 +368,8 @@ class MainActivity : AppCompatActivity() {
                         // 每过一档给一记轻震：曝光补偿是「档位」机械感，
                         // 手指要能感觉到自己拨过了一格（与胶卷列表滑动触感同一套语言）
                         vibrate(14, 115)
+                        // v82 段 2 检测点：新手第一次拨 EV → LCD 接力「按快门」
+                        if (OnboardingGuide.onEvChanged(this)) showOnboardingHint()
                     }
                 }
                 android.view.MotionEvent.ACTION_UP,
@@ -773,8 +779,10 @@ class MainActivity : AppCompatActivity() {
     /**
      * 弹窗关闭守卫：无论怎么关的，dismiss 后都补一段取景器触摸屏蔽。
      * 只在点击回调里设不够——点弹窗外部、按返回键关闭时同样会有事件甩给取景器。
+     * [onDismissed]：需要监听 dismiss 的弹窗（快速上手卡）把回调织进来，
+     * 因为 setOnDismissListener 是单槽，guardDialog 和调用方各自挂会互相覆盖。
      */
-    private fun <T : android.app.Dialog> T.guardDialog(): T {
+    private fun <T : android.app.Dialog> T.guardDialog(onDismissed: () -> Unit = {}): T {
         dialogDepth++
         setOnDismissListener {
             dialogDepth = (dialogDepth - 1).coerceAtLeast(0)
@@ -782,6 +790,7 @@ class MainActivity : AppCompatActivity() {
             // 弹窗一关就把手势状态清零：漏进来的事件不会续上一次手势
             touchActive = false
             lastDownTime = -1L
+            onDismissed()
         }
         return this
     }
@@ -826,7 +835,7 @@ class MainActivity : AppCompatActivity() {
         val rows = intArrayOf(
             R.id.rowSetBody, R.id.rowSetDatestamp, R.id.rowSetHaptic,
             R.id.rowSetWb, R.id.rowSetLanguage, R.id.rowSetQuality,
-            R.id.rowSetFrame, R.id.rowSetColor, R.id.rowSetAbout
+            R.id.rowSetFrame, R.id.rowSetColor, R.id.rowSetRaw, R.id.rowSetAbout
         )
         val theme = com.filmcam.app.ui.BodyTheme
         fun row(id: Int): android.view.View = view.findViewById(id)
@@ -890,6 +899,7 @@ class MainActivity : AppCompatActivity() {
             value(R.id.rowSetQuality).text = qualityName()
             value(R.id.rowSetFrame).text = frameBorderName()
             value(R.id.rowSetColor).text = colorStrengthName()
+            value(R.id.rowSetRaw).text = rawSettingName()
             value(R.id.rowSetAbout).text = versionLabel()
             paintPanel()
         }
@@ -898,14 +908,16 @@ class MainActivity : AppCompatActivity() {
             .setView(view)
             .create()
         dialog.guardDialog()
-        dialog.setOnShowListener {
-            // 面板宽度：横屏时不至于撑满，竖屏时留出两侧余量；高度交回 wrap_content
-            val dm = resources.displayMetrics
-            val w = (dm.widthPixels * 0.86f).toInt().coerceAtMost((400 * dm.density).toInt())
-            dialog.window?.setLayout(w, android.view.ViewGroup.LayoutParams.WRAP_CONTENT)
-            // Material 默认给 dialog 的是大圆角卡片，换成机加工面板的外框
-            dialog.window?.setBackgroundDrawable(theme.panelDrawable())
-        }
+        // 面板尺寸/背景必须在 show() **之前**定死（create() 后 window 就已存在）：
+        // 之前放在 OnShowListener 里改，首帧会先按窗口默认宽度（更宽）+ Material
+        // 大圆角卡片渲染一帧，第二帧才跳到 0.86 屏宽的机加工铭牌 —— 用户看到
+        // 「点设置弹窗会跳一下」（11-14 S25U 真机反馈）。show 前设置则第一帧
+        // 就是最终形态，零跳变。反馈弹窗（AboutActivity）同款问题同修。
+        val dm = resources.displayMetrics
+        val w = (dm.widthPixels * 0.86f).toInt().coerceAtMost((400 * dm.density).toInt())
+        dialog.window?.setLayout(w, android.view.ViewGroup.LayoutParams.WRAP_CONTENT)
+        // Material 默认给 dialog 的是大圆角卡片，换成机加工面板的外框
+        dialog.window?.setBackgroundDrawable(theme.panelDrawable())
 
         refreshValues()
 
@@ -966,6 +978,20 @@ class MainActivity : AppCompatActivity() {
             com.filmcam.app.develop.ColorStrength.cycle(this@MainActivity)
             refreshValues()
         }
+        row(R.id.rowSetRaw).hapticClick {
+            // v81 RAW 底片对外开放：从工程师控制台搬到设置面板，两边共用同一个
+            // prefs 键（filmcam_dev_raw），哪里拨都在下次 startCamera / onResume 生效，
+            // 这里直接立即下发，所见即所得。不支持的机型不翻转，从 LCD 告知。
+            if (!rawSensorAvailable()) {
+                showLcdNotice(getString(R.string.lcd_notice_raw_unavailable))
+                return@hapticClick
+            }
+            rawNegativeEnabled = !rawNegativeEnabled
+            getSharedPreferences("filmcam", MODE_PRIVATE)
+                .edit().putBoolean("filmcam_dev_raw", rawNegativeEnabled).apply()
+            cameraController?.rawNegativeEnabled = rawNegativeEnabled
+            refreshValues()
+        }
         row(R.id.rowSetAbout).hapticClick {
             dialog.dismiss()
             startActivity(android.content.Intent(this, AboutActivity::class.java))
@@ -1017,6 +1043,31 @@ class MainActivity : AppCompatActivity() {
             com.filmcam.app.develop.ColorStrength.Level.CUSTOM ->
                 getString(R.string.color_strength_custom, (v * 100f).roundToInt())
         }
+    }
+
+    /** 设置面板「RAW 底片」当前读数：不支持机型如实刻「不支持」（探测口径与工程师控制台一致） */
+    private fun rawSettingName(): String =
+        if (!rawSensorAvailable()) getString(R.string.raw_unavailable)
+        else if (rawNegativeEnabled) getString(R.string.common_on)
+        else getString(R.string.common_off)
+
+    /**
+     * 本机后摄能不能出 RAW_SENSOR 流。与工程师控制台（AboutActivity）同一套探测，
+     * 探一次缓存到成员：CameraCharacteristics 有系统级缓存，再探也轻，但设置面板
+     * 每次 refreshValues 都要读，没必要求反。
+     */
+    private var rawSensorAvailableCache: Boolean? = null
+    private fun rawSensorAvailable(): Boolean {
+        rawSensorAvailableCache?.let { return it }
+        val ok = runCatching {
+            val cm = getSystemService(android.hardware.camera2.CameraManager::class.java)
+            val sizes = cm?.getCameraCharacteristics("0")
+                ?.get(android.hardware.camera2.CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
+                ?.getOutputSizes(android.graphics.ImageFormat.RAW_SENSOR)
+            !sizes.isNullOrEmpty()
+        }.getOrDefault(false)
+        rawSensorAvailableCache = ok
+        return ok
     }
 
     /**
@@ -1150,18 +1201,61 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** 首次进入引导：一句话讲清胶片机的核心玩法 */
+    /**
+     * 首次进入引导（v82 三段式）：段 1 说明书卡「快速上手」三屏翻页，
+     * 播完 dismiss 后机顶 LCD 接力段 2 实操引导（见 [showOnboardingHint]）。
+     * 老用户（guide_shown 已置）不重播；「关于」页有重看入口。
+     */
     private fun maybeShowFirstRunGuide() {
         val prefs = getSharedPreferences("filmcam", MODE_PRIVATE)
         if (prefs.getBoolean("guide_shown", false)) return
         prefs.edit().putBoolean("guide_shown", true).apply()
-        androidx.appcompat.app.AlertDialog.Builder(this, com.filmcam.app.ui.BodyTheme.dialogTheme)
-            .setTitle("FILMCAM")
-            .setMessage(getString(R.string.main_guide_body))
-            .setPositiveButton(getString(R.string.main_guide_start), null)
-            .create()
-            .guardDialog()
-            .show()
+        com.filmcam.app.ui.QuickStartCard.show(
+            activity = this,
+            guard = { d, afterDismiss -> d.guardDialog(afterDismiss) },
+            onDismissed = {
+                // 段 1 结束 → 段 2 启动：说明书讲完，LCD 接力第一条实操提示
+                if (OnboardingGuide.stage(this) == 0) OnboardingGuide.setStage(this, 1)
+                showOnboardingHint()
+            },
+        )
+    }
+
+    // ===== v82 段 2：机顶 LCD 实操引导（做对自动前进，15s 超时跳过） =====
+
+    private val guideHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private var guideTimeoutRunnable: Runnable? = null
+
+    /** 当前段位该出哪条 LCD 提示；重新挂超时（超时自动前进不卡人） */
+    private fun showOnboardingHint() {
+        val s = OnboardingGuide.stage(this)
+        if (s !in 1 until OnboardingGuide.STAGE_DONE) return
+        showLcdNotice(
+            getString(
+                when (s) {
+                    1 -> R.string.guide_focus
+                    2 -> R.string.guide_ev
+                    else -> R.string.guide_shoot
+                }
+            )
+        )
+        guideTimeoutRunnable?.let { guideHandler.removeCallbacks(it) }
+        val r = Runnable {
+            val cur = OnboardingGuide.stage(this)
+            if (cur in 1 until OnboardingGuide.STAGE_DONE) {
+                // 超时跳过：做不做对都前进，引导永远不拦着人拍照
+                OnboardingGuide.setStage(this, cur + 1)
+                showOnboardingHint()
+            }
+        }
+        guideTimeoutRunnable = r
+        guideHandler.postDelayed(r, OnboardingGuide.HINT_TIMEOUT_MS)
+    }
+
+    /** 段 2 完成时停掉超时轮转（第三步「拍第一张」的提示交给段 3 的 1/36 提示接力） */
+    private fun stopOnboardingTimeout() {
+        guideTimeoutRunnable?.let { guideHandler.removeCallbacks(it) }
+        guideTimeoutRunnable = null
     }
 
 
@@ -1647,6 +1741,10 @@ class MainActivity : AppCompatActivity() {
             lastIndicatorKey = ""   // 机制变了，取景器警告灯按新档重画
             updateViewfinderIndicators(null, lastExposureSec, lastAeIso)
         }
+        // v82 段 2 进行中回前台：LCD 提示早被常规读数冲掉，按当前段位重新出一条
+        if (OnboardingGuide.stage(this) in 1 until OnboardingGuide.STAGE_DONE) {
+            showOnboardingHint()
+        }
     }
 
     // ===== 机顶 LCD：后台冲洗完成通报 =====
@@ -1668,8 +1766,17 @@ class MainActivity : AppCompatActivity() {
         val rollId = st.rollId ?: return
         if (rollId == lcdNotifiedRollId) return
         lcdNotifiedRollId = rollId
+        // v82 段 3 收口：首卷冲洗完成出贺词并归档（此后不再提醒）
+        val firstRoll = !OnboardingGuide.firstRollDone(this)
         runOnUiThread {
-            showLcdNotice(getString(R.string.lcd_notice_dev_done, st.done))
+            if (firstRoll) OnboardingGuide.markFirstRollDone(this)
+            showLcdNotice(
+                getString(
+                    if (firstRoll) R.string.lcd_notice_first_dev_done
+                    else R.string.lcd_notice_dev_done,
+                    st.done
+                )
+            )
         }
     }
 
@@ -1751,6 +1858,19 @@ class MainActivity : AppCompatActivity() {
                         shotJson = lastShotJson, rawDng = rawDng
                     )
                     runOnUiThread {
+                        // v82 段 2 检测点：首张落卷 = 三步实操走完，停掉超时轮转，
+                        // 「拍第一张」提示由段 3 的 1/36 提醒接力（不两条连着刷屏）
+                        if (OnboardingGuide.onShotTaken(this)) stopOnboardingTimeout()
+                        // v82 段 3 首卷护栏：第 1 / 12 张各提醒一次去暗房
+                        if (OnboardingGuide.guardFrameHit(this, count)) {
+                            showLcdNotice(
+                                getString(
+                                    if (count == OnboardingGuide.GUARD_FRAME_FIRST)
+                                        R.string.guide_first_frame
+                                    else R.string.guide_third_frame
+                                )
+                            )
+                        }
                         if (count >= FILM_MAX) {
                             promptDevelopFullRoll()
                         }

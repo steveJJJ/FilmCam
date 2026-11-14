@@ -118,6 +118,11 @@ class AboutActivity : AppCompatActivity() {
     /** v65 检查更新：Play 安装走应用内更新，侧载包跳下载页（零新增权限） */
     private fun bindUpdateCheck() {
         findViewById<View>(R.id.rowCheckUpdate).setOnClickListener { tick(); updateChecker.check() }
+        // v82：快速上手重看 —— 重播说明书卡，纯展示不碰 onboarding 进度
+        findViewById<View>(R.id.rowQuickStart).setOnClickListener {
+            tick()
+            com.filmcam.app.ui.QuickStartCard.show(this, guard = { d, _ -> d })
+        }
     }
 
     /** 把版本号刻字恢复回来（连点提示超时） */
@@ -381,13 +386,12 @@ class AboutActivity : AppCompatActivity() {
         val dialog = androidx.appcompat.app.AlertDialog.Builder(this, theme.dialogTheme)
             .setView(view)
             .create()
-        dialog.setOnShowListener {
-            // 与设置面板同一口径：宽度留两侧余量、外框换成机加工面板
-            val dm = resources.displayMetrics
-            val w = (dm.widthPixels * 0.86f).toInt().coerceAtMost((400 * dm.density).toInt())
-            dialog.window?.setLayout(w, android.view.ViewGroup.LayoutParams.WRAP_CONTENT)
-            dialog.window?.setBackgroundDrawable(theme.panelDrawable())
-        }
+        // 与设置面板同一口径（同修「跳一下」）：宽度/背景在 show() 之前定死，
+        // 别放 OnShowListener —— 否则首帧按默认宽度 + Material 卡片渲染一帧再跳变。
+        val dm = resources.displayMetrics
+        val w = (dm.widthPixels * 0.86f).toInt().coerceAtMost((400 * dm.density).toInt())
+        dialog.window?.setLayout(w, android.view.ViewGroup.LayoutParams.WRAP_CONTENT)
+        dialog.window?.setBackgroundDrawable(theme.panelDrawable())
         row(R.id.rowFeedbackMail).setOnClickListener {
             tick(); dialog.dismiss(); sendFeedback()
         }
