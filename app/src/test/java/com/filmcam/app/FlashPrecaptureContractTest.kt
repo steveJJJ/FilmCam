@@ -107,11 +107,11 @@ class FlashPrecaptureContractTest {
     }
 
     @Test
-    fun `v75 P1 预览 预闪 复位三条链路都不得挂 ALWAYS_FLASH`() {
+    fun `v79 预览与复位不得挂 ALWAYS_FLASH，one-shot precapture 必须挂`() {
         val s = camera() ?: return
         val banned = "CONTROL_AE_MODE_ON_ALWAYS_FLASH"
 
-        // 1) 预览 repeating builder
+        // 1) 常驻预览 repeating builder：P1 成果，绝不能回退成 ALWAYS_FLASH
         val preview = s.substringAfter(
             "previewRequestBuilder = camera.createCaptureRequest", "")
             .substringBefore("camera.createCaptureSession", "")
@@ -119,12 +119,13 @@ class FlashPrecaptureContractTest {
             preview.contains("applyPreviewFlashSettings(this)"))
         assertFalse("预览 builder 不得挂 ALWAYS_FLASH", preview.contains(banned))
 
-        // 2) 拍照前的 precapture 请求
+        // 2) one-shot precapture：v79 修复点，必须挂 ALWAYS_FLASH 才有主闪
         val pre = s.substringAfter("val preBuilder = camera.createCaptureRequest", "")
             .substringBefore("// v74 P0", "")
-        assertTrue("precapture 必须走 preview 版",
+        assertTrue("precapture 必须走 precapture 专用版（S25U 真机取证：AE_ON 不打主闪）",
+            pre.contains("applyPrecaptureFlashSettings(this)"))
+        assertFalse("precapture 不能再走 preview 版",
             pre.contains("applyPreviewFlashSettings(this)"))
-        assertFalse("precapture 不得挂 ALWAYS_FLASH", pre.contains(banned))
 
         // 3) CANCEL 之后的 repeating：v74 就是在这里把灯又打开的
         val reset = s.substringAfter("private fun resetFlashPrecapture", "")
@@ -138,6 +139,22 @@ class FlashPrecaptureContractTest {
         assertTrue("切档启用闪光走 preview 版",
             setBody.contains("applyPreviewFlashSettings(it)"))
         assertFalse("切档路径不得挂 ALWAYS_FLASH", setBody.contains(banned))
+    }
+
+    @Test
+    fun `v79 precapture 专用函数只用于一次性请求且守卫齐全`() {
+        val s = camera() ?: return
+        val calls = Regex("applyPrecaptureFlashSettings\\(this\\)").findAll(s).count()
+        assertTrue("precapture 专用版只能用在那一处一次性请求，实际 $calls 处", calls == 1)
+        val fn = s.substringAfter("private fun applyPrecaptureFlashSettings", "")
+            .substringBefore("\n    }", "")
+        assertTrue("必须挂 ALWAYS_FLASH",
+            fn.contains("CONTROL_AE_MODE_ON_ALWAYS_FLASH"))
+        assertTrue("闪光灯单元守卫要在", fn.contains("if (!hasFlashUnit) return"))
+        assertTrue("手动曝光守卫要在",
+            fn.contains("manualIso != null || manualExposure != null"))
+        assertFalse("专用版不能写 FLASH_MODE（ALWAYS_FLASH 下由 HAL 控制）",
+            fn.contains("FLASH_MODE_OFF"))
     }
 
     @Test

@@ -259,6 +259,11 @@ class MainActivity : AppCompatActivity() {
         var touchMoved = false
         var wbDragging = false          // 本次手势是否已进入横滑调白平衡
         var touchStartWbIndex = 0
+        // 本次手势是否从「取景框」（预览内容矩形）里起手。
+        // 顶栏铭牌 / 机顶 LCD / 底栏快门条 / letterbox 黑边上的上下滑不该动 EV，
+        // 横滑也不该换白平衡 —— 之前手势挂在全屏 glSurfaceView 上，全屏都能拨档。
+        // 口径与点屏对焦一致：viewfinderFrame.contentRect()。
+        var gestureInContent = false
         // 本次手势是不是从取景器自己的 DOWN 开始的。
         // 弹窗/菜单上的手指抬起时，事件会连着飘到下面的取景器——那是没有 DOWN 的孤立
         // UP/MOVE，带着上一次手势的陈旧状态（touchMoved=false、EV 没变），
@@ -306,17 +311,22 @@ class MainActivity : AppCompatActivity() {
                     // 弹窗/设置项刚关闭的一瞬间，抬手事件会落到取景器上被当成点屏对焦。
                     // 真机不存在这种"隔着菜单对焦"，所以这段时间窗内一律不响应触摸。
                     if (SystemClock.uptimeMillis() < suppressTouchUntil) return@setOnTouchListener true
+                    touchMoved = false
+                    wbDragging = false
+                    // 起手点不在取景框内 → 整条序列都不拨 EV / 白平衡。
+                    // tapDetector 自己还有 contentRect 判定，隔着顶栏也不会对焦。
+                    gestureInContent = binding.viewfinderFrame.contentRect()
+                        .contains(event.x, event.y)
+                    if (!gestureInContent) return@setOnTouchListener true
                     touchActive = true
                     lastDownTime = event.downTime
                     touchStartX = event.rawX
                     touchStartY = event.rawY
                     touchStartEv = exposureComp
-                    touchMoved = false
-                    wbDragging = false
                     touchStartWbIndex = wbIndex
                 }
                 android.view.MotionEvent.ACTION_MOVE -> {
-                    if (!touchActive) return@setOnTouchListener true
+                    if (!touchActive || !gestureInContent) return@setOnTouchListener true
                     binding.viewfinderFrame.notifyActivity()
                     if (Math.abs(event.rawX - touchStartX) > 24f ||
                         Math.abs(event.rawY - touchStartY) > 24f
@@ -358,8 +368,9 @@ class MainActivity : AppCompatActivity() {
                 }
                 android.view.MotionEvent.ACTION_UP,
                 android.view.MotionEvent.ACTION_CANCEL -> {
-                    // 没有自己 DOWN 的孤立抬手（弹窗点击飘过来的）直接丢弃
-                    if (!touchActive) return@setOnTouchListener true
+                    // 没有自己 DOWN 的孤立抬手（弹窗点击飘过来的）直接丢弃；
+                    // 起手点在取景框外的手势同样什么都不做（不落盘、不擦 WB 提示）
+                    if (!touchActive || !gestureInContent) return@setOnTouchListener true
                     touchActive = false
                     if (wbDragging) {
                         if (wbIndex != touchStartWbIndex) saveSettings()

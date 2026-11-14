@@ -1381,7 +1381,8 @@ class Camera2Controller(private val context: Context) {
         val preBuilder = camera.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW).apply {
             addTarget(surface)
             applyManualSettings(this)
-            applyPreviewFlashSettings(this)
+            // v79：one-shot precapture 必须挂 ALWAYS_FLASH，否则 HAL 不打主闪（见函数注释）
+            applyPrecaptureFlashSettings(this)
             set(
                 CaptureRequest.CONTROL_AWB_MODE,
                 currentAwbMode ?: CaptureRequest.CONTROL_AWB_MODE_AUTO
@@ -1394,7 +1395,7 @@ class Camera2Controller(private val context: Context) {
         // v74 P0：打点 + 置 pending，拍照结果回调必须配对发 CANCEL（见 resetFlashPrecapture）
         precapturePending = true
         flashPrecaptureStarts++
-        android.util.Log.i("FlashDiag", "PRECAPTURE START count=$flashPrecaptureStarts")
+        android.util.Log.i("FlashDiag", "PRECAPTURE START count=$flashPrecaptureStarts ae=ALWAYS_FLASH(one-shot)")
         reportFlashState()
         val preCb = object : android.hardware.camera2.CameraCaptureSession.CaptureCallback() {
             override fun onCaptureCompleted(
@@ -1531,6 +1532,30 @@ class Camera2Controller(private val context: Context) {
                 android.hardware.camera2.CameraMetadata.CONTROL_AE_MODE_ON
             )
         }
+    }
+
+    /**
+     * 闪光 precapture 的**一次性**请求（AE_PRECAPTURE_TRIGGER_START）专用。
+     *
+     * ⚠️ v79 真机取证（S25U / vc78）：P1 把这一路也改成 AE_ON 后，HAL 不做闪光
+     * 测光与充电，700ms 超时才放快门；HAL 只把 LED 点 34ms 做测光（led mode 2→0），
+     * 拍照结果 flashState=READY（**不是 FIRED**）且走 ZSL 历史帧 —— 用户看到「不闪」。
+     * Camera2 规范要求 precapture 请求本身就是 ON_ALWAYS_FLASH，HAL 才会跑完整的
+     * 预闪→测光→退出 ZSL→主闪序列。
+     *
+     * 这里**只允许用于 submitStillCaptureNow 里那一个 one-shot 请求**；常驻预览
+     * repeating 仍走 applyPreviewFlashSettings（AE_ON + FLASH_MODE_OFF），收尾仍由
+     * resetFlashPrecapture 的两段式 CANCEL 复位 —— P1 治好的「拍完常亮」不动。
+     * 不写 FLASH_MODE：AE_MODE_ON_ALWAYS_FLASH 下由 HAL 按 AE 状态控制预闪/主闪。
+     */
+    private fun applyPrecaptureFlashSettings(builder: CaptureRequest.Builder) {
+        if (!flashEnabled) return
+        if (!hasFlashUnit) return
+        if (manualIso != null || manualExposure != null) return
+        builder.set(
+            CaptureRequest.CONTROL_AE_MODE,
+            android.hardware.camera2.CameraMetadata.CONTROL_AE_MODE_ON_ALWAYS_FLASH
+        )
     }
 
     /**
