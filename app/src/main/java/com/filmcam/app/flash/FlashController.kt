@@ -10,10 +10,14 @@ import android.os.Looper
  * 支持三种模式：
  *  - OFF：不闪
  *  - BUILT_IN：手机自带 LED（默认，无需任何配件）
- *  - EXTERNAL：FotorGear BLE 外接灯（可选配件）
+ *  - EXTERNAL：BLE 外接灯（可选配件）
  *
  * BUILT_IN 模式通过 CameraX CameraControl 控制（而非 CameraManager.setTorchMode），
  * 避免 CameraX 占用相机时 torch 不可用的问题。
+ *
+ * vc86：EXTERNAL 档不再硬编码 `new FotorGearFlash(...)`，改走
+ * [ExternalFlashRegistry] —— 目前注册表里只有 FotorGear 一家且按已知 MAC
+ * 直连，行为与之前完全一致；后续加品牌 / 自学习配对向导时本类零改动。
  */
 class FlashController(
     private val context: Context
@@ -24,8 +28,8 @@ class FlashController(
 
     private val handler = Handler(Looper.getMainLooper())
 
-    // ---- EXTERNAL 模式的 BLE 逻辑 ----
-    private var bleFlash: FotorGearFlash? = null
+    // ---- EXTERNAL 模式的 BLE 驱动（品牌由注册表决定，不感知具体实现） ----
+    private var bleFlash: ExternalFlashDriver? = null
 
     // ---- BUILT_IN 模式：交给相机 HAL ----
     // 内置闪光不再是「快门那一刻点亮手电筒 200ms」，而是把相机切成拍照闪光模式
@@ -39,9 +43,9 @@ class FlashController(
             return
         }
         // restoreSettings / cycleFlashMode /「拍摄同款」三条路都会调到这里。
-        // 以前每次都 new 一个 FotorGearFlash，旧 GATT 不关 → 同一台灯被反复注册
+        // 以前每次都 new 一个驱动实例，旧 GATT 不关 → 同一台灯被反复注册
         // client_if（真机日志里能看到成串 GATT_Register / 连接互相顶掉）。
-        // 一次 EXTERNAL 会话只建一条 GATT，连接状态由 FotorGearFlash 自己维护。
+        // 一次 EXTERNAL 会话只建一条 GATT，连接状态由驱动自己维护。
         if (bleFlash != null) {
             android.util.Log.i("FlashDiag", "startScan 跳过：已有 BLE 会话")
             return
@@ -50,7 +54,9 @@ class FlashController(
         // v59：BLE 建连（权限/适配器/协议）出任何异常都不能冒泡到 cycleFlashMode，
         // 否则档位切换后半段（相机同步、LCD、落盘）会整段被跳过，表现为「按键没反应」。
         runCatching {
-            bleFlash = FotorGearFlash(context).also {
+            // 第二层：先同步自学习档案（用户在配对向导学过的灯优先于内置 FotorGear）
+            ExternalFlashRegistry.syncLearned(FlashProfileStore(context).list())
+            bleFlash = ExternalFlashRegistry.createPreferred(context).also {
                 it.onStatusChange = { s -> onStatusChange?.invoke(s) }
                 it.startScan()
             }

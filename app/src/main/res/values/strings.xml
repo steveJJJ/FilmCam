@@ -95,6 +95,9 @@ App 版本：%1$s (%2$d)
     <string name="frame_white">白边相框</string>
     <string name="set_color">色彩浓度</string>
     <string name="set_raw">RAW 底片</string>
+    <string name="set_flash">外闪灯管理</string>
+    <string name="set_flash_none">未配对</string>
+    <string name="set_flash_multi">%1$d 台</string>
     <string name="raw_unavailable">不支持</string>
     <string name="color_strength_standard">标准</string>
     <string name="color_strength_soft">淡</string>
@@ -130,6 +133,7 @@ App 版本：%1$s (%2$d)
         <item>@string/set_frame</item>
         <item>@string/set_color</item>
         <item>@string/set_raw</item>
+        <item>@string/set_flash</item>
         <item>@string/set_about</item>
     </string-array>
     <string-array name="set_hints">
@@ -142,6 +146,7 @@ App 版本：%1$s (%2$d)
         <item>成片一律按 135 片门出片（竖拍走竖置那一格）：关＝只出画面；全画幅 3:2 连片基齿孔一起扫；白边＝暗房相纸留白</item>
         <item>退掉手机 ISP 多加的那层色彩：标准 / 淡 / 原始，仅 JPG 与导入照片，RAW 不变；工程师控制台可细调 0–100%</item>
         <item>拍摄时同时保存 RAW 底片（DNG），冲洗绕过手机 ISP，细节与颗粒更接近真实底片；本机不支持时自动回落 JPEG，工程师控制台同款开关</item>
+        <item>查看、复制或删除已配对的外置闪光灯；导入别人的档案，或自学习配一盏新灯</item>
         <item>机身铭牌与许可证</item>
     </string-array>
 
@@ -213,6 +218,8 @@ App 版本：%1$s (%2$d)
     <string name="main_flash_internal">闪: 内置</string>
     <string name="main_flash_external">闪: 外置</string>
     <string name="main_external_status">外置闪光: %1$s</string>
+    <string name="main_flash_pair_needed">尚未配对外置灯，开始配对</string>
+    <string name="main_flash_pair_cancel">未完成配对，闪光灯已切回关闭</string>
     <string name="main_external_on">外置: 开</string>
     <string name="main_external_off">外置: 关</string>
     <string name="main_pro_label">专业</string>
@@ -380,4 +387,106 @@ App 版本：%1$s (%2$d)
 
     <!-- 胶卷列表：反转片不支持印相 -->
     <string name="film_slide_no_print">反转片（幻灯）不能印到相纸上——本版暂只支持负片</string>
+    <!-- 外闪自学习配对向导（vc86 第三层） -->
+    <string name="flash_pair_title">外闪配对</string>
+    <string name="flash_pair_subtitle">自学习配对 · FLASH PAIRING</string>
+    <string name="flash_pair_scan_hint">正在扫描附近的 BLE 设备… 系统已配对的灯会排在最前面，直接点它即可。若系统弹出配对请求，请点「配对」。</string>
+    <string name="flash_pair_unnamed">未命名设备</string>
+    <string name="flash_pair_bonded_tag">已配对</string>
+    <string name="flash_pair_step1">第 1 步 · 选择闪光灯</string>
+    <string name="flash_pair_step2">第 2 步 · 选择指令通道</string>
+    <string name="flash_pair_step3">第 3 步 · 找触发指令</string>
+    <string name="flash_pair_rescan">重新扫描</string>
+    <string name="flash_pair_trial_hint">逐条点击候选指令，发一条看一眼灯。灯闪了就点下方绿色按钮保存。（向导只动灯，不影响相机）</string>
+    <string name="flash_pair_manual_hint">手动输入指令 (hex)</string>
+    <string name="flash_pair_send">试发</string>
+    <string name="flash_pair_confirm">灯闪了，保存配对</string>
+    <string name="flash_pair_none">都没闪，换下一个通道</string>
+    <string name="flash_pair_test_again">保存后再试一次</string>
+    <string name="flash_pair_finish">完成</string>
+    <string name="flash_pair_connected">已连接，正在读取指令通道…</string>
+    <string name="flash_pair_disconnected">连接已断开</string>
+    <string name="flash_pair_chars_found">发现 %1$d 个可写通道</string>
+    <string name="flash_pair_no_write_char">这盏灯没有暴露可写通道，无法自学习</string>
+    <string name="flash_pair_write_fail">指令 %1$s 写入失败</string>
+    <string name="flash_pair_connecting">正在连接 %1$s…</string>
+    <string name="flash_pair_sent_mark">已试发</string>
+    <string name="flash_pair_try_next">回到通道列表，换一个再试</string>
+    <string name="flash_pair_bad_hex">指令格式不对：要 2、4、6 位十六进制，如 05 00</string>
+    <string name="flash_pair_save_fail">档案保存失败</string>
+    <string name="flash_pair_saved">已保存：%1$s\n触发指令 %2$s\n拍照时会自动使用这盏灯</string>
+    <string name="flash_pair_saved_title">已配对的灯</string>
+    <string name="flash_pair_saved_empty">还没有配对过的灯。切到外置闪光档会自动进入本页。</string>
+    <string name="flash_pair_delete">删除</string>
+    <string name="flash_pair_page1">第 1 页 · 认灯</string>
+    <string name="flash_pair_page2">第 2 页 · 指令通道</string>
+    <string name="flash_pair_page3">第 3 页 · 试闪</string>
+    <string name="flash_pair_page4">第 4 页 · 完成</string>
+    <string name="flash_pair_group_paired">系统已配对 · 灯候选</string>
+    <string name="flash_pair_group_nearby">附近 BLE 广播</string>
+    <string name="flash_pair_group_other">其他已配对设备</string>
+    <string name="flash_pair_hint_nobond">带快门键的灯会被系统当作 HID 自动配对并连走，连上后就不再广播。不用去系统蓝牙里删除配对——删了也会自动配回来。</string>
+    <string name="flash_pair_hint_dialog">若 Android 弹出配对请求，请点「配对」。</string>
+    <string name="flash_pair_hint_near">灯可能不广播名字：看信号强度、MAC 尾码与 svc 短码；把灯贴近手机更容易认。</string>
+    <string name="flash_pair_manual_mac_hint">手动输入 MAC，如 DA:BA:CD:E2:BE:B0</string>
+    <string name="flash_pair_manual_mac_btn">按 MAC 连接</string>
+    <string name="flash_pair_bad_mac">MAC 格式不对</string>
+    <string name="flash_pair_back">← 上一步</string>
+    <string name="flash_pair_exit">退出</string>
+    <string name="flash_pair_primary_rescan">重新扫描</string>
+    <string name="flash_pair_primary_relight">重新选灯</string>
+    <string name="flash_pair_primary_confirm">灯闪了 · 保存配对</string>
+    <string name="flash_pair_primary_finish">完成 · 回取景器</string>
+    <string name="flash_pair_status_scan">SCANNING</string>
+    <string name="flash_pair_status_connecting">CONNECTING</string>
+    <string name="flash_pair_status_connected">CONNECTED</string>
+    <string name="flash_pair_status_trial">TRIAL</string>
+    <string name="flash_pair_status_paired">PAIRED</string>
+    <string name="flash_pair_paired_title">已配对</string>
+    <string name="flash_pair_next_hint">下次切到外置闪光档会直接连这盏灯</string>
+    <string name="flash_pair_no_candidate">没发现带灯特征的已配对设备，可看下方广播区或手动输入 MAC</string>
+    <string name="flash_pair_disconnect_hint">已断开，请回到第 1 页重新选灯</string>
+    <string name="flash_pair_recommended">推荐 · 透传</string>
+    <string name="flash_pair_config_char">配置类</string>
+    <string name="flash_pair_char_hint">推荐通道已置顶；配置类特征不会让灯闪，别选它们。</string>
+    <string name="flash_pair_write_busy">上一条指令还在等回应，稍等一下再点</string>
+    <string name="flash_pair_reconnecting">通道无响应 · 正在重连</string>
+    <string name="flash_pair_reconnected">已重连 · 请再试一次</string>
+    <string name="flash_pair_write_rejected">设备拒绝了这条指令</string>
+    <string name="flash_pair_trial_channel">当前通道 %1$s</string>
+    <string name="flash_pair_advanced">高级 · 其他已配对 / 手动 MAC   ▾</string>
+    <string name="flash_pair_advanced_open">高级 · 其他已配对 / 手动 MAC   ▴</string>
+    <string name="flash_pair_no_candidate_hint">没发现灯候选：① 打开闪光灯电源 ② 等系统完成配对 ③ 点底部「重新扫描」刷新已配对列表。</string>
+    <string name="flash_pair_not_recommended">以下为配置类特征，不会让灯闪</string>
+    <string name="flash_pair_frame_untested">未试 · %1$d 条</string>
+    <string name="flash_pair_frame_tried">已试 · %1$d 条   %2$s</string>
+    <string name="flash_pair_expand">展开</string>
+    <string name="flash_pair_collapse">收起</string>
+    <string name="flash_pair_hit">闪了</string>
+    <string name="flash_pair_hit_mark">✓ 命中</string>
+    <string name="flash_pair_hit_first">先点这一行试发，灯闪了再点「闪了」</string>
+    <string name="flash_pair_primary_confirm_with">保存这条 · %1$s</string>
+    <string name="flash_pair_frame_disabled_hint">主按钮未点亮：先点一条，灯闪了再点「闪了」</string>
+    <string name="flash_pair_copy_profile">复制档案（可贴给朋友 / 论坛）</string>
+    <string name="flash_pair_copied">档案已复制</string>
+    <string name="flash_pair_copy_empty">还没有可复制的档案</string>
+    <string name="flash_pair_done_meta">MAC    %1$s\nCH     %2$s\nTRIG   %3$s\nPAIRED %4$s   ·   LEARNED</string>
+    <string name="flash_pair_lcd_paired">PAIRED · 外闪就绪</string>
+    <string name="main_external_status_named">外置闪光: %1$s · %2$s</string>
+
+    <!-- ===== 外闪灯管理：设置面板可见入口 + 向导管理模式 ===== -->
+    <string name="flash_pair_manage_title">外闪灯管理</string>
+    <string name="flash_pair_manage_subtitle">EXTERNAL FLASH / PROFILES</string>
+    <string name="flash_pair_status_manage">MANAGE</string>
+    <string name="flash_pair_manage_header">已配对的灯  %1$d</string>
+    <string name="flash_pair_manage_hint">档案按灯的 MAC 记住触发指令；切到「闪： 外置」时自动连灯。复制档案可贴给朋友，粘贴文本可导入别人的档案。</string>
+    <string name="flash_pair_manage_empty">还没有配对的灯。点「配对新灯」，或切到「闪： 外置」时自动进入配对。</string>
+    <string name="flash_pair_manage_import">从剪贴板导入档案</string>
+    <string name="flash_pair_manage_import_ok">档案已导入：%1$s</string>
+    <string name="flash_pair_manage_import_fail">剪贴板里没有可识别的档案文本</string>
+    <string name="flash_pair_primary_pair_new">＋ 配对新灯</string>
+    <string name="flash_pair_copy_short">复制</string>
+    <string name="flash_pair_manage_deleted">已删除 %1$s</string>
+    <string name="flash_pair_manage_row_meta">%1$s   CH %2$s   TRIG %3$s</string>
+
 </resources>

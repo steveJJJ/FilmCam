@@ -55,10 +55,15 @@ import androidx.annotation.RequiresPermission
  *  - [dumpGatt] 把整张 GATT 表打进 logcat；0xFFE1 通知打进 "FlashNotify" tag；
  *  - `flash_probe.txt` 一行一条十六进制，连上后按序自动写入；
  *  - `flash_candidates.txt` 快门逐条轮转，编号回显到机顶 LCD 供人工判别。
+ *
+ * vc86 迁移：从「直接实现 FlashDevice」改为实现 [ExternalFlashDriver]，
+ * 经 [ExternalFlashRegistry] 注册在册（brandId="fotorgear"，能力档 DUMB）。
+ * mode 概念上移到 FlashController —— 旧实现自带的 mode 覆盖字段从未被读过，
+ * 属于死字段，随手清掉。行为零变化。
  */
 class FotorGearFlash(
     private val context: Context
-) : FlashDevice {
+) : ExternalFlashDriver {
 
     companion object {
         private const val TAG = "FotorGearFlash"
@@ -92,8 +97,6 @@ class FotorGearFlash(
     private var reconnectAttempts = 0
 
     override var onStatusChange: ((String) -> Unit)? = null
-
-    override var mode: FlashMode = FlashMode.EXTERNAL
 
     private val bluetoothAdapter: BluetoothAdapter? by lazy {
         (context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager).adapter

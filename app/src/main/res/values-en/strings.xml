@@ -87,6 +87,9 @@ Memory available: %10$d MB / %11$d MB total
     <string name="frame_white">White border</string>
     <string name="set_color">Colour strength</string>
     <string name="set_raw">RAW negative</string>
+    <string name="set_flash">External flash</string>
+    <string name="set_flash_none">Not paired</string>
+    <string name="set_flash_multi">%1$d paired</string>
     <string name="raw_unavailable">Not supported</string>
     <string name="color_strength_standard">Standard</string>
     <string name="color_strength_soft">Soft</string>
@@ -122,6 +125,7 @@ Memory available: %10$d MB / %11$d MB total
         <item>@string/set_frame</item>
         <item>@string/set_color</item>
         <item>@string/set_raw</item>
+        <item>@string/set_flash</item>
         <item>@string/set_about</item>
     </string-array>
     <string-array name="set_hints">
@@ -134,6 +138,7 @@ Memory available: %10$d MB / %11$d MB total
         <item>Frames always follow the 135 gate (portrait shots use the upright gate): Off = image only; Full 3:2 scans the base and sprocket holes; White = darkroom paper margin</item>
         <item>Undo the extra colour added by the phone ISP: Standard / Soft / Original. JPG and imports only; RAW is untouched. Fine-tune 0-100% in the engineer console</item>
         <item>Save a RAW negative (DNG) with each shot; developing bypasses the phone ISP for truer detail and grain. Falls back to JPEG on unsupported devices; same switch as the engineer console</item>
+        <item>View, copy or delete paired external flashes; import a shared profile or teach the app a new light</item>
         <item>Nameplate and licenses</item>
     </string-array>
 
@@ -205,6 +210,8 @@ Memory available: %10$d MB / %11$d MB total
     <string name="main_flash_internal">Flash: Built-in</string>
     <string name="main_flash_external">Flash: External</string>
     <string name="main_external_status">External flash: %1$s</string>
+    <string name="main_flash_pair_needed">No flash paired yet, start pairing</string>
+    <string name="main_flash_pair_cancel">Pairing not finished, flash reverted to off</string>
     <string name="main_external_on">External: On</string>
     <string name="main_external_off">External: Off</string>
     <string name="main_pro_label">Pro</string>
@@ -367,4 +374,106 @@ Memory available: %10$d MB / %11$d MB total
 
     <!-- Film roll list: slide film cannot be printed -->
     <string name="film_slide_no_print">Slide film cannot be printed — this version only supports negatives</string>
+    <!-- External flash self-learning pairing wizard (vc86 layer 3) -->
+    <string name="flash_pair_title">Flash Pairing</string>
+    <string name="flash_pair_subtitle">SELF-LEARNING PAIRING</string>
+    <string name="flash_pair_scan_hint">Scanning nearby BLE devices… System-paired lights are listed first — just tap yours. If Android shows a pairing request, accept it.</string>
+    <string name="flash_pair_unnamed">Unnamed device</string>
+    <string name="flash_pair_bonded_tag">PAIRED</string>
+    <string name="flash_pair_step1">Step 1 · Pick your flash</string>
+    <string name="flash_pair_step2">Step 2 · Pick a command channel</string>
+    <string name="flash_pair_step3">Step 3 · Find the trigger frame</string>
+    <string name="flash_pair_rescan">Rescan</string>
+    <string name="flash_pair_trial_hint">Tap each candidate to send it, then watch the light. When it fires, tap the green button to save. (The wizard only talks to the light, not the camera.)</string>
+    <string name="flash_pair_manual_hint">Manual hex command</string>
+    <string name="flash_pair_send">Send</string>
+    <string name="flash_pair_confirm">It fired — save pairing</string>
+    <string name="flash_pair_none">None fired — try next channel</string>
+    <string name="flash_pair_test_again">Send once more to confirm</string>
+    <string name="flash_pair_finish">Done</string>
+    <string name="flash_pair_connected">Connected, reading channels…</string>
+    <string name="flash_pair_disconnected">Disconnected</string>
+    <string name="flash_pair_chars_found">%1$d writable channels found</string>
+    <string name="flash_pair_no_write_char">This light exposes no writable channel</string>
+    <string name="flash_pair_write_fail">Failed to write frame %1$s</string>
+    <string name="flash_pair_connecting">Connecting to %1$s…</string>
+    <string name="flash_pair_sent_mark">sent</string>
+    <string name="flash_pair_try_next">Back to channel list, try another</string>
+    <string name="flash_pair_bad_hex">Bad hex: expect pairs like 05 00</string>
+    <string name="flash_pair_save_fail">Failed to save profile</string>
+    <string name="flash_pair_saved">Saved: %1$s\nTrigger frame %2$s\nThis light is now used when shooting</string>
+    <string name="flash_pair_saved_title">Paired lights</string>
+    <string name="flash_pair_saved_empty">No paired lights yet. Switch to External flash to open this page.</string>
+    <string name="flash_pair_delete">Delete</string>
+    <string name="flash_pair_page1">Page 1 · Find light</string>
+    <string name="flash_pair_page2">Page 2 · Write channel</string>
+    <string name="flash_pair_page3">Page 3 · Test flash</string>
+    <string name="flash_pair_page4">Page 4 · Done</string>
+    <string name="flash_pair_group_paired">System paired · Likely lights</string>
+    <string name="flash_pair_group_nearby">Nearby BLE adverts</string>
+    <string name="flash_pair_group_other">Other paired devices</string>
+    <string name="flash_pair_hint_nobond">Lights with a shutter key are paired by Android as HID and stop advertising once connected. Do not remove the pairing in system Bluetooth — Android will pair it again.</string>
+    <string name="flash_pair_hint_dialog">If Android shows a pairing request, accept it.</string>
+    <string name="flash_pair_hint_near">A light may not advertise its name: use signal strength, MAC suffix and svc code; hold it close to the phone.</string>
+    <string name="flash_pair_manual_mac_hint">Enter MAC, e.g. DA:BA:CD:E2:BE:B0</string>
+    <string name="flash_pair_manual_mac_btn">Connect MAC</string>
+    <string name="flash_pair_bad_mac">Bad MAC format</string>
+    <string name="flash_pair_back">← Back</string>
+    <string name="flash_pair_exit">Exit</string>
+    <string name="flash_pair_primary_rescan">Rescan</string>
+    <string name="flash_pair_primary_relight">Choose another light</string>
+    <string name="flash_pair_primary_confirm">It flashed · Save</string>
+    <string name="flash_pair_primary_finish">Done · Back to camera</string>
+    <string name="flash_pair_status_scan">SCANNING</string>
+    <string name="flash_pair_status_connecting">CONNECTING</string>
+    <string name="flash_pair_status_connected">CONNECTED</string>
+    <string name="flash_pair_status_trial">TRIAL</string>
+    <string name="flash_pair_status_paired">PAIRED</string>
+    <string name="flash_pair_paired_title">PAIRED</string>
+    <string name="flash_pair_next_hint">Next time External flash connects to this light directly</string>
+    <string name="flash_pair_no_candidate">No paired light-like device found. Check nearby adverts or enter a MAC.</string>
+    <string name="flash_pair_disconnect_hint">Disconnected. Go back to page 1 and pick the light again.</string>
+    <string name="flash_pair_recommended">RECOMMENDED</string>
+    <string name="flash_pair_config_char">Config</string>
+    <string name="flash_pair_char_hint">Recommended channels are on top. Config characteristics will not trigger the light.</string>
+    <string name="flash_pair_write_busy">Previous write still pending, wait a moment</string>
+    <string name="flash_pair_reconnecting">No write ack · reconnecting</string>
+    <string name="flash_pair_reconnected">Reconnected · try again</string>
+    <string name="flash_pair_write_rejected">Device rejected this write</string>
+    <string name="flash_pair_trial_channel">Channel %1$s</string>
+    <string name="flash_pair_advanced">Advanced · other paired / manual MAC   ▾</string>
+    <string name="flash_pair_advanced_open">Advanced · other paired / manual MAC   ▴</string>
+    <string name="flash_pair_no_candidate_hint">No light-like device found: 1) power on the flash, 2) wait for Android to pair it, 3) tap Rescan below to refresh paired devices.</string>
+    <string name="flash_pair_not_recommended">Config characteristics below will not trigger the light</string>
+    <string name="flash_pair_frame_untested">Untested · %1$d</string>
+    <string name="flash_pair_frame_tried">Tried · %1$d   %2$s</string>
+    <string name="flash_pair_expand">Expand</string>
+    <string name="flash_pair_collapse">Collapse</string>
+    <string name="flash_pair_hit">Flashed</string>
+    <string name="flash_pair_hit_mark">✓ HIT</string>
+    <string name="flash_pair_hit_first">Tap the row to send first, then mark Flashed</string>
+    <string name="flash_pair_primary_confirm_with">Save %1$s</string>
+    <string name="flash_pair_frame_disabled_hint">Button disabled: tap a frame, then mark Flashed when the light fires</string>
+    <string name="flash_pair_copy_profile">Copy profile (share via chat / forum)</string>
+    <string name="flash_pair_copied">Profile copied</string>
+    <string name="flash_pair_copy_empty">No profile to copy yet</string>
+    <string name="flash_pair_done_meta">MAC    %1$s\nCH     %2$s\nTRIG   %3$s\nPAIRED %4$s   ·   LEARNED</string>
+    <string name="flash_pair_lcd_paired">PAIRED · FLASH READY</string>
+    <string name="main_external_status_named">External flash: %1$s · %2$s</string>
+
+    <!-- ===== External flash manager: visible settings entry + wizard manage mode ===== -->
+    <string name="flash_pair_manage_title">External flash</string>
+    <string name="flash_pair_manage_subtitle">EXTERNAL FLASH / PROFILES</string>
+    <string name="flash_pair_status_manage">MANAGE</string>
+    <string name="flash_pair_manage_header">Paired lights  %1$d</string>
+    <string name="flash_pair_manage_hint">Profiles remember the trigger command by MAC; switching to EXT connects automatically. Copy a profile to share it, or paste one to import.</string>
+    <string name="flash_pair_manage_empty">No paired lights yet. Tap "Pair a new light", or switch to EXT to start pairing automatically.</string>
+    <string name="flash_pair_manage_import">Import profile from clipboard</string>
+    <string name="flash_pair_manage_import_ok">Profile imported: %1$s</string>
+    <string name="flash_pair_manage_import_fail">No valid profile text in the clipboard</string>
+    <string name="flash_pair_primary_pair_new">+ Pair a new light</string>
+    <string name="flash_pair_copy_short">Copy</string>
+    <string name="flash_pair_manage_deleted">Deleted %1$s</string>
+    <string name="flash_pair_manage_row_meta">%1$s   CH %2$s   TRIG %3$s</string>
+
 </resources>

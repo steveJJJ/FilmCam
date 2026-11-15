@@ -97,7 +97,7 @@
         android:layout_height="1dp"
         android:background="#26262A" />
 
-    <!-- 铭牌列表（v73 起九行）：横屏可用高度紧张时这里滚动 -->
+    <!-- 铭牌列表（v86 起十一行）：横屏可用高度紧张时这里滚动 -->
     <ScrollView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -164,6 +164,14 @@
             <!-- v81：RAW 底片，对外开放（原先藏在工程师控制台）。就地翻转 -->
             <include
                 android:id="@+id/rowSetRaw"
+                layout="@layout/item_setting_row" />
+
+            <View style="@style/AboutSpecDivider" />
+
+            <!-- v86：外闪灯管理。长按「闪」字太隐蔽，设置面板给一个可见入口；
+                 右侧读数直接刻出已配对的灯名 / 档案数，点进去是向导的管理模式 -->
+            <include
+                android:id="@+id/rowSetFlash"
                 layout="@layout/item_setting_row" />
 
             <View style="@style/AboutSpecDivider" />

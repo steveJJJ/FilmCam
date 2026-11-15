@@ -216,7 +216,17 @@ class MainActivity : AppCompatActivity() {
             runOnUiThread {
                 // 只在外置闪光模式时显示 BLE 状态
                 if (flash.mode == FlashMode.EXTERNAL) {
-                    binding.tvFlashStatus.text = getString(R.string.main_external_status, status)
+                    // vc86：有已学档案时把灯名带进状态字，用户一眼知道连的是哪盏灯，
+                    // 而不是泛泛的 READY / STATE: 2。
+                    val pairedName = runCatching {
+                        com.filmcam.app.flash.FlashProfileStore(this@MainActivity)
+                            .list().firstOrNull()?.displayName
+                    }.getOrNull()
+                    binding.tvFlashStatus.text = if (pairedName.isNullOrBlank()) {
+                        getString(R.string.main_external_status, status)
+                    } else {
+                        getString(R.string.main_external_status_named, pairedName, status)
+                    }
                     // 逆向轮转：每按一次快门换一条候选指令，编号从机顶 LCD 出来。
                     // 用户盯着外接灯，哪次亮了报编号，就能定位 0xFFE1 的触发字节。
                     if (status.startsWith("TRIG ")) {
@@ -505,6 +515,17 @@ class MainActivity : AppCompatActivity() {
         binding.btnShutter.hapticClick(ms = 32, amp = 235) { triggerShutter() }
         binding.tvFilmName.hapticClick { showFilmRollPicker() }
         binding.tvFlashStatus.hapticClick { cycleFlashMode() }
+        // vc86：长按「闪」字进外闪自学习配对向导（单击仍切档，交互不变）。
+        // 手动入口：取消不退档；保存了档案则返回时立即重建 BLE 会话。
+        binding.tvFlashStatus.setOnLongClickListener {
+            com.filmcam.app.ui.Haptics.vibrate(this, 24)
+            runCatching {
+                flashPairLauncher.launch(
+                    android.content.Intent(this, com.filmcam.app.flash.FlashPairActivity::class.java)
+                )
+            }.onFailure { android.util.Log.w("FlashDiag", "打开配对向导失败", it) }
+            true
+        }
         binding.btnGallery.hapticClick {
             startActivity(android.content.Intent(this, GalleryActivity::class.java))
         }
@@ -835,7 +856,8 @@ class MainActivity : AppCompatActivity() {
         val rows = intArrayOf(
             R.id.rowSetBody, R.id.rowSetDatestamp, R.id.rowSetHaptic,
             R.id.rowSetWb, R.id.rowSetLanguage, R.id.rowSetQuality,
-            R.id.rowSetFrame, R.id.rowSetColor, R.id.rowSetRaw, R.id.rowSetAbout
+            R.id.rowSetFrame, R.id.rowSetColor, R.id.rowSetRaw,
+            R.id.rowSetFlash, R.id.rowSetAbout
         )
         val theme = com.filmcam.app.ui.BodyTheme
         fun row(id: Int): android.view.View = view.findViewById(id)
@@ -900,6 +922,16 @@ class MainActivity : AppCompatActivity() {
             value(R.id.rowSetFrame).text = frameBorderName()
             value(R.id.rowSetColor).text = colorStrengthName()
             value(R.id.rowSetRaw).text = rawSettingName()
+            // v86：外闪灯管理行的读数 = 已配对档案状态（灯名 / 台数 / 未配对），
+            // 和面板其它行一样「不点进去就能读到当前值」。
+            value(R.id.rowSetFlash).text = runCatching {
+                val profiles = com.filmcam.app.flash.FlashProfileStore(this).list()
+                when {
+                    profiles.isEmpty() -> getString(R.string.set_flash_none)
+                    profiles.size == 1 -> profiles[0].displayName.take(14)
+                    else -> getString(R.string.set_flash_multi, profiles.size)
+                }
+            }.getOrDefault(getString(R.string.set_flash_none))
             value(R.id.rowSetAbout).text = versionLabel()
             paintPanel()
         }
@@ -998,6 +1030,18 @@ class MainActivity : AppCompatActivity() {
                 .edit().putBoolean("filmcam_dev_raw", rawNegativeEnabled).apply()
             cameraController?.rawNegativeEnabled = rawNegativeEnabled
             refreshValues()
+        }
+        row(R.id.rowSetFlash).hapticClick {
+            // 可见入口（长按「闪」字太隐蔽）：从设置进向导的管理模式，
+            // 第一屏就是已配对的灯。这不是切 EXT 自动弹出的流程，取消不退档。
+            dialog.dismiss()
+            flashPairAutoFromExt = false
+            runCatching {
+                flashPairLauncher.launch(
+                    android.content.Intent(this, com.filmcam.app.flash.FlashPairActivity::class.java)
+                        .putExtra(com.filmcam.app.flash.FlashPairActivity.EXTRA_MANAGE, true)
+                )
+            }.onFailure { android.util.Log.w("FlashDiag", "打开外闪灯管理失败", it) }
         }
         row(R.id.rowSetAbout).hapticClick {
             dialog.dismiss()
@@ -1588,6 +1632,37 @@ class MainActivity : AppCompatActivity() {
         } catch (_: Exception) {}
     }
 
+    // vc86：外闪配对向导结果通道。向导保存档案后回传 RESULT_OK，
+    // 这里立即按新档案重建 BLE 会话（startScan 内部会 syncLearned），
+    // 用户回到取景器即可按快门，无需重启 App。
+    private val flashPairLauncher = registerForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val ok = result.resultCode == android.app.Activity.RESULT_OK
+        if (flashPairAutoFromExt && !ok) {
+            // 自动弹出的向导没配成：EXT 档没有可用灯，退回 OFF
+            flashPairAutoFromExt = false
+            flash.mode = FlashMode.OFF
+            flash.setBuiltInEnabled(false)
+            binding.tvFlashStatus.text = getString(R.string.main_flash_off)
+            applyExposure()
+            updateLcd()
+            binding.viewfinderFrame.notifyActivity()
+            saveSettings()
+            Toast.makeText(this, getString(R.string.main_flash_pair_cancel), Toast.LENGTH_SHORT).show()
+            return@registerForActivityResult
+        }
+        flashPairAutoFromExt = false
+        if (ok && flash.mode == FlashMode.EXTERNAL) {
+            runCatching { flash.startScan() }
+                .onFailure { android.util.Log.w("FlashDiag", "配对返回后建连失败", it) }
+            // 配对成功回到取景器：机顶 LCD 明确报一次 PAIRED，别让用户怀疑没存上
+            showLcdNotice(getString(R.string.flash_pair_lcd_paired))
+        }
+    }
+    /** 本次向导是不是「切到 EXT 自动弹出」——决定取消时是否退回 OFF。 */
+    private var flashPairAutoFromExt = false
+
     /** 循环切换闪光灯模式：OFF → BUILT_IN → EXTERNAL → OFF */
     private fun cycleFlashMode() {
         val from = flash.mode
@@ -1608,9 +1683,36 @@ class MainActivity : AppCompatActivity() {
             FlashMode.EXTERNAL -> getString(R.string.main_flash_external)
         }
         if (flash.mode == FlashMode.EXTERNAL) {
-            // 建连失败也不能吞掉后面的相机同步 / LCD / 落盘，否则看起来像「按键没反应」
-            runCatching { flash.startScan() }
-                .onFailure { android.util.Log.w("FlashDiag", "切档时建连失败", it) }
+            // vc86：切到 EXT 时若一个外灯都没配过，自动进配对向导（用户拍板的产品流程：
+            // 切档 → 弹配对 → 配完即用；下次切 EXT 直接用档案连灯，不再打扰）。
+            // 已有档案（含内置 FotorGear 条目可匹配的灯）则照旧直接建连。
+            if (runCatching {
+                    com.filmcam.app.flash.FlashProfileStore(this).list().isEmpty()
+                }.getOrDefault(true)) {
+                flashPairAutoFromExt = true
+                Toast.makeText(this, getString(R.string.main_flash_pair_needed), Toast.LENGTH_SHORT).show()
+                runCatching {
+                    flashPairLauncher.launch(
+                        android.content.Intent(this, com.filmcam.app.flash.FlashPairActivity::class.java)
+                    )
+                }.onFailure {
+                    flashPairAutoFromExt = false
+                    android.util.Log.w("FlashDiag", "自动打开配对向导失败", it)
+                }
+            } else {
+                // 已有档案：状态字直接带出灯名，不干等下一次 BLE 状态回调
+                val name = runCatching {
+                    com.filmcam.app.flash.FlashProfileStore(this).list().firstOrNull()?.displayName
+                }.getOrNull()
+                if (!name.isNullOrBlank()) {
+                    binding.tvFlashStatus.text = getString(
+                        R.string.main_external_status_named, name, "READY"
+                    )
+                }
+                // 建连失败也不能吞掉后面的相机同步 / LCD / 落盘，否则看起来像「按键没反应」
+                runCatching { flash.startScan() }
+                    .onFailure { android.util.Log.w("FlashDiag", "切档时建连失败", it) }
+            }
         }
         // 内置闪光灯档位变化要同步给相机：切进来 = 拍照闪光模式，切走 = 关掉
         flash.setBuiltInEnabled(flash.mode == FlashMode.BUILT_IN)

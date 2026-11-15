@@ -1,0 +1,652 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  外闪自学习配对向导（第三层）。机身铭牌风格，与关于页同一套排版纪律：
+  2dp 圆角、蚀刻线、9sp 字距小标题、等宽字参数。
+  vc86 交互定稿：单 Activity 四页「就地翻转」——顶部机顶 LCD 状态条与底部
+  导航固定不动，只有中间页面切换；不再把三步堆在一个长页面里往下滚。
+  行条目（设备 / 通道 / 候选帧）由 Activity 程序化填充进容器。
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#000000"
+    android:orientation="vertical"
+    android:paddingStart="22dp"
+    android:paddingEnd="22dp"
+    android:paddingTop="20dp"
+    android:paddingBottom="18dp">
+
+    <!-- 铭牌标题（四页共用，不随页切换） -->
+    <TextView
+        android:id="@+id/pairTitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/flash_pair_title"
+        android:textColor="#E8E6E1"
+        android:textSize="18sp"
+        android:letterSpacing="0.08"
+        android:fontFamily="monospace" />
+
+    <TextView
+        android:id="@+id/pairSubtitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:text="@string/flash_pair_subtitle"
+        android:textColor="#8A8880"
+        android:textSize="9sp"
+        android:letterSpacing="0.2" />
+
+    <!-- 机顶 LCD：页码 + 实时状态。固定不动，用户任何一页都能看到「到哪一步了」 -->
+    <LinearLayout
+        android:id="@+id/lcdBar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="14dp"
+        android:padding="9dp"
+        android:background="#141416"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <TextView
+            android:id="@+id/pairStep"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="01 / 04"
+            android:textColor="#00E5FF"
+            android:textSize="12sp"
+            android:fontFamily="monospace" />
+
+        <TextView
+            android:id="@+id/pairStatus"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="12dp"
+            android:text="@string/flash_pair_status_scan"
+            android:textColor="#00E5FF"
+            android:textSize="12sp"
+            android:fontFamily="monospace" />
+    </LinearLayout>
+
+    <!-- 四页容器：任一时刻只显示一页，页内各自可滚 -->
+    <FrameLayout
+        android:id="@+id/pageContainer"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:layout_marginTop="12dp">
+
+        <!-- 01 认灯 -->
+        <LinearLayout
+            android:id="@+id/stepScan"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical">
+
+            <ScrollView
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:fillViewport="true">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:paddingBottom="12dp">
+
+                    <!-- 管理模式（从设置面板「外闪灯管理」进入）：第一屏就是已配对的灯，
+                         与下方扫描区互斥，不用往下滑找档案。 -->
+                    <LinearLayout
+                        android:id="@+id/manageBlock"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:visibility="gone">
+
+                        <TextView
+                            android:id="@+id/manageHeader"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textColor="#9FE1CB"
+                            android:textSize="9sp"
+                            android:letterSpacing="0.2"
+                            android:fontFamily="monospace" />
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:text="@string/flash_pair_manage_hint"
+                            android:textColor="#B8B6AE"
+                            android:textSize="12sp"
+                            android:lineSpacingExtra="3dp" />
+
+                        <LinearLayout
+                            android:id="@+id/manageList"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="10dp"
+                            android:orientation="vertical" />
+
+                        <TextView
+                            android:id="@+id/manageEmpty"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="10dp"
+                            android:text="@string/flash_pair_manage_empty"
+                            android:textColor="#5A5850"
+                            android:textSize="12sp"
+                            android:visibility="gone" />
+
+                        <Button
+                            android:id="@+id/btnImportProfile"
+                            android:layout_width="match_parent"
+                            android:layout_height="40dp"
+                            android:layout_marginTop="12dp"
+                            android:background="#141416"
+                            android:text="@string/flash_pair_manage_import"
+                            android:textColor="#E8E6E1"
+                            android:textSize="12sp" />
+                    </LinearLayout>
+
+                    <!-- 配对流程：认灯 / 附近广播 / 高级区 -->
+                    <LinearLayout
+                        android:id="@+id/scanBlock"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/flash_pair_page1"
+                        android:textColor="#8A8880"
+                        android:textSize="9sp"
+                        android:letterSpacing="0.2" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:text="@string/flash_pair_hint_nobond"
+                        android:textColor="#B8B6AE"
+                        android:textSize="12sp"
+                        android:lineSpacingExtra="3dp" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:text="@string/flash_pair_hint_dialog"
+                        android:textColor="#8A8880"
+                        android:textSize="11sp" />
+
+                    <TextView
+                        android:id="@+id/pairedHeader"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="14dp"
+                        android:text="@string/flash_pair_group_paired"
+                        android:textColor="#9FE1CB"
+                        android:textSize="9sp"
+                        android:letterSpacing="0.2" />
+
+                    <LinearLayout
+                        android:id="@+id/pairedList"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:orientation="vertical" />
+
+                    <TextView
+                        android:id="@+id/nearbyHeader"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="14dp"
+                        android:text="@string/flash_pair_group_nearby"
+                        android:textColor="#8A8880"
+                        android:textSize="9sp"
+                        android:letterSpacing="0.2" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:text="@string/flash_pair_hint_near"
+                        android:textColor="#5A5850"
+                        android:textSize="11sp"
+                        android:lineSpacingExtra="3dp" />
+
+                    <LinearLayout
+                        android:id="@+id/deviceList"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:orientation="vertical" />
+
+                    <TextView
+                        android:id="@+id/advancedHeader"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="14dp"
+                        android:paddingTop="8dp"
+                        android:paddingBottom="8dp"
+                        android:text="@string/flash_pair_advanced"
+                        android:textColor="#8A8880"
+                        android:textSize="11sp"
+                        android:fontFamily="monospace"
+                        android:clickable="true"
+                        android:focusable="true" />
+
+                    <LinearLayout
+                        android:id="@+id/advancedBlock"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:visibility="gone">
+
+                    <TextView
+                        android:id="@+id/otherHeader"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/flash_pair_group_other"
+                        android:textColor="#5A5850"
+                        android:textSize="9sp"
+                        android:letterSpacing="0.2"
+                        android:visibility="gone" />
+
+                    <LinearLayout
+                        android:id="@+id/otherList"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:orientation="vertical" />
+
+                    <!-- 手动 MAC 兜底（工程向，与手动 hex 同一种交互） -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="16dp"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical">
+
+                        <EditText
+                            android:id="@+id/manualMac"
+                            android:layout_width="0dp"
+                            android:layout_height="40dp"
+                            android:layout_weight="1"
+                            android:background="#141416"
+                            android:hint="@string/flash_pair_manual_mac_hint"
+                            android:textColorHint="#5A5850"
+                            android:textColor="#E8E6E1"
+                            android:textSize="12sp"
+                            android:fontFamily="monospace"
+                            android:inputType="text"
+                            android:padding="8dp"
+                            android:importantForAutofill="no" />
+
+                        <Button
+                            android:id="@+id/btnManualMac"
+                            android:layout_width="wrap_content"
+                            android:layout_height="40dp"
+                            android:layout_marginStart="8dp"
+                            android:background="#141416"
+                            android:text="@string/flash_pair_manual_mac_btn"
+                            android:textColor="#E8E6E1"
+                            android:textSize="12sp"
+                            android:minWidth="0dp"
+                            android:paddingStart="12dp"
+                            android:paddingEnd="12dp" />
+                    </LinearLayout>
+                    </LinearLayout>
+                    </LinearLayout>
+                </LinearLayout>
+            </ScrollView>
+        </LinearLayout>
+
+        <!-- 02 指令通道：连上后自动翻到本页 -->
+        <LinearLayout
+            android:id="@+id/stepChar"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/flash_pair_page2"
+                android:textColor="#8A8880"
+                android:textSize="9sp"
+                android:letterSpacing="0.2" />
+
+            <TextView
+                android:id="@+id/connectedMeta"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:textColor="#9FE1CB"
+                android:textSize="12sp"
+                android:fontFamily="monospace" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:text="@string/flash_pair_char_hint"
+                android:textColor="#8A8880"
+                android:textSize="11sp"
+                android:lineSpacingExtra="3dp" />
+
+            <ScrollView
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:layout_marginTop="10dp"
+                android:fillViewport="true">
+
+                <LinearLayout
+                    android:id="@+id/charList"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical" />
+            </ScrollView>
+        </LinearLayout>
+
+        <!-- 03 试闪 -->
+        <LinearLayout
+            android:id="@+id/stepFrame"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/flash_pair_page3"
+                android:textColor="#8A8880"
+                android:textSize="9sp"
+                android:letterSpacing="0.2" />
+
+            <TextView
+                android:id="@+id/trialChannel"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:textColor="#9FE1CB"
+                android:textSize="12sp"
+                android:fontFamily="monospace" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:text="@string/flash_pair_trial_hint"
+                android:textColor="#B8B6AE"
+                android:textSize="12sp"
+                android:lineSpacingExtra="4dp" />
+
+            <ScrollView
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:layout_marginTop="8dp"
+                android:fillViewport="true">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:id="@+id/untestedHeader"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="#9FE1CB"
+                        android:textSize="11sp"
+                        android:fontFamily="monospace" />
+
+                    <LinearLayout
+                        android:id="@+id/frameList"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:orientation="vertical" />
+
+                    <TextView
+                        android:id="@+id/triedHeader"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:paddingTop="8dp"
+                        android:paddingBottom="8dp"
+                        android:textColor="#5A5850"
+                        android:textSize="11sp"
+                        android:fontFamily="monospace"
+                        android:clickable="true"
+                        android:focusable="true" />
+
+                    <LinearLayout
+                        android:id="@+id/triedList"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:visibility="gone" />
+                </LinearLayout>
+            </ScrollView>
+
+            <TextView
+                android:id="@+id/frameHint"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:text="@string/flash_pair_frame_disabled_hint"
+                android:textColor="#5A5850"
+                android:textSize="11sp" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <EditText
+                    android:id="@+id/manualHex"
+                    android:layout_width="0dp"
+                    android:layout_height="40dp"
+                    android:layout_weight="1"
+                    android:background="#141416"
+                    android:hint="@string/flash_pair_manual_hint"
+                    android:textColorHint="#5A5850"
+                    android:textColor="#E8E6E1"
+                    android:textSize="13sp"
+                    android:fontFamily="monospace"
+                    android:inputType="text"
+                    android:padding="8dp"
+                    android:importantForAutofill="no" />
+
+                <Button
+                    android:id="@+id/btnManualSend"
+                    android:layout_width="wrap_content"
+                    android:layout_height="40dp"
+                    android:layout_marginStart="8dp"
+                    android:background="#141416"
+                    android:text="@string/flash_pair_send"
+                    android:textColor="#E8E6E1"
+                    android:textSize="12sp"
+                    android:minWidth="0dp"
+                    android:paddingStart="14dp"
+                    android:paddingEnd="14dp" />
+            </LinearLayout>
+
+            <Button
+                android:id="@+id/btnNoneFlash"
+                android:layout_width="match_parent"
+                android:layout_height="40dp"
+                android:layout_marginTop="8dp"
+                android:background="#141416"
+                android:text="@string/flash_pair_none"
+                android:textColor="#8A8880"
+                android:textSize="12sp" />
+        </LinearLayout>
+
+        <!-- 04 完成铭牌 -->
+        <LinearLayout
+            android:id="@+id/stepDone"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/flash_pair_page4"
+                android:textColor="#8A8880"
+                android:textSize="9sp"
+                android:letterSpacing="0.2" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="14dp"
+                android:padding="16dp"
+                android:background="#141416"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/doneTitle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/flash_pair_paired_title"
+                    android:textColor="#9FE1CB"
+                    android:textSize="20sp"
+                    android:letterSpacing="0.08"
+                    android:fontFamily="monospace" />
+
+                <TextView
+                    android:id="@+id/doneText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:textColor="#E8E6E1"
+                    android:textSize="13sp"
+                    android:lineSpacingExtra="4dp"
+                    android:fontFamily="monospace" />
+
+                <TextView
+                    android:id="@+id/doneMeta"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:textColor="#8A8880"
+                    android:textSize="11sp"
+                    android:lineSpacingExtra="4dp"
+                    android:fontFamily="monospace" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:text="@string/flash_pair_next_hint"
+                    android:textColor="#8A8880"
+                    android:textSize="11sp" />
+            </LinearLayout>
+
+            <Button
+                android:id="@+id/btnCopyProfile"
+                android:layout_width="match_parent"
+                android:layout_height="40dp"
+                android:layout_marginTop="12dp"
+                android:background="#141416"
+                android:text="@string/flash_pair_copy_profile"
+                android:textColor="#E8E6E1"
+                android:textSize="12sp" />
+
+            <Button
+                android:id="@+id/btnTestAgain"
+                android:layout_width="match_parent"
+                android:layout_height="40dp"
+                android:layout_marginTop="12dp"
+                android:background="#1C2A28"
+                android:text="@string/flash_pair_test_again"
+                android:textColor="#9FE1CB"
+                android:textSize="13sp" />
+
+            <ScrollView
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:layout_marginTop="16dp"
+                android:fillViewport="true">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/flash_pair_saved_title"
+                        android:textColor="#8A8880"
+                        android:textSize="9sp"
+                        android:letterSpacing="0.2" />
+
+                    <LinearLayout
+                        android:id="@+id/savedList"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:orientation="vertical" />
+
+                    <TextView
+                        android:id="@+id/savedEmpty"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:text="@string/flash_pair_saved_empty"
+                        android:textColor="#5A5850"
+                        android:textSize="12sp"
+                        android:visibility="gone" />
+                </LinearLayout>
+            </ScrollView>
+        </LinearLayout>
+    </FrameLayout>
+
+    <!-- 底部机身键：BACK 回上一步，主按钮随页换文案（不再藏在页面下方） -->
+    <LinearLayout
+        android:id="@+id/navBar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <Button
+            android:id="@+id/btnBack"
+            android:layout_width="wrap_content"
+            android:layout_height="44dp"
+            android:background="#141416"
+            android:text="@string/flash_pair_back"
+            android:textColor="#8A8880"
+            android:textSize="12sp"
+            android:minWidth="0dp"
+            android:paddingStart="14dp"
+            android:paddingEnd="14dp" />
+
+        <Button
+            android:id="@+id/btnPrimary"
+            android:layout_width="0dp"
+            android:layout_height="44dp"
+            android:layout_weight="1"
+            android:layout_marginStart="8dp"
+            android:background="#1C2A28"
+            android:text="@string/flash_pair_primary_rescan"
+            android:textColor="#9FE1CB"
+            android:textSize="13sp" />
+    </LinearLayout>
+</LinearLayout>

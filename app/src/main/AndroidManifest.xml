@@ -98,6 +98,11 @@
             android:name=".PhotoViewerActivity"
             android:exported="false"
             android:screenOrientation="fullSensor" />
+        <!-- 外闪自学习配对向导：长按取景器闪光状态字进入（非 launcher 入口，不导出） -->
+        <activity
+            android:name=".flash.FlashPairActivity"
+            android:exported="false"
+            android:screenOrientation="fullSensor" />
 
         <!-- 暗房冲洗 -->
         <activity
