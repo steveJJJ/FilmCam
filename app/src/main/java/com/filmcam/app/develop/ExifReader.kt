@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import android.util.Log
 import androidx.exifinterface.media.ExifInterface
+import com.filmcam.app.film.CaptureExifFormat
 
 /**
  * 成片 EXIF 读取器：把成片上的胶卷元数据解析成可展示的结构。
@@ -36,6 +37,14 @@ object ExifReader {
         val dimensions: String,        // 像素尺寸
         val software: String,          // 软件标识
         val shot: com.filmcam.app.film.ShotMeta? = null,  // 拍摄参数（闪光/白平衡/EV/快门/失焦）
+        /** 实拍传感器 ISO（ISOSpeed，独立于模拟胶卷 ISO）。 */
+        val sensorIso: String = "",
+        /** 实拍快门（ExposureTime，rational 字符串如 "1/10"）。 */
+        val exposureTime: String = "",
+        /** 标准 Flash 位（"1" = 闪了）。 */
+        val flashTag: String = "",
+        /** 曝光补偿（ExposureBiasValue，rational 字符串如 "-3/2"）。 */
+        val exposureBias: String = "",
     )
 
     /** 冲洗参数（从 UserComment 的 JSON 解析）。 */
@@ -72,7 +81,13 @@ object ExifReader {
             val roll = exif.getAttribute(ExifInterface.TAG_BODY_SERIAL_NUMBER).orEmpty()
             val make = exif.getAttribute(ExifInterface.TAG_MAKE).orEmpty()
             val model = exif.getAttribute(ExifInterface.TAG_MODEL).orEmpty()
-            Log.d(TAG, "读取 EXIF: uri=$uri Make=$make Model=$model Lens=$lens Desc=$desc Roll=$roll")
+            Log.d(
+                TAG,
+                "读取 EXIF: uri=$uri Make=$make Model=$model Lens=$lens Desc=$desc Roll=$roll " +
+                    "SensorISO=${exif.getAttribute(ExifInterface.TAG_ISO_SPEED)} " +
+                    "ExposureTime=${exif.getAttribute(ExifInterface.TAG_EXPOSURE_TIME)} " +
+                    "Flash=${exif.getAttribute(ExifInterface.TAG_FLASH)}"
+            )
 
             val filmId = desc.substringAfter("film=", "").substringBefore(" print=").trim()
             val printId = desc.substringAfter("print=", "").trim()
@@ -86,8 +101,10 @@ object ExifReader {
                 make = make,
                 model = model,
                 lens = lens,
-                focalLength = exif.getAttribute(ExifInterface.TAG_FOCAL_LENGTH).orEmpty(),
-                fNumber = exif.getAttribute(ExifInterface.TAG_F_NUMBER).orEmpty(),
+                // URATIONAL 读回可能是 "43/10" / "28000/10000"，归约成 4.3 / 2.8
+                // 再上铭牌；否则面板会刻出 "43/10mm" 这种怪值。
+                focalLength = CaptureExifFormat.decimal(exif.getAttribute(ExifInterface.TAG_FOCAL_LENGTH)),
+                fNumber = CaptureExifFormat.decimal(exif.getAttribute(ExifInterface.TAG_F_NUMBER)),
                 iso = exif.getAttribute(ExifInterface.TAG_ISO_SPEED_RATINGS).orEmpty(),
                 dateTimeOriginal = exif.getAttribute(ExifInterface.TAG_DATETIME_ORIGINAL).orEmpty(),
                 dimensions = buildString {
@@ -97,6 +114,10 @@ object ExifReader {
                 },
                 software = exif.getAttribute(ExifInterface.TAG_SOFTWARE).orEmpty(),
                 shot = parseShot(exif.getAttribute(ExifInterface.TAG_USER_COMMENT)),
+                sensorIso = exif.getAttribute(ExifInterface.TAG_ISO_SPEED).orEmpty(),
+                exposureTime = exif.getAttribute(ExifInterface.TAG_EXPOSURE_TIME).orEmpty(),
+                flashTag = exif.getAttribute(ExifInterface.TAG_FLASH).orEmpty(),
+                exposureBias = exif.getAttribute(ExifInterface.TAG_EXPOSURE_BIAS_VALUE).orEmpty(),
             )
         } catch (e: Throwable) {
             Log.w(TAG, "读取 EXIF 失败: ${e.message}")

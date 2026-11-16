@@ -438,8 +438,19 @@ object SpektraProcessor {
                 var k = if (aspect >= 1f) c.h / 2 else c.w / 2
                 if (k % 2 == 1) k -= 1
                 if (k >= 2) {
-                    val gw = if (aspect >= 1f) 3 * k else 2 * k
-                    val gh = if (aspect >= 1f) 2 * k else 3 * k
+                    // 135 是 3:2（横 3k×2k / 竖 2k×3k）；120 6×6 是 1:1（2k×2k）。
+                    // 两边都保持偶数、原点偶对齐，CFAPattern 的 Bayer 相位才不串。
+                    val square = kotlin.math.abs(aspect - 1f) < 0.01f
+                    val gw = when {
+                        square -> 2 * k
+                        aspect >= 1f -> 3 * k
+                        else -> 2 * k
+                    }
+                    val gh = when {
+                        square -> 2 * k
+                        aspect >= 1f -> 2 * k
+                        else -> 3 * k
+                    }
                     if (gw <= z[2] && gh <= z[3]) {
                         cw = gw
                         ch = gh
@@ -527,6 +538,8 @@ object SpektraProcessor {
         if (!o.optBoolean("overscan_active", false)) return null
         when (o.optString("overscan_format")) {
             "135" -> 36f / 24f
+            // 腰平方窗：120 6×6 中画幅，1:1 片门。引擎 overscan 格式表里有这一格。
+            "120_6x6" -> 1f
             else -> null
         }
     }.getOrNull()

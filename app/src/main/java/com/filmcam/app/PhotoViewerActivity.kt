@@ -12,6 +12,7 @@ import androidx.fragment.app.FragmentActivity
 import androidx.viewpager2.adapter.FragmentStateAdapter
 import androidx.viewpager2.widget.ViewPager2
 import com.filmcam.app.develop.ExifReader
+import com.filmcam.app.film.CaptureExifFormat
 import com.filmcam.app.ui.Haptics
 import com.filmcam.app.ui.hapticClick
 
@@ -99,6 +100,7 @@ class PhotoViewerActivity : AppCompatActivity() {
                 putExtra(MainActivity.EXTRA_SAME_FLASH, shot.flash)
                 putExtra(MainActivity.EXTRA_SAME_WB, shot.awbMode)
                 putExtra(MainActivity.EXTRA_SAME_EV, shot.ev)
+                putExtra(MainActivity.EXTRA_SAME_FLASH_EV, shot.flashCompEv)
             }
         }
         startActivity(intent)
@@ -131,6 +133,8 @@ class PhotoViewerActivity : AppCompatActivity() {
         val tvFilmName = panelInfo.findViewById<TextView>(R.id.tvFilmName)
         val tvRollId = panelInfo.findViewById<TextView>(R.id.tvRollId)
         val tvShooting = panelInfo.findViewById<TextView>(R.id.tvShooting)
+        val tvCapture = panelInfo.findViewById<TextView>(R.id.tvCapture)
+        val tvCaptureDetail = panelInfo.findViewById<TextView>(R.id.tvCaptureDetail)
         val tvShotTime = panelInfo.findViewById<TextView>(R.id.tvShotTime)
         val tvPrintStock = panelInfo.findViewById<TextView>(R.id.tvPrintStock)
         val tvDevParams = panelInfo.findViewById<TextView>(R.id.tvDevParams)
@@ -141,6 +145,8 @@ class PhotoViewerActivity : AppCompatActivity() {
             tvFilmName.text = getString(R.string.info_no_exif)
             tvRollId.text = ""
             tvShooting.text = ""
+            tvCapture.text = ""
+            tvCaptureDetail.text = ""
             tvShotTime.text = ""
             tvPrintStock.text = ""
             tvDevParams.text = ""
@@ -157,6 +163,8 @@ class PhotoViewerActivity : AppCompatActivity() {
             tvFilmName.text = getString(R.string.info_no_exif)
             tvRollId.text = ""
             tvShooting.text = ""
+            tvCapture.text = ""
+            tvCaptureDetail.text = ""
             tvShotTime.text = ""
             tvPrintStock.text = ""
             tvDevParams.text = ""
@@ -197,6 +205,42 @@ class PhotoViewerActivity : AppCompatActivity() {
             if (shot.defocus) shootParts += getString(R.string.pf_defocus_short)
         }
         tvShooting.text = shootParts.joinToString(" · ")
+
+        // 实拍参数：模拟机身铭牌之外的传感器真值，直接读标准 EXIF 字段。
+        // 外闪过曝复盘要看的就是这一行（ISO / 快门 / 用了哪盏灯）。
+        val captureParts = mutableListOf<String>()
+        if (info.sensorIso.isNotBlank()) {
+            captureParts += getString(R.string.pf_capture_iso, info.sensorIso)
+        }
+        if (info.exposureTime.isNotBlank()) {
+            captureParts += getString(R.string.pf_capture_shutter, CaptureExifFormat.shutterLabel(info.exposureTime))
+        }
+        info.shot?.let { shot ->
+            when {
+                shot.flash.equals("EXTERNAL", ignoreCase = true) -> captureParts += getString(
+                    R.string.pf_capture_ext_flash, shot.flashDevice.ifBlank { "EXT" }
+                )
+                shot.flash.equals("BUILT_IN", ignoreCase = true) ->
+                    captureParts += getString(R.string.pf_capture_builtin)
+            }
+        }
+        tvCapture.text = captureParts.joinToString(" · ")
+
+        // 外闪身份与指令（档案快照）：MAC / 通道 / 触发帧 / 细档补偿
+        val detailParts = mutableListOf<String>()
+        info.shot?.let { shot ->
+            if (shot.flashAddress.isNotBlank()) detailParts += shot.flashAddress
+            if (shot.flashChannel.isNotBlank()) {
+                detailParts += getString(R.string.pf_capture_channel, CaptureExifFormat.shortUuid(shot.flashChannel))
+            }
+            if (shot.flashTriggerHex.isNotBlank()) {
+                detailParts += getString(R.string.pf_capture_trigger, shot.flashTriggerHex)
+            }
+            if (shot.flash.equals("EXTERNAL", ignoreCase = true) && shot.flashCompEv != 0f) {
+                detailParts += getString(R.string.pf_capture_flash_ev, shot.flashCompEv)
+            }
+        }
+        tvCaptureDetail.text = detailParts.joinToString(" · ")
 
         // 拍摄时间
         tvShotTime.text = if (info.dateTimeOriginal.isNotBlank()) {

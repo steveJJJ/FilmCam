@@ -214,6 +214,121 @@
         <TextView android:id="@+id/tvExposure" android:layout_width="wrap_content" android:layout_height="wrap_content" />
     </LinearLayout>
 
+    <!-- 腰平取景（Contax 645 MF-2 取景罩语言）：A 半屏纯黑遮罩 + 取景罩顶沿 +
+         屏框覆盖层 + 折叠前盖。镜头那一面只留纯黑（OLED 像素关闭，不给被摄者
+         看到界面反光）；B 半屏顶沿是一行细刻字铭牌，底部折叠前盖放
+         CLOSE / 实时读数 / 快门。全部是 root 后置 child，常规模式 gone，
+         由 WaistLevelChrome.apply() 幂等改 LayoutParams。
+         ⚠️ layout/ 与 layout-land/ 必须同名 id 同步，否则 view binding 生成 nullable。 -->
+    <View
+        android:id="@+id/waistMask"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#000"
+        android:visibility="gone" />
+
+    <FrameLayout
+        android:id="@+id/waistTopBar"
+        android:layout_width="match_parent"
+        android:layout_height="34dp"
+        android:background="#0C0C0E"
+        android:visibility="gone">
+
+        <View
+            android:id="@+id/waistScrewLeft"
+            android:layout_width="7dp"
+            android:layout_height="7dp"
+            android:layout_gravity="start|center_vertical"
+            android:layout_marginStart="10dp"
+            android:background="@drawable/bg_waist_screw" />
+
+        <TextView
+            android:id="@+id/waistTopLabel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:fontFamily="monospace"
+            android:letterSpacing="0.3"
+            android:text="@string/waist_level_engrave"
+            android:textColor="#B9B7B0"
+            android:textSize="10sp" />
+
+        <View
+            android:id="@+id/waistScrewRight"
+            android:layout_width="7dp"
+            android:layout_height="7dp"
+            android:layout_gravity="end|center_vertical"
+            android:layout_marginEnd="10dp"
+            android:background="@drawable/bg_waist_screw" />
+    </FrameLayout>
+
+    <com.filmcam.app.ui.WaistFinderOverlayView
+        android:id="@+id/waistFinderOverlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone" />
+
+    <LinearLayout
+        android:id="@+id/waistBar"
+        android:layout_width="match_parent"
+        android:layout_height="72dp"
+        android:layout_gravity="bottom"
+        android:background="#0C0C0E"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/waistClose"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:background="?android:attr/selectableItemBackground"
+            android:fontFamily="monospace"
+            android:gravity="center"
+            android:letterSpacing="0.2"
+            android:minWidth="72dp"
+            android:text="@string/waist_level_close"
+            android:textColor="#8A8880"
+            android:textSize="11sp" />
+
+        <TextView
+            android:id="@+id/waistReadout"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:fontFamily="monospace"
+            android:gravity="center"
+            android:letterSpacing="0.06"
+            android:text="@string/waist_level_readout"
+            android:textColor="#9FE1CB"
+            android:textSize="12sp" />
+
+        <!-- 画幅档循环：AUTO / 1:1 6×6 / 3:2 135，取景格与成片形状同步 -->
+        <TextView
+            android:id="@+id/waistRotate"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:background="?android:attr/selectableItemBackground"
+            android:fontFamily="monospace"
+            android:gravity="center"
+            android:letterSpacing="0.1"
+            android:minWidth="48dp"
+            android:paddingStart="6dp"
+            android:paddingEnd="6dp"
+            android:text="AUTO"
+            android:textColor="#9FE1CB"
+            android:textSize="12sp"
+            android:contentDescription="@string/waist_level_cd_rotate" />
+
+        <ImageButton
+            android:id="@+id/waistShutter"
+            android:layout_width="52dp"
+            android:layout_height="52dp"
+            android:layout_marginEnd="10dp"
+            android:background="@drawable/bg_waist_shutter"
+            android:contentDescription="@string/waist_level_cd_shutter" />
+    </LinearLayout>
+
     <!-- 自动过卷动画遮罩（T3 风格：胶卷旋转过卷 + 状态文字） -->
     <FrameLayout
         android:id="@+id/developingOverlay"

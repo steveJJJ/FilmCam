@@ -140,13 +140,14 @@ App 版本：%1$s (%2$d)
         <item>黑钛 / 钛银两种机身外壳</item>
         <item>成片右下角打印拍摄日期</item>
         <item>过卷与按键的马达力度</item>
-        <item>相当于换一片校色滤镜，拍完也保持不变</item>
+        <item>相当于换一片校色滤镜，拍完也保持不变；腰平取景窗横滑时显示该档标称色温（≈K，非实测）</item>
         <item>跟随系统 / 简体中文 / English</item>
         <item>完整＝原始分辨率，慢；标准≈1200 万像素，快约 3 倍</item>
-        <item>成片一律按 135 片门出片（竖拍走竖置那一格）：关＝只出画面；全画幅 3:2 连片基齿孔一起扫；白边＝暗房相纸留白</item>
+        <item>常规拍摄按 135 片门出片（竖拍走竖置那一格）；腰平方形取景窗按 120 6×6 出 1:1：关＝只出画面；全画幅连片基齿孔 / 120 纸背一起扫；白边＝暗房相纸留白</item>
         <item>退掉手机 ISP 多加的那层色彩：标准 / 淡 / 原始，仅 JPG 与导入照片，RAW 不变；工程师控制台可细调 0–100%</item>
         <item>拍摄时同时保存 RAW 底片（DNG），冲洗绕过手机 ISP，细节与颗粒更接近真实底片；本机不支持时自动回落 JPEG，工程师控制台同款开关</item>
         <item>查看、复制或删除已配对的外置闪光灯；导入别人的档案，或自学习配一盏新灯</item>
+        <item>折叠屏彩蛋已搬到工程模式（版本号连点 10 次）：关 / 自动 / 模拟</item>
         <item>机身铭牌与许可证</item>
     </string-array>
 
@@ -488,5 +489,23 @@ App 版本：%1$s (%2$d)
     <string name="flash_pair_copy_short">复制</string>
     <string name="flash_pair_manage_deleted">已删除 %1$s</string>
     <string name="flash_pair_manage_row_meta">%1$s   CH %2$s   TRIG %3$s</string>
+
+    <!-- 切到 EXT 档：机顶 EV 拨盘就地变成闪光灯细档补偿 -->
+    <string name="lcd_notice_flash_ev_fine">外闪补偿 0.5 EV/档</string>
+
+    <!-- ===== 腰平取景（P0 骨架）：设置行 + 半屏控件条 ===== -->
+    <string name="eng_waist">腰平取景（折叠屏彩蛋）</string>
+    <string name="eng_waist_hint">关＝永不触发；自动＝只有折叠屏折到半开才出现（直板机看不到）；模拟＝直板机也按半屏切分，仅调试用</string>
+    <string name="eng_waist_off">关</string>
+    <string name="eng_waist_auto">自动</string>
+    <string name="eng_waist_simulate">模拟</string>
+    <string name="waist_level_label">WAIST LEVEL</string>
+    <string name="waist_level_engrave">RELIC CAM · WAIST FINDER</string>
+    <string name="waist_level_close">CLOSE</string>
+    <string name="waist_level_readout">EV 0 · OFF · 0/36</string>
+    <string name="waist_level_cd_shutter">快门</string>
+    <string name="waist_level_cd_rotate">切换画幅：自动 / 1:1 6×6 中画幅 / 3:2 135 全幅</string>
+    <string name="lcd_notice_waist">腰平取景 · 半屏</string>
+    <string name="lcd_notice_waist_off">腰平取景 · 关闭</string>
 
 </resources>

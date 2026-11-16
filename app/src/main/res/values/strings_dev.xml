@@ -83,4 +83,13 @@
     <string name="lcd_notice_dev_done">冲洗完成 出片%1$d张</string>
     <string name="lcd_notice_raw_unavailable">本机不支持RAW 已用JPEG</string>
 
+    <!-- ===== 成片实拍参数（标准 EXIF 字段，区别于模拟机身铭牌） ===== -->
+    <string name="pf_capture_iso">实拍 ISO %1$s</string>
+    <string name="pf_capture_shutter">快门 %1$s</string>
+    <string name="pf_capture_ext_flash">外闪 %1$s</string>
+    <string name="pf_capture_builtin">内置闪光</string>
+    <string name="pf_capture_channel">CH %1$s</string>
+    <string name="pf_capture_trigger">TRIG %1$s</string>
+    <string name="pf_capture_flash_ev">闪补 %1$.1f EV</string>
+
 </resources>

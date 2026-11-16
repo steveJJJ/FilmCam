@@ -105,6 +105,18 @@
                     style="@style/InfoRow"
                     tools:text="CONTAX T3 · 35mm f/2.8 · ISO 400" />
 
+                <!-- 实拍参数（标准 EXIF 字段）：模拟机身铭牌之外的传感器真值，
+                     外闪过曝复盘看的就是这两行。老成片没有这些字段时留空。 -->
+                <TextView
+                    android:id="@+id/tvCapture"
+                    style="@style/InfoRow"
+                    tools:text="实拍 ISO 228 · 1/10s · 外闪 FG-COB-FLASH" />
+
+                <TextView
+                    android:id="@+id/tvCaptureDetail"
+                    style="@style/InfoRow"
+                    tools:text="BE:B0:XX:XX · CH FFE1 · TRIG 05 01 · 闪补 -1.5 EV" />
+
                 <TextView
                     android:id="@+id/tvShotTime"
                     style="@style/InfoRow"

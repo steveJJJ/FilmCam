@@ -258,6 +258,16 @@ class DevelopmentService : Service() {
                 pickFrameFormat(roll.filmStockId, mappedPrint, effective)
             } else FrameCheck(null, false, false)
             val frameFormat = frameCheck.format
+            // 腰平方窗拍的是 120 6×6：只有卷里真有这种帧才多跑一次片框自检、多配
+            // 一套 120 参数。纯 135 卷连一个额外引擎 session 都不会开（老路径零改动）。
+            val rollMf66 = rollHasMediumFormat(roll)
+            val mf66 = if (rollMf66) {
+                pickMediumFrame(
+                    roll.filmStockId, mappedPrint, effective,
+                    framed = effective.frameFormat.isOn,
+                )
+            } else MediumFrameCheck(null, 36f)
+            Log.i(TAG, "画幅统计: 6×6 帧=${if (rollMf66) "有" else "无"} · 120 片框=${if (mf66.entries != null) "可用(${mf66.entries?.size} 键)" else "不可用"} · 幅宽=${mf66.filmFormatMm}mm")
             if (effective.frameFormat.isOn && frameFormat == null) {
                 // 这一格引擎不认：关掉片框照常出图，别让用户等半天得到一个降级档
                 Log.w(TAG, "片框不可用，本次冲洗不带片框")
@@ -346,6 +356,34 @@ class DevelopmentService : Service() {
                     flashEntries = acceptedFlash,
                 )
             } else null
+
+            // ---- 6×6 帧专属参数（120_6x6 片框 / 纯画面 / 两种直闪变体）----
+            // 135 那份参数带着 135 片门形状与 36mm 幅宽，方画幅用它会被引擎拒；
+            // 6×6 帧全部改走这四份：片框版式 120_6x6、底片幅宽由真机自检挑定。
+            // extraEntries=emptyList() 是刻意的：显式空表会盖掉 buildParamsJson 里
+            // 「按 settings.frameFormat 自动补一份 135 片框」的默认分支。
+            // 用真机自检挑出来的那组版式（可能已去掉齿孔键），不是重新拼一份 135 默认版式
+            val mf66FrameEntries = mf66.entries?.filter { it.first !in rejected } ?: emptyList()
+            fun mf66Json(flash: Boolean, framed: Boolean): String =
+                FilmStockMapper.buildParamsJson(
+                    roll.filmStockId, mappedPrint, effective,
+                    includeStyleMark = false,
+                    scanFinishLevel = FilmStockMapper.SCAN_LEVEL_FULL,
+                    scanExtraOverride = FilmStockMapper.scanFinishEntries(
+                        effective.outputStyle, FilmStockMapper.SCAN_LEVEL_SAFE
+                    ) + acceptedScan,
+                    extraEntries = if (framed) mf66FrameEntries else emptyList(),
+                    flashShot = flash,
+                    flashEntries = if (flash) acceptedFlash else null,
+                    filmFormatMm = mf66.filmFormatMm,
+                )
+            val mf66ParamsJson = if (rollMf66) mf66Json(false, false) else null
+            val mf66FlashParamsJson = if (rollMf66) mf66Json(true, false) else null
+            val mf66FrameParamsJson =
+                if (rollMf66 && mf66FrameEntries.isNotEmpty()) mf66Json(false, true) else null
+            val mf66FlashFrameParamsJson =
+                if (mf66FrameParamsJson != null) mf66Json(true, true) else null
+
             var activeFallbackChain: List<String> = buildList {
                 if (effective.outputStyle.isScan) {
                     add(safeJson)
@@ -403,6 +441,11 @@ class DevelopmentService : Service() {
                         rollNormBaseline = rollNormBaseline,
                         // v66：白边档在两条通路的落盘前各自外扩（整卷统一，开卷读一次）
                         whiteBorder = effective.frameFormat.isWhiteBorder,
+                        // 6×6 帧专用参数（无 6×6 帧的卷全是 null，完全走老路径）
+                        mf66ParamsJson = mf66ParamsJson,
+                        mf66FlashParamsJson = mf66FlashParamsJson,
+                        mf66FrameParamsJson = mf66FrameParamsJson,
+                        mf66FlashFrameParamsJson = mf66FlashFrameParamsJson,
                     )
                     if (usedFallback) {
                         fallbackFrames++
@@ -599,6 +642,11 @@ class DevelopmentService : Service() {
         rollNormBaseline: FloatArray = FloatArray(1) { -1f },
         /** v66：白边相框档（App 侧外扩；本档不带任何 `overscan_*`）。 */
         whiteBorder: Boolean = false,
+        /** 6×6 帧的 120 参数四变体；null = 这卷没有中画幅帧。 */
+        mf66ParamsJson: String? = null,
+        mf66FlashParamsJson: String? = null,
+        mf66FrameParamsJson: String? = null,
+        mf66FlashFrameParamsJson: String? = null,
     ): Boolean {
         val tTotal0 = android.os.SystemClock.elapsedRealtime()
 
@@ -638,6 +686,10 @@ class DevelopmentService : Service() {
                     frameParamsJson, frameOkPortrait, flashParamsJson, flashFrameParamsJson,
                     userInputEv = rawInputEv,
                     whiteBorder = whiteBorder,
+                    mf66ParamsJson = mf66ParamsJson,
+                    mf66FlashParamsJson = mf66FlashParamsJson,
+                    mf66FrameParamsJson = mf66FrameParamsJson,
+                    mf66FlashFrameParamsJson = mf66FlashFrameParamsJson,
                 )
             }.onFailure {
                 Log.w(TAG, "帧 $index RAW 通路失败，落回 JPEG 通路: ${it.message}", it)
@@ -686,10 +738,16 @@ class DevelopmentService : Service() {
             bmp = rotated
         }
 
-        // 裁到片门：真机也是这么回事 —— 镜头成像圈是圆的，机身只取中间那块 36×24
-        // 的矩形，画面之外的部分从来就没落在底片上。引擎同样只认片门形状的输入。
-        // 竖拍走竖置片门（画面在底片上本来就是竖的，齿孔照样在上下）。
-        val crop = FilmStockMapper.gateCrop(gate, bmp.width, bmp.height)
+        // 拍摄快照提前读一次：这一帧是 135 还是 120 6×6 决定片门形状。
+        // 老帧没有记录 → 回落 135，取景 / 成片形状与升级前完全一致。
+        val frameShotJson = UndevelopedFilmStore.frameShot(roll.rollId, index)
+
+        // 裁到片门：真机也是这么回事 —— 镜头成像圈是圆的，机身只取中间那一格。
+        // 135 横拍 36×24（3:2）/ 竖拍 24×36（2:3）；腰平方窗 120 6×6 = 1:1。
+        // 引擎同样按片门形状校验输入，所以必须先裁再送进去。
+        val crop = FilmStockMapper.gateCrop(
+            bmp.width, bmp.height, frameGateAspect(frameShotJson, bmp.width < bmp.height)
+        )
         if (crop.cropped) {
             val srcW = bmp.width
             val srcH = bmp.height
@@ -717,8 +775,8 @@ class DevelopmentService : Service() {
                 System.currentTimeMillis()
             }
             val iso = UndevelopedFilmStore.frameIso(roll.rollId, index)
-            // 这一帧的拍摄参数（闪光/白平衡/EV/快门/失焦）随成片 EXIF 保存，供「拍摄同款」复现
-            val shotJson = UndevelopedFilmStore.frameShot(roll.rollId, index)
+            // 这一帧的拍摄参数（闪光/白平衡/EV/快门/失焦/画幅）随成片 EXIF 保存，供「拍摄同款」复现
+            val shotJson = frameShotJson
 
             // 日期戳：直接画在进引擎的位图上，省掉一次全尺寸 decode + encode；
             // 水印会随 LUT 一起调色（等同底片曝光日期）。失败不影响整卷冲洗。
@@ -790,20 +848,29 @@ class DevelopmentService : Service() {
             val tEngine0 = android.os.SystemClock.elapsedRealtime()
             // 竖帧能不能带片框：引擎认不认竖置片门是冲洗前自检问来的，
             // 不认就这一帧只出画面（画幅照样是竖片门那一格），别为一片片基把画面毁了。
+            // 6×6 帧方画幅无横竖之分，改走 120_6x6 那套自检过的参数。
             // 闪光帧（BUILT_IN / EXTERNAL）换用直闪变体：底片上它们就是另一种东西。
-            val isFlash = com.filmcam.app.film.ShotMeta.fromJson(shotJson)
-                ?.flash?.let { it != "OFF" } == true
+            val shotMeta = com.filmcam.app.film.ShotMeta.fromJson(shotJson)
+            val isFlash = shotMeta?.flash?.let { it != "OFF" } == true
+            val isMf66 = frameGate(shotJson).isMediumFormat
             val portrait = bmp.width < bmp.height
-            val useFrame = frameParamsJson != null && (!portrait || frameOkPortrait)
+            val useFrame = if (isMf66) mf66FrameParamsJson != null
+            else frameParamsJson != null && (!portrait || frameOkPortrait)
             val baseJson = when {
+                isMf66 && useFrame && isFlash -> mf66FlashFrameParamsJson ?: mf66FrameParamsJson!!
+                isMf66 && useFrame -> mf66FrameParamsJson!!
+                isMf66 && isFlash -> mf66FlashParamsJson ?: paramsJson
+                isMf66 -> mf66ParamsJson ?: paramsJson
                 useFrame && isFlash -> flashFrameParamsJson ?: frameParamsJson!!
                 useFrame -> frameParamsJson!!
                 isFlash -> flashParamsJson ?: paramsJson
                 else -> paramsJson
             }
-            // 直闪参数万一被引擎拒，先兜回同一帧的普通参数 —— 味道丢了，帧不能丢
+            // 直闪参数万一被引擎拒，先兜回同一帧的普通参数 —— 味道丢了，帧不能丢。
+            // 6×6 帧优先兜回 6×6 纯画面那份（片门/幅宽才对得上），再退整卷基线。
             val effectiveFallbacks =
-                if (isFlash && baseJson != paramsJson) listOf(paramsJson) + fallbackParamsJsons
+                if (isMf66) listOfNotNull(mf66ParamsJson, paramsJson) + fallbackParamsJsons
+                else if (isFlash && baseJson != paramsJson) listOf(paramsJson) + fallbackParamsJsons
                 else fallbackParamsJsons
             val frameParamsJsonOrNull =
                 if (useFrame && frameNumber > 0) {
@@ -916,6 +983,11 @@ class DevelopmentService : Service() {
         userInputEv: Float = 0f,
         /** v66：白边相框档（并入已有的那一次 `compress(JPEG, 95)`，不额外压一次）。 */
         whiteBorder: Boolean = false,
+        /** 6×6 帧的 120 参数四变体；null = 这卷没有中画幅帧。 */
+        mf66ParamsJson: String? = null,
+        mf66FlashParamsJson: String? = null,
+        mf66FrameParamsJson: String? = null,
+        mf66FlashFrameParamsJson: String? = null,
     ): Boolean {
         val takenAt = try {
             UndevelopedFilmStore.frameTakenAt(roll.rollId, index)
@@ -929,16 +1001,24 @@ class DevelopmentService : Service() {
         val shotMeta = com.filmcam.app.film.ShotMeta.fromJson(shotJson)
         val isFlash = shotMeta?.flash?.let { it != "OFF" } == true
         val frameZoom = shotMeta?.zoom ?: 0f
+        val isMf66 = frameGate(shotJson).isMediumFormat
         val portrait = rotation == 90 || rotation == 270
-        val useFrame = frameParamsJson != null && (!portrait || frameOkPortrait)
+        // 6×6 方画幅走 120_6x6 自检过的那份参数，横竖片门的限制对它不适用。
+        val useFrame = if (isMf66) mf66FrameParamsJson != null
+        else frameParamsJson != null && (!portrait || frameOkPortrait)
         val baseJson = when {
+            isMf66 && useFrame && isFlash -> mf66FlashFrameParamsJson ?: mf66FrameParamsJson!!
+            isMf66 && useFrame -> mf66FrameParamsJson!!
+            isMf66 && isFlash -> mf66FlashParamsJson ?: paramsJson
+            isMf66 -> mf66ParamsJson ?: paramsJson
             useFrame && isFlash -> flashFrameParamsJson ?: frameParamsJson!!
             useFrame -> frameParamsJson!!
             isFlash -> flashParamsJson ?: paramsJson
             else -> paramsJson
         }
         val effectiveFallbacks =
-            if (isFlash && baseJson != paramsJson) listOf(paramsJson) + fallbackParamsJsons
+            if (isMf66) listOfNotNull(mf66ParamsJson, paramsJson) + fallbackParamsJsons
+            else if (isFlash && baseJson != paramsJson) listOf(paramsJson) + fallbackParamsJsons
             else fallbackParamsJsons
         val frameParamsJsonOrNull =
             if (useFrame && frameNumber > 0) {
@@ -1050,14 +1130,17 @@ class DevelopmentService : Service() {
                 bmp = rotated
             }
             // 片门：只裁真正的 4:3 裸画面（片框关闭时引擎输出原画幅）。带片框的
-            // 出图总比例远离 4:3（画面外有片基+齿孔），按片门比例硬裁会把片框裁烂
+            // 出图总比例远离 4:3（画面外有片基+齿孔 / 120 纸背），按片门比例硬裁会把片框裁烂
             // ——真机实锤：竖拍旋转后右侧残留一条齿孔带、左侧被裁没、剩半块边缘文字。
             // 画面比例已在 prepareGateDng 用 ActiveArea 预裁过，理论上不会走到这。
+            // 6×6 帧这里按 1:1 裁（片框开着时不会进这个分支）。
             val r = bmp.width.toFloat() / bmp.height.toFloat()
             val isBare43 = kotlin.math.abs(r - 3f / 4f) < 0.02f ||
                 kotlin.math.abs(r - 4f / 3f) < 0.03f
             if (isBare43) {
-                val crop = FilmStockMapper.gateCrop(gate, bmp.width, bmp.height)
+                val crop = FilmStockMapper.gateCrop(
+                    bmp.width, bmp.height, frameGateAspect(shotJson, bmp.width < bmp.height)
+                )
                 if (crop.cropped) {
                     val gated = Bitmap.createBitmap(crop.w, crop.h, Bitmap.Config.ARGB_8888)
                     Canvas(gated).drawBitmap(bmp, -crop.x.toFloat(), -crop.y.toFloat(), Paint())
@@ -1073,9 +1156,13 @@ class DevelopmentService : Service() {
                     // 暗边印刷带上（用户 11-07 14:49 报的「日期水印被搞到相框上」）。
                     // 片框关闭 / gateCrop 出裸画面时 contentForAspect 返回 null，
                     // 行为与 JPEG 通路一致（按整图定位）。
+                    // 6×6 帧带的是 120 纸背框（对称留边、无齿孔），不能用 135 的内容区。
                     DateStampRenderer.drawOnBitmap(
                         applicationContext, bmp, takenAt,
-                        DateStampRenderer.contentForAspect(bmp.width, bmp.height),
+                        DateStampRenderer.contentForAspect(
+                            bmp.width, bmp.height,
+                            mediumFormat = frameGate(shotJson).isMediumFormat,
+                        ),
                     )
                 }.onFailure { Log.w(TAG, "帧 $index [RAW] 日期戳绘制失败（跳过）", it) }
             }
@@ -1436,6 +1523,83 @@ class DevelopmentService : Service() {
             )
         }
         return FrameCheck(chosen, okLandscape, okPortrait)
+    }
+
+    // ---------- 逐帧画幅（135 全幅 / 120 6×6 中画幅） ----------
+
+    /** 这一帧是哪一格片门：老帧没有 shot 记录 → 回落 135，行为与升级前一致。 */
+    private fun frameGate(shotJson: String?): FilmStockMapper.FilmGate =
+        FilmStockMapper.FilmGate.fromKey(
+            com.filmcam.app.film.ShotMeta.fromJson(shotJson)?.gate
+        )
+
+    /** 这一帧的成片片门比例：6×6 恒 1:1；135 按帧横竖取向 3:2 / 2:3。 */
+    private fun frameGateAspect(shotJson: String?, portrait: Boolean): Float =
+        FilmStockMapper.gateAspectOf(frameGate(shotJson), portrait)
+
+    /** 整卷里有没有 6×6 帧 —— 没有就完全走老路径，一次引擎预检都不多跑。 */
+    private fun rollHasMediumFormat(roll: RollInfo): Boolean =
+        (1..roll.shotCount).any { idx ->
+            runCatching {
+                com.filmcam.app.film.ShotMeta
+                    .fromJson(UndevelopedFilmStore.frameShot(roll.rollId, idx))
+                    ?.gate == FilmStockMapper.FilmGate.MF6x6.key
+            }.getOrDefault(false)
+        }
+
+    /** 120 6×6 可用的片框参数 + 实际能出图的底片幅宽（mm）。 */
+    private data class MediumFrameCheck(
+        val entries: List<Pair<String, String>>?,
+        val filmFormatMm: Float,
+    )
+
+    /**
+     * 120 6×6 片门是**渲染期**才校验的（与 135 一样）：拿 96×96 小图真跑一遍，
+     * 分别试 36mm / 56mm 的底片幅宽，挑引擎真能出图的那一档。
+     * [framed] = 片框档开着时顺带验证 120_6x6 版式；片框关 / 白边档也跑一次，
+     * 用来确认这台引擎真的接受 1:1 输入（设备兼容兜底，不能只靠理论推断）。
+     * 所有候选（版式键组 × 36/56mm）都不认 → 6×6 帧退回 135 老参数
+     * （片门仍是 1:1；逐帧兜底链保出片），同时写日志便于真机复盘。
+     */
+    private fun pickMediumFrame(
+        filmStockId: String,
+        printStockId: String,
+        settings: FilmStockMapper.DevSettings,
+        framed: Boolean,
+    ): MediumFrameCheck {
+        val base = FilmStockMapper.frameBorderEntries(
+            filmStockId, 1, FilmStockMapper.FilmGate.MF6x6.overscanFormat
+        )
+        // 120 是纸背卷，没有 135 那种齿孔带：引擎可能拒收 overscan_holes / leaks / pair
+        // 这类只属于 135 的键。按「全量 → 去齿孔 → 只留片框骨架」逐级试，
+        // 每组再各试 36 / 56mm 幅宽，挑第一个真能出图的组合。
+        val candidateEntries = if (framed) listOf(
+            base,
+            base.filter { it.first != "overscan_holes" },
+            base.filter {
+                it.first !in setOf("overscan_holes", "overscan_leaks", "overscan_fog", "overscan_pair")
+            },
+        ) else listOf(emptyList())
+        for (entries in candidateEntries) {
+            for (mm in listOf(36f, 56f)) {
+                val json = FilmStockMapper.buildParamsJson(
+                    filmStockId, printStockId, settings,
+                    includeStyleMark = false,
+                    extraEntries = entries,
+                    filmFormatMm = mm,
+                )
+                val err = SpektraProcessor.probeRenderOk(this, json, 96, 96)
+                Log.i(
+                    TAG,
+                    "120_6x6 片门自检 framed=$framed keys=${entries.size} mm=$mm -> ${err ?: "OK"}"
+                )
+                if (err == null) {
+                    return MediumFrameCheck(if (framed) entries else null, mm)
+                }
+            }
+        }
+        Log.w(TAG, "120_6x6 片门不可用（framed=$framed），本卷 6×6 帧回落 135 参数保出片")
+        return MediumFrameCheck(null, 36f)
     }
 
     /** 自检结果：用的版式 + 横/竖两个朝向各自能不能出图。 */

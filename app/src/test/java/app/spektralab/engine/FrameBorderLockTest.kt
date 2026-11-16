@@ -83,5 +83,16 @@ class FrameBorderLockTest {
         assertFalse(FrameBorderLock.shouldApply(off, false))
         assertFalse(FrameBorderLock.shouldApply("not json", false))
         assertFalse(FrameBorderLock.shouldApply("{}", false))
+        // 120 6×6 是纸背无齿孔带，135 的齿孔带阈值会误改画面像素 → 必须跳过
+        assertFalse(
+            FrameBorderLock.shouldApply(
+                """{"overscan_active":true,"overscan_format":"120_6x6"}""", false
+            )
+        )
+        assertTrue(
+            FrameBorderLock.shouldApply(
+                """{"overscan_active":true,"overscan_format":"135"}""", false
+            )
+        )
     }
 }

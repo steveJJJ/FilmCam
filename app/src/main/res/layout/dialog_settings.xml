@@ -6,6 +6,9 @@
    · 分隔线是 1dp 细线（"蚀刻"不是"卡片阴影"）
    · 面板底用纯色 #1A1A1A —— BodyTheme.applyToViewTree 会把它整块翻成钛面
    · 每行由 item_setting_row.xml 复用（名称/说明由 set_labels / set_hints 两个 array 驱动）
+   · v87 限高：11 行自然高 ≈1800px 几乎顶满整屏，代码在 show() 前量出自然高，
+     把 setScroll 钳到「屏高 58% − 铭牌头 − 底沿」，首帧即最终形态；
+     顶部铭牌头固定在 ScrollView 之外，底沿自绘渐隐 + 琥珀短刻线提示「下面还有」
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
@@ -97,88 +100,129 @@
         android:layout_height="1dp"
         android:background="#26262A" />
 
-    <!-- 铭牌列表（v86 起十一行）：横屏可用高度紧张时这里滚动 -->
-    <ScrollView
+    <!-- 铭牌列表：FrameLayout 只为在列表底部叠一层渐隐（不占高度）。
+         setScroll 的高度由 showSettings() 按屏高钳制，滚动才真正生效。 -->
+    <FrameLayout
+        android:id="@+id/setScrollHost"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:fillViewport="false">
+        android:layout_height="wrap_content">
 
-        <LinearLayout
+        <ScrollView
+            android:id="@+id/setScroll"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="vertical">
+            android:fillViewport="false"
+            android:overScrollMode="never"
+            android:scrollbars="none">
 
-            <include
-                android:id="@+id/rowSetBody"
-                layout="@layout/item_setting_row" />
-
-            <View style="@style/AboutSpecDivider" />
-
-            <include
-                android:id="@+id/rowSetDatestamp"
-                layout="@layout/item_setting_row" />
-
-            <View style="@style/AboutSpecDivider" />
-
-            <include
-                android:id="@+id/rowSetHaptic"
-                layout="@layout/item_setting_row" />
-
-            <View style="@style/AboutSpecDivider" />
-
-            <include
-                android:id="@+id/rowSetWb"
-                layout="@layout/item_setting_row" />
-
-            <View style="@style/AboutSpecDivider" />
-
-            <include
-                android:id="@+id/rowSetLanguage"
-                layout="@layout/item_setting_row" />
-
-            <View
+            <LinearLayout
                 android:layout_width="match_parent"
-                android:layout_height="1dp"
-                android:layout_marginTop="7dp"
-                android:background="#26262A" />
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
 
-            <include
-                android:id="@+id/rowSetQuality"
-                layout="@layout/item_setting_row" />
+                <include
+                    android:id="@+id/rowSetBody"
+                    layout="@layout/item_setting_row" />
 
-            <View style="@style/AboutSpecDivider" />
+                <View style="@style/AboutSpecDivider" />
 
-            <include
-                android:id="@+id/rowSetFrame"
-                layout="@layout/item_setting_row" />
+                <include
+                    android:id="@+id/rowSetDatestamp"
+                    layout="@layout/item_setting_row" />
 
-            <View style="@style/AboutSpecDivider" />
+                <View style="@style/AboutSpecDivider" />
 
-            <!-- v73：色彩浓度。就地循环，与「胶片相框 / 冲洗画质」同一套交互 -->
-            <include
-                android:id="@+id/rowSetColor"
-                layout="@layout/item_setting_row" />
+                <include
+                    android:id="@+id/rowSetHaptic"
+                    layout="@layout/item_setting_row" />
 
-            <View style="@style/AboutSpecDivider" />
+                <View style="@style/AboutSpecDivider" />
 
-            <!-- v81：RAW 底片，对外开放（原先藏在工程师控制台）。就地翻转 -->
-            <include
-                android:id="@+id/rowSetRaw"
-                layout="@layout/item_setting_row" />
+                <include
+                    android:id="@+id/rowSetWb"
+                    layout="@layout/item_setting_row" />
 
-            <View style="@style/AboutSpecDivider" />
+                <View style="@style/AboutSpecDivider" />
 
-            <!-- v86：外闪灯管理。长按「闪」字太隐蔽，设置面板给一个可见入口；
-                 右侧读数直接刻出已配对的灯名 / 档案数，点进去是向导的管理模式 -->
-            <include
-                android:id="@+id/rowSetFlash"
-                layout="@layout/item_setting_row" />
+                <include
+                    android:id="@+id/rowSetLanguage"
+                    layout="@layout/item_setting_row" />
 
-            <View style="@style/AboutSpecDivider" />
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:layout_marginTop="7dp"
+                    android:background="#26262A" />
 
-            <include
-                android:id="@+id/rowSetAbout"
-                layout="@layout/item_setting_row" />
-        </LinearLayout>
-    </ScrollView>
+                <include
+                    android:id="@+id/rowSetQuality"
+                    layout="@layout/item_setting_row" />
+
+                <View style="@style/AboutSpecDivider" />
+
+                <include
+                    android:id="@+id/rowSetFrame"
+                    layout="@layout/item_setting_row" />
+
+                <View style="@style/AboutSpecDivider" />
+
+                <!-- v73：色彩浓度。就地循环，与「胶片相框 / 冲洗画质」同一套交互 -->
+                <include
+                    android:id="@+id/rowSetColor"
+                    layout="@layout/item_setting_row" />
+
+                <View style="@style/AboutSpecDivider" />
+
+                <!-- v81：RAW 底片，对外开放（原先藏在工程师控制台）。就地翻转 -->
+                <include
+                    android:id="@+id/rowSetRaw"
+                    layout="@layout/item_setting_row" />
+
+                <View style="@style/AboutSpecDivider" />
+
+                <!-- v86：外闪灯管理。长按「闪」字太隐蔽，设置面板给一个可见入口；
+                     右侧读数直接刻出已配对的灯名 / 档案数，点进去是向导的管理模式 -->
+                <include
+                    android:id="@+id/rowSetFlash"
+                    layout="@layout/item_setting_row" />
+
+                <View style="@style/AboutSpecDivider" />
+
+                <include
+                    android:id="@+id/rowSetAbout"
+                    layout="@layout/item_setting_row" />
+            </LinearLayout>
+        </ScrollView>
+
+        <!-- 底沿渐隐：颜色由代码按 BodyTheme.panelBg 画（钛银下要跟浅钛面板一致）。
+             只在「下面还有行」时 VISIBLE，滚到底就收起；不接收触摸，点击透传到列表 -->
+        <View
+            android:id="@+id/setFade"
+            android:layout_width="match_parent"
+            android:layout_height="24dp"
+            android:layout_gravity="bottom" />
+    </FrameLayout>
+
+    <!-- 底沿刻线窗：1dp 蚀刻细线常亮 + 22dp 琥珀短刻线（亮＝下面还有行）。
+         始终占位不 GONE，避免限高计算在首次刷新时发生高度跳变 -->
+    <LinearLayout
+        android:id="@+id/setMoreHint"
+        android:layout_width="match_parent"
+        android:layout_height="12dp"
+        android:gravity="bottom|center_horizontal"
+        android:orientation="vertical">
+
+        <View
+            android:id="@+id/setMoreTick"
+            android:layout_width="22dp"
+            android:layout_height="2dp"
+            android:layout_marginBottom="3dp"
+            android:background="#FFC100" />
+
+        <View
+            android:id="@+id/setMoreRule"
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="#26262A" />
+    </LinearLayout>
 </LinearLayout>

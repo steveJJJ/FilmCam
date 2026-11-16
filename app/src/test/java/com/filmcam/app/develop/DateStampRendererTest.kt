@@ -42,6 +42,22 @@ class DateStampRendererTest {
     }
 
     @Test
+    fun `中画幅 6x6 日期戳按方画幅内容区`() {
+        // 干净 1:1（裸画面 / 白边档）：按整图落戳
+        assertNull(DateStampRenderer.contentForAspect(2500, 2500, mediumFormat = true))
+        // 带 120 纸背框：比例偏离 1:1 → 对称保守内容区，别印到片基上
+        assertEquals(
+            DateStampRenderer.CONTENT_SQUARE_FRAMED,
+            DateStampRenderer.contentForAspect(2750, 2500, mediumFormat = true),
+        )
+        // 135 老路径一字不改：1.083 仍是横置内容区
+        assertEquals(
+            DateStampRenderer.CONTENT_LANDSCAPE,
+            DateStampRenderer.contentForAspect(2710, 2503, mediumFormat = false),
+        )
+    }
+
+    @Test
     fun `带框横拍日期戳落回画面区`() {
         val c = DateStampRenderer.contentForAspect(2710, 2503)
         assertNotNull(c)

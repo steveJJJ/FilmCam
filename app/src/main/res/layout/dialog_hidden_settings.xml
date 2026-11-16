@@ -101,6 +101,17 @@
             android:layout_height="1dp"
             android:background="#26262A" />
 
+        <!-- 腰平取景（折叠屏彩蛋）：设置面板已整行移除，入口只在这里。
+             三态 关 / 自动 / 模拟：自动＝只有真实折痕半开才触发；模拟＝直板机调试 -->
+        <include
+            android:id="@+id/rowEngWaist"
+            layout="@layout/item_setting_row" />
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="#26262A" />
+
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

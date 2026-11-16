@@ -556,6 +556,17 @@ class Camera2Controller(private val context: Context) {
                 // 「AE 有没有收敛 / 手动参数有没有生效 / HAL 闪光有没有开」。
                 val st = result.get(android.hardware.camera2.CaptureResult.FLASH_STATE)
                 val ae = result.get(android.hardware.camera2.CaptureResult.CONTROL_AE_STATE)
+                // 常规 AE 档的曝光由 HAL 决定：只有拿到这一帧的 TotalCaptureResult
+                // 才知道真实 ISO / 快门。EXT 档这里用实测值覆盖手写请求值
+                // （一致时无变化；HAL 截断时能反映真实曝光）。
+                result.get(android.hardware.camera2.CaptureResult.SENSOR_SENSITIVITY)
+                    ?.takeIf { it > 0 }?.let { lastCaptureIso = it }
+                result.get(android.hardware.camera2.CaptureResult.SENSOR_EXPOSURE_TIME)
+                    ?.takeIf { it > 0L }?.let { lastCaptureShutterNs = it }
+                result.get(android.hardware.camera2.CaptureResult.LENS_APERTURE)
+                    ?.takeIf { it > 0f }?.let { lastCaptureAperture = it }
+                result.get(android.hardware.camera2.CaptureResult.LENS_FOCAL_LENGTH)
+                    ?.takeIf { it > 0f }?.let { lastCaptureFocalMm = it }
                 android.util.Log.i(
                     TAG,
                     "拍照完成 flashState=${
@@ -786,6 +797,32 @@ class Camera2Controller(private val context: Context) {
      */
     @Volatile private var flashTriggerOffsetMs: Long = DEFAULT_FLASH_SYNC_OFFSET_MS
     @Volatile private var flashSyncGain: Float = FLASH_SYNC_GAIN_DEFAULT
+    /**
+     * 外置闪光档的细档补偿（EV，0.5 一档，−3…+3）。切到 EXT 后机顶 EV 拨盘
+     * 只改这个值；常规档的 [exposureComp] 原样保留，切回 OFF / INT 时拨盘
+     * 自动恢复整数 AE 补偿，两套值互不污染。
+     */
+    @Volatile private var externalFlashCompEv: Float = 0f
+
+    /**
+     * 最近一帧拍照的**真实**传感器参数，只供 EXIF / 复盘读取，绝不参与成像。
+     *
+     * EXT 档由 [applyExternalFlashSync] 在构造拍照请求时直接写入 —— 手写曝光
+     * 的 ISO / 快门是我们下发给 HAL 的确定值，且早于 JPEG 到货，最可靠；
+     * 常规 AE 档由 still capture 的 onCaptureCompleted 用 TotalCaptureResult 回填。
+     * 老帧 / 拿不到结果时为 0，EXIF 侧跳过不写。
+     */
+    @Volatile var lastCaptureIso: Int = 0
+        private set
+    @Volatile var lastCaptureShutterNs: Long = 0L
+        private set
+
+    /** 真实镜头参数：设备静态能力打底，拍照帧的 TotalCaptureResult 上报时覆盖。 */
+    @Volatile var lastCaptureAperture: Float = 0f
+        private set
+    @Volatile var lastCaptureFocalMm: Float = 0f
+        private set
+
     private var flashTriggerPosted = false
 
     /** 提交拍照请求的 wall-clock；配合 onCaptureStarted 实测「提交 → 曝光开始」。 */
@@ -986,7 +1023,9 @@ class Camera2Controller(private val context: Context) {
             if (r.upper > r.lower) deviceIsoRange = r.lower..r.upper
         }
         chars.get(CameraCharacteristics.LENS_INFO_AVAILABLE_APERTURES)
-            ?.firstOrNull { it > 0f }?.let { apertureValue = it }
+            ?.firstOrNull { it > 0f }?.let { apertureValue = it; lastCaptureAperture = it }
+        chars.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)
+            ?.firstOrNull { it > 0f }?.let { lastCaptureFocalMm = it }
         hasManualSensor = chars.get(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES)
             ?.contains(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_MANUAL_SENSOR) == true
         if (android.os.Build.VERSION.SDK_INT >= 33) {
@@ -1599,6 +1638,11 @@ class Camera2Controller(private val context: Context) {
         )
     }
 
+    /** 下发 EXT 档细档补偿（只影响 [applyExternalFlashSync] 的固定曝光量）。 */
+    fun setExternalFlashComp(ev: Float) {
+        externalFlashCompEv = ev.coerceIn(-3f, 3f)
+    }
+
     /** 切进/切出外置闪光档：基线只在档位变化时重置，避免每次拨 EV 都清零。 */
     fun setExternalFlashSync(enabled: Boolean) {
         if (externalFlashSync != enabled) {
@@ -1647,7 +1691,9 @@ class Camera2Controller(private val context: Context) {
             )
             return
         }
-        val evGain = Math.pow(2.0, exposureComp.toDouble()).toFloat()
+        // EXT 档拨盘 = 闪光灯细档补偿（0.5 EV/档）；整数 exposureComp 留给
+        // 预览 AE 与 OFF / INT 档，不再参与这一帧的固定曝光量。
+        val evGain = Math.pow(2.0, externalFlashCompEv.toDouble()).toFloat()
         val gain = flashSyncGain * evGain
         val solved = FlashExposure.solve(
             baseIso = FLASH_SYNC_ISO_AT_100MS * gain,
@@ -1671,10 +1717,15 @@ class Camera2Controller(private val context: Context) {
             CaptureRequest.SENSOR_FRAME_DURATION,
             maxOf(solved.shutterNs, 33_000_000L)
         )
+        // 随帧记录：EXT 帧的曝光量完全由我们决定，这里的值就是成片真实值，
+        // 不必等 TotalCaptureResult（JPEG 可能先于 result 到货）。
+        lastCaptureIso = solved.iso
+        lastCaptureShutterNs = solved.shutterNs
         android.util.Log.i(
             "FlashSync",
             "闪光固定曝光 iso=${solved.iso} t=${solved.shutterNs / 1_000_000}ms " +
-                "gain=$gain ev=$exposureComp 快门上限=${maxShutterNs / 1_000_000}ms" +
+                "gain=$gain flashEv=$externalFlashCompEv ev=$exposureComp " +
+                "快门上限=${maxShutterNs / 1_000_000}ms" +
                 (if (solved.clamped) " ⚠️ ${solved.note}" else "") +
                 " (环境基线 iso=$aeBaselineIso t=${(aeBaselineSec * 1000).toInt()}ms)"
         )
@@ -2368,12 +2419,19 @@ class Camera2Controller(private val context: Context) {
      * 之前只用「是否横屏」决定要不要互换两轴，漏了竖屏/反向横屏该做的取反 ——
      * 表现就是测光区与手指点的位置左右对不上。
      *
+     * 腰平态（[waistGateAspect] > 0）：预览表面就是画幅矩形，4:3 内容**裁切填充**
+     * 铺满表面（LutGLSurfaceView.waistFill），点 (u,v) 先按同一套裁切公式折回
+     * 内容归一化坐标（表面即成片：内容比表面窄 → 裁纵向，反之裁横向），再走旋转
+     * 映射 —— 与 shader 的采样公式逐字对齐，点哪对哪。
+     *
      * @param onFocused 对焦流程触发后约 700ms 回调（近似扫焦完成，用于震动反馈）
      * @return false 表示无法点屏对焦（会话未就绪 / 模拟失焦开启 / 设备不支持）
      */
     fun focusAt(
         viewX: Float, viewY: Float, viewW: Int, viewH: Int,
         onFocused: (() -> Unit)? = null,
+        /** 腰平态画幅宽高比（w/h）；0 = 常规整屏（letterbox 模型）。 */
+        waistGateAspect: Float = 0f,
     ): Boolean {
         if (defocusDistance != null) return false   // 模拟失焦优先，不响应点屏
         val session = captureSession ?: return false
@@ -2392,18 +2450,7 @@ class Camera2Controller(private val context: Context) {
             val cropX = active.left + (active.width() - cropW) / 2f
             val cropY = active.top + (active.height() - cropH) / 2f
 
-            // 预览画面 letterbox 几何：唯一来源 ViewfinderFrameView.contentRectFor
-            // （与 shader、取景框标记同一套公式，横屏满高 / 竖屏满宽都在这里统一）。
-            // 先把 view 坐标换算到画面内容坐标，再映射传感器，点哪对哪。
-            val rect = com.filmcam.app.ui.ViewfinderFrameView
-                .contentRectFor(viewW.toFloat(), viewH.toFloat())
-            val u = ((viewX - rect.left) / rect.width().coerceAtLeast(1f)).coerceIn(0f, 1f)
-            val v = ((viewY - rect.top) / rect.height().coerceAtLeast(1f)).coerceIn(0f, 1f)
             // 屏幕画面 → 传感器坐标系的总旋转量 R（顺时针）。
-            // 传感器图像要顺时针转 R 度，才是当前设备方向下正立的画面；
-            // 反过来查表就是屏幕归一化坐标 (u,v) 到传感器 (nx,ny) 的映射。
-            // R = (sensorOrientation - displayRotation + 360) % 360 —— 与 JPEG_ORIENTATION
-            // 同一套公式（官方 Camera2 sample 的 (ORIENTATIONS[rot] + sensor + 270) % 360 等价）。
             val sensorOrientation =
                 chars.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 90
             val displayRotation = when (currentDisplayRotationDeg()) {
@@ -2413,6 +2460,38 @@ class Camera2Controller(private val context: Context) {
                 else -> 0
             }
             val r = (sensorOrientation - displayRotation + 360) % 360
+
+            // (u,v) = 预览**内容**的归一化坐标。
+            val u: Float
+            val v: Float
+            if (waistGateAspect > 0f) {
+                // 腰平：表面即画幅，先按整表面归一化，再按 shader 的裁切公式折回内容坐标。
+                // 内容朝向跟 display rotation 走（与 LutGLSurfaceView.waistFill 同一条规则）。
+                val contentAspect = when (displayRotation) {
+                    90, 270 -> 4f / 3f
+                    else -> 3f / 4f
+                }
+                val gu = (viewX / viewW).coerceIn(0f, 1f)
+                val gv = (viewY / viewH).coerceIn(0f, 1f)
+                if (contentAspect < waistGateAspect) {
+                    // 内容更「竖」：裁纵向 —— 只取内容中央 ca/ga 那一段高度
+                    val k = contentAspect / waistGateAspect
+                    u = gu
+                    v = 0.5f + (gv - 0.5f) * k
+                } else {
+                    // 内容更「横」：裁横向 —— 只取内容中央 ga/ca 那一段宽度
+                    val k = waistGateAspect / contentAspect
+                    u = 0.5f + (gu - 0.5f) * k
+                    v = gv
+                }
+            } else {
+                // 常规：letterbox 模型，唯一来源 ViewfinderFrameView.contentRectFor
+                // （与 shader、取景框标记同一套公式，横屏满高 / 竖屏满宽都在这里统一）。
+                val rect = com.filmcam.app.ui.ViewfinderFrameView
+                    .contentRectFor(viewW.toFloat(), viewH.toFloat())
+                u = ((viewX - rect.left) / rect.width().coerceAtLeast(1f)).coerceIn(0f, 1f)
+                v = ((viewY - rect.top) / rect.height().coerceAtLeast(1f)).coerceIn(0f, 1f)
+            }
             val (nx, ny) = when (r) {
                 90 -> v to (1f - u)      // 竖屏：轴互换，且横轴取反（画面左=传感器下）
                 180 -> (1f - u) to (1f - v)

@@ -54,7 +54,7 @@ class ViewfinderFrameView @JvmOverloads constructor(
     data class Indicators(
         val focus: LedMode = LedMode.OFF,
         val evCompOn: Boolean = false,
-        val evSteps: Int = 0,              // -3 ~ +3
+        val evSteps: Float = 0f,           // -3 ~ +3，EXT 档为 0.5 步进细档
         val flash: LedMode = LedMode.OFF,  // 闪光指示
         val shutterLit: Set<String> = emptySet(),  // 点亮的快门档位，如 {"500","30"}
         val shutterBlink: Boolean = false,         // 快门档闪烁（实际最快档/过曝警告）
@@ -91,6 +91,30 @@ class ViewfinderFrameView @JvmOverloads constructor(
         strokeWidth = stroke
         color = 0xB3FFFFFF.toInt()
     }
+
+    /**
+     * 腰平取景态抑制开关：腰平时取景屏只保留 MF-2 那套（WaistFinderOverlayView 的
+     * 角标/放大镜/取景格），本 View 的 T3 标记（大亮框、视差角标、AF 弧、WB 面板、
+     * 指示灯、快门标尺）全部不画。**只影响绘制**——contentRect() 仍按几何返回，
+     * 对焦手势照常工作（这是几何唯一来源，不能跟着藏）。
+     */
+    var waistSuppress = false
+        set(value) {
+            if (field == value) return
+            field = value
+            invalidate()
+        }
+
+    /**
+     * 腰平态本 View 的 bounds 就是画幅矩形（与 GL 表面同几何）：
+     * 预览按拍摄朝向裁 4:3 后**铺满**整个表面（裁切填充，不是 letterbox），
+     * 所以「预览内容矩形」= 整个 View。对焦手势的起手判定据此放开到全格。
+     */
+    var waistGate = false
+        set(value) {
+            if (field == value) return
+            field = value
+        }
 
     private var indicators: Indicators? = null
     private var lastActivityAt = 0L
@@ -155,6 +179,8 @@ class ViewfinderFrameView @JvmOverloads constructor(
         val w = width.toFloat()
         val h = height.toFloat()
         if (w <= 0 || h <= 0) return
+        // 腰平态：取景屏是 MF-2 的，T3 这套标记整体不画（几何/手势不受影响）。
+        if (waistSuppress) return
 
         // 预览内容矩形（几何唯一来源：contentRectFor，与 shader / 对焦映射一致）
         val content = contentRectFor(w, h)
@@ -227,7 +253,11 @@ class ViewfinderFrameView @JvmOverloads constructor(
                 color = Color.argb((0xE6 * alpha).toInt(), 255, 255, 255)
                 typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
             }
-            val text = if (st.evSteps > 0) "+${st.evSteps}" else st.evSteps.toString()
+            // 细档补偿要显示 .5：整数档仍刻成「+2」，半档刻成「-1.5」。
+            val absSteps = kotlin.math.abs(st.evSteps)
+            val num = if (absSteps == absSteps.toInt().toFloat()) absSteps.toInt().toString()
+            else String.format(java.util.Locale.US, "%.1f", absSteps)
+            val text = if (st.evSteps > 0) "+$num" else if (st.evSteps < 0) "-$num" else "0"
             val textWidth = pmPaint.measureText(text) + 3 * density + pmPaint.measureText("±")
             val fm = pmPaint.fontMetrics
             val placement = ViewfinderIndicatorLayout.solve(
@@ -568,6 +598,11 @@ class ViewfinderFrameView @JvmOverloads constructor(
      * 因此返回的坐标可直接与 MotionEvent.x/y（相对 glSurfaceView）比较。
      */
     fun contentRect(): RectF {
+        // 腰平态：表面即画幅，预览裁切填充铺满 —— 内容矩形 = 整个 View。
+        if (waistGate) {
+            return if (width > 0 && height > 0) RectF(0f, 0f, width.toFloat(), height.toFloat())
+            else RectF()
+        }
         return contentRectFor(width.toFloat(), height.toFloat())
     }
 

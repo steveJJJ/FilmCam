@@ -71,10 +71,17 @@ object FrameBorderLock {
             x < BAND_SIDE * w || x >= (1f - BAND_SIDE) * w
     }
 
-    /** 是否该跑：片框开着 + 外部开关没关。解析失败按不跑处理。 */
+    /**
+     * 是否该跑：片框开着 + 外部开关没关 + 是 135 那一格。
+     * 120 6×6 是纸背中画幅（无齿孔带），本类的 135 齿孔带阈值会误把画面像素
+     * 当片基重新上色 —— 所以只认 135 / 135_half 这两格，其余一律跳过。
+     */
     internal fun shouldApply(paramsJson: String, lockOff: Boolean): Boolean =
         !lockOff && runCatching {
-            JSONObject(paramsJson).optBoolean("overscan_active", false)
+            val o = JSONObject(paramsJson)
+            val format = o.optString("overscan_format", "135")
+            o.optBoolean("overscan_active", false) &&
+                (format == "135" || format == "135_half")
         }.getOrDefault(false)
 
     /** 只扫片框带做颜色恢复，返回改动像素数；任何异常返回 0。 */

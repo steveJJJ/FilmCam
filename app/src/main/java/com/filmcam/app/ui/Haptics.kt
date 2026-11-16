@@ -82,19 +82,65 @@ class SliderTick(
 }
 
 /**
+ * 滚动棘轮：按「滚过一行」分档给一记极轻 tick。
+ *
+ * 与 [SliderTick] 同口径（8ms / 95amp），但按**距离分桶**而不是按拖动事件数：
+ * 惯性滑动（fling）也会随经过的行给触感，快滑时又被 55ms 时间节流挡住，
+ * 不会连成一片糊震。stepPx 取约一行的高度（44dp），由调用方按屏密度给。
+ */
+class ScrollDetents(
+    private val context: Context,
+    private val stepPx: Int,
+    private val gapMs: Long = 55,
+    private val ms: Long = 8,
+    private val amp: Int = 95,
+) {
+    private var lastBucket = 0
+    private var lastAtMs = 0L
+
+    /** 起始 scrollY 归零，避免把「打开面板时的位置」误算成跨过了一档 */
+    fun reset(scrollY: Int = 0) {
+        lastBucket = if (stepPx > 0) scrollY / stepPx else 0
+    }
+
+    fun onScroll(scrollY: Int) {
+        if (stepPx <= 0) return
+        val bucket = scrollY / stepPx
+        if (bucket == lastBucket) return
+        lastBucket = bucket
+        val now = SystemClock.uptimeMillis()
+        if (now - lastAtMs >= gapMs) {
+            lastAtMs = now
+            Haptics.vibrate(context, ms, amp)
+        }
+    }
+}
+
+/**
  * 滚动到头/到底的「机械限位」触感：滚到顶或底再给一记轻震，
  * 像机身上的转盘拨到了头 —— 没有这记，翻到尽头那一下是纯视觉的空落感。
  * 只在「到达边缘」时震一次，离开边缘再回来才会再震（连续贴边拖不连震）。
+ *
+ * [detents] 非空时同时挂上滚动棘轮；[onScroll] 给调用方同步「还能不能往下滚」
+ * （设置面板用它点亮底沿的渐隐与刻线）。关于页不传这两个参数，行为与 v78 一致。
  */
-fun ScrollView.attachEdgeHaptics(ms: Long = 16, amp: Int = 130) {
-    var atTop = scrollY == 0
+fun ScrollView.attachEdgeHaptics(
+    ms: Long = 16,
+    amp: Int = 130,
+    detents: ScrollDetents? = null,
+    onScroll: ((canScrollDown: Boolean) -> Unit)? = null
+) {
+    var atTop = !canScrollVertically(-1)
     var atBottom = !canScrollVertically(1)
+    detents?.reset(scrollY)
     setOnScrollChangeListener { _, _, _, _, _ ->
+        detents?.onScroll(scrollY)
         val topNow = !canScrollVertically(-1)
         val bottomNow = !canScrollVertically(1)
         if (topNow && !atTop) Haptics.vibrate(context, ms, amp)
         if (bottomNow && !atBottom) Haptics.vibrate(context, ms, amp)
         atTop = topNow
         atBottom = bottomNow
+        onScroll?.invoke(!bottomNow)
     }
 }

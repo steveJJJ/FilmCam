@@ -290,8 +290,20 @@ class T3LcdView @JvmOverloads constructor(
             val sign = if (state.evSteps > 0) '+' else '-'
             draw7(canvas, sign, ix, y3, smW, smH, onColor)
             ix += smW + smH * 0.14f
-            val absI = kotlin.math.abs(state.evSteps).toInt()
+            val abs = kotlin.math.abs(state.evSteps)
+            val absI = abs.toInt()
             if (absI > 0) draw7(canvas, (absI + '0'.code).toChar(), ix, y3, smW, smH, onColor)
+            // 半档：7 段管没有小数点段，在数字右下角点一颗，刻度感不变
+            if (abs - absI >= 0.5f) {
+                val dot = Paint(segPaint).apply {
+                    style = Paint.Style.FILL
+                    color = onColor
+                }
+                canvas.drawCircle(
+                    ix + smW + smH * 0.04f, y3 + smH,
+                    max(1.2f, smH * 0.07f), dot
+                )
+            }
         }
         // 模式 + 电池靠右
         val modeStr = state.mode

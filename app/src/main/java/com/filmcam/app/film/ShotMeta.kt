@@ -34,6 +34,37 @@ data class ShotMeta(
      * 0 = 未记录（升级前拍的老帧），冲洗端回落到当前设备的默认裁切比。
      */
     val zoom: Float = 0f,
+    /** EXT 档的闪光灯细档补偿（EV，0.5 步进）；非 EXT 档为 0。 */
+    val flashCompEv: Float = 0f,
+    /**
+     * 这一帧**传感器实际**感光度（ISO）。与 EXIF 里模拟的胶卷 ISO（400/200…）
+     * 不是一回事：外闪固定曝光时它可能是 228 或 81。0 = 升级前老帧未记录。
+     */
+    val sensorIso: Int = 0,
+    /**
+     * 这一帧**传感器实际**快门（秒）。与上面的 [shutterSec]（胶片慢门秒数，
+     * 概率事件、不参与拍摄同款）刻意分开：EXT 档恒 0.1s 但并没有走慢门。
+     * 0 = 老帧未记录。
+     */
+    val sensorShutterSec: Float = 0f,
+    /** 外置灯显示名（仅 EXTERNAL 档；空 = 未记录 / 无档案）。 */
+    val flashDevice: String = "",
+    /** 外置灯 MAC（档案主键，复盘时认灯用）。 */
+    val flashAddress: String = "",
+    /** 触发通道（可写特征 UUID 短码）。 */
+    val flashChannel: String = "",
+    /** 触发指令 hex 文本（如 "05 01"）。 */
+    val flashTriggerHex: String = "",
+    /** 这一帧镜头的**真实**光圈（f-number）；0 = 老帧 / 设备未上报。 */
+    val aperture: Float = 0f,
+    /** 这一帧镜头的**真实**物理焦距（mm）；0 = 老帧 / 设备未上报。 */
+    val focalMm: Float = 0f,
+    /**
+     * 这一帧的成片画幅："135"（全幅 3:2，整屏与默认）/ "6x6"（120 中画幅 1:1，
+     * 方形取景窗的腰平拍）。「旧帧未记录」回落 "135"，与升级前行为一致。
+     * 冲洗端按帧裁片门、选片框版式，腰平方窗拍的就是 6×6 成片。
+     */
+    val gate: String = "135",
 ) {
 
     fun toJson(): String = JSONObject().apply {
@@ -44,6 +75,16 @@ data class ShotMeta(
         put("slow", slow)
         put("defocus", defocus)
         if (zoom > 0f) put("zoom", zoom.toDouble())
+        if (flashCompEv != 0f) put("fev", flashCompEv.toDouble())
+        if (sensorIso > 0) put("siso", sensorIso)
+        if (sensorShutterSec > 0f) put("ssec", sensorShutterSec.toDouble())
+        if (flashDevice.isNotBlank()) put("fdev", flashDevice)
+        if (flashAddress.isNotBlank()) put("fmac", flashAddress)
+        if (flashChannel.isNotBlank()) put("fchan", flashChannel)
+        if (flashTriggerHex.isNotBlank()) put("ftrig", flashTriggerHex)
+        if (aperture > 0f) put("ap", aperture.toDouble())
+        if (focalMm > 0f) put("fl", focalMm.toDouble())
+        if (gate != "135") put("gate", gate)
     }.toString()
 
     companion object {
@@ -59,6 +100,16 @@ data class ShotMeta(
                     slow = o.optBoolean("slow", false),
                     defocus = o.optBoolean("defocus", false),
                     zoom = o.optDouble("zoom", 0.0).toFloat(),
+                    flashCompEv = o.optDouble("fev", 0.0).toFloat(),
+                    sensorIso = o.optInt("siso", 0),
+                    sensorShutterSec = o.optDouble("ssec", 0.0).toFloat(),
+                    flashDevice = o.optString("fdev", ""),
+                    flashAddress = o.optString("fmac", ""),
+                    flashChannel = o.optString("fchan", ""),
+                    flashTriggerHex = o.optString("ftrig", ""),
+                    aperture = o.optDouble("ap", 0.0).toFloat(),
+                    focalMm = o.optDouble("fl", 0.0).toFloat(),
+                    gate = o.optString("gate", "135"),
                 )
             } catch (_: Exception) {
                 null

@@ -50,6 +50,19 @@ class LutGLSurfaceView @JvmOverloads constructor(
             requestRender()
         }
 
+    /**
+     * 腰平取景态：true = 本表面就是画幅矩形，预览按**拍摄朝向**裁 4:3 后
+     * 裁切填充铺满（WYSIWYG：所见即成片）。内容比例不再拿表面宽高猜朝向
+     * （那是腰平预览拉伸的根因：方/宽表面被误判成横屏，旋转矩阵全错），
+     * 而是跟 display rotation 走 —— 相机怎么转，内容就怎么算。
+     */
+    var waistFill: Boolean = false
+        set(value) {
+            if (field == value) return
+            field = value
+            requestRender()
+        }
+
     private var renderer: LutRenderer? = null
 
     init {
@@ -211,7 +224,8 @@ class LutGLSurfaceView @JvmOverloads constructor(
                     com.filmcam.app.develop.DeviceGeometryReportIo.flush(this@LutGLSurfaceView.context)
                 }
             }
-            renderTo(surfaceWidth, surfaceHeight, offsetY = ViewfinderFrameView.PREVIEW_OFFSET_Y,
+            renderTo(surfaceWidth, surfaceHeight,
+                offsetY = if (waistFill) 0f else ViewfinderFrameView.PREVIEW_OFFSET_Y,
                 mode = mode)
         }
 
@@ -235,15 +249,28 @@ class LutGLSurfaceView @JvmOverloads constructor(
                 1, false, texMatrix, 0
             )
 
-            // 内容比例随屏幕朝向切换：横屏 4:3、竖屏 3:4（与 ViewfinderFrameView 同源）
-            val contentAspect = ViewfinderFrameView.contentAspectFor(viewW.toFloat(), viewH.toFloat())
+            // 内容比例：常规拿表面宽高比猜朝向（整屏时表面即屏幕，等价）；
+            // 腰平态表面是画幅矩形（方/宽/竖都可能与朝向不一致）—— 必须改拿
+            // display rotation 定内容朝向，否则旋转矩阵错 → 画面拉伸。
+            val contentAspect = if (waistFill) {
+                when (this@LutGLSurfaceView.display?.rotation) {
+                    android.view.Surface.ROTATION_90, android.view.Surface.ROTATION_270 -> 4f / 3f
+                    else -> 3f / 4f
+                }
+            } else ViewfinderFrameView.contentAspectFor(viewW.toFloat(), viewH.toFloat())
             val screenAspect = viewW.toFloat() / viewH.toFloat()
             GLES30.glUniform1f(GLES30.glGetUniformLocation(program, "uScreenAspect"), screenAspect)
             GLES30.glUniform1f(GLES30.glGetUniformLocation(program, "uContentAspect"),
                 contentAspect)
-            // 屏幕比内容更宽 → 内容满高、左右留黑边（横屏）；否则满宽、上下留黑边（竖屏）
+            // 常规（letterbox 适配）：屏幕更宽 → 满高留左右边，否则满宽留上下边；
+            // 腰平（裁切填充）：反过来选「溢出」的那一维 —— 内容比表面宽就裁横、
+            // 内容比表面高就裁纵，预览铺满画幅、所见即成片。
             GLES30.glUniform1f(GLES30.glGetUniformLocation(program, "uFitHeight"),
-                if (screenAspect > contentAspect) 1f else 0f)
+                if (waistFill) {
+                    if (contentAspect > screenAspect) 1f else 0f
+                } else {
+                    if (screenAspect > contentAspect) 1f else 0f
+                })
             GLES30.glUniform1f(GLES30.glGetUniformLocation(program, "uOffsetY"), offsetY)
             GLES30.glUniform1f(GLES30.glGetUniformLocation(program, "uMode"), mode)
 

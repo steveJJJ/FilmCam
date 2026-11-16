@@ -132,13 +132,14 @@ Memory available: %10$d MB / %11$d MB total
         <item>Black titan or titanium silver shell</item>
         <item>Print the shooting date on each frame</item>
         <item>Motor strength for winding and keys</item>
-        <item>Like changing a colour filter; stays until you change it</item>
+        <item>Like changing a colour filter; stays until you change it. Swiping the waist-level finder shows a nominal colour temperature (≈K, not measured)</item>
         <item>Follow system / 简体中文 / English</item>
         <item>Full = original resolution, slower; Standard ≈ 12 MP, ~3x faster</item>
-        <item>Frames always follow the 135 gate (portrait shots use the upright gate): Off = image only; Full 3:2 scans the base and sprocket holes; White = darkroom paper margin</item>
+        <item>Normal shots follow the 135 gate (portrait uses the upright gate); a square waist-level finder shoots 120 6x6 at 1:1: Off = image only; Full scans the base and sprocket holes / 120 paper backing; White = darkroom paper margin</item>
         <item>Undo the extra colour added by the phone ISP: Standard / Soft / Original. JPG and imports only; RAW is untouched. Fine-tune 0-100% in the engineer console</item>
         <item>Save a RAW negative (DNG) with each shot; developing bypasses the phone ISP for truer detail and grain. Falls back to JPEG on unsupported devices; same switch as the engineer console</item>
         <item>View, copy or delete paired external flashes; import a shared profile or teach the app a new light</item>
+        <item>Foldable easter egg moved to the engineer console (tap the version 10 times): off / auto / simulate</item>
         <item>Nameplate and licenses</item>
     </string-array>
 
@@ -475,5 +476,23 @@ Memory available: %10$d MB / %11$d MB total
     <string name="flash_pair_copy_short">Copy</string>
     <string name="flash_pair_manage_deleted">Deleted %1$s</string>
     <string name="flash_pair_manage_row_meta">%1$s   CH %2$s   TRIG %3$s</string>
+
+    <!-- EXT mode: the top EV dial becomes fine flash compensation -->
+    <string name="lcd_notice_flash_ev_fine">EXT flash 0.5 EV/step</string>
+
+    <!-- ===== Waist-level finder (P0 skeleton): settings row + half-screen bar ===== -->
+    <string name="eng_waist">Waist-level finder (foldable easter egg)</string>
+    <string name="eng_waist_hint">Off = never; Auto = only when a foldable is half-open (invisible on flat phones); Simulate = split half-screen on flat phones, debug only</string>
+    <string name="eng_waist_off">Off</string>
+    <string name="eng_waist_auto">Auto</string>
+    <string name="eng_waist_simulate">Simulate</string>
+    <string name="waist_level_label">WAIST LEVEL</string>
+    <string name="waist_level_engrave">RELIC CAM · WAIST FINDER</string>
+    <string name="waist_level_close">CLOSE</string>
+    <string name="waist_level_readout">EV 0 · OFF · 0/36</string>
+    <string name="waist_level_cd_shutter">Shutter</string>
+    <string name="waist_level_cd_rotate">Cycle frame gate: auto / 1:1 6x6 medium format / 3:2 135 full frame</string>
+    <string name="lcd_notice_waist">WAIST LEVEL · HALF SCREEN</string>
+    <string name="lcd_notice_waist_off">WAIST LEVEL · OFF</string>
 
 </resources>

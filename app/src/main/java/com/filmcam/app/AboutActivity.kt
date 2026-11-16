@@ -589,6 +589,7 @@ class AboutActivity : AppCompatActivity() {
         val rowLens = view.findViewById<View>(R.id.rowEngLens)
         val rowColor = view.findViewById<View>(R.id.rowEngColor)
         val rowJpeg = view.findViewById<View>(R.id.rowEngJpeg)
+        val rowWaist = view.findViewById<View>(R.id.rowEngWaist)
 
         /** 绑定一行「名称 + 说明」，返回右侧读数 TextView */
         fun bindRow(row: View, labelRes: Int, hintRes: Int): TextView {
@@ -605,6 +606,7 @@ class AboutActivity : AppCompatActivity() {
         val tvLens = bindRow(rowLens, R.string.eng_lens_blur, R.string.eng_lens_hint)
         val tvColor = bindRow(rowColor, R.string.eng_cc, R.string.eng_cc_hint)
         val tvJpeg = bindRow(rowJpeg, R.string.eng_jpeg_norm, R.string.eng_jpeg_norm_hint)
+        val tvWaist = bindRow(rowWaist, R.string.eng_waist, R.string.eng_waist_hint)
 
         fun slowMode(): com.filmcam.app.camera.FilmExposure.Mode =
             com.filmcam.app.camera.FilmExposure.Mode.fromPrefs(
@@ -617,6 +619,17 @@ class AboutActivity : AppCompatActivity() {
                 com.filmcam.app.camera.FilmExposure.Mode.NATURAL -> getString(R.string.slow_natural)
                 com.filmcam.app.camera.FilmExposure.Mode.SLOW -> getString(R.string.slow_frequent)
                 else -> getString(R.string.slow_off)
+            }
+        }
+
+        // 腰平彩蛋三态：关 / 自动（只认真实折痕半开）/ 模拟（直板机调试）
+        fun waistEgg(): String = prefs.getString("waistEgg", "auto") ?: "auto"
+        fun saveWaistEgg(mode: String) {
+            prefs.edit().putString("waistEgg", mode).apply()
+            tvWaist.text = when (mode) {
+                "off" -> getString(R.string.eng_waist_off)
+                "simulate" -> getString(R.string.eng_waist_simulate)
+                else -> getString(R.string.eng_waist_auto)
             }
         }
 
@@ -637,6 +650,7 @@ class AboutActivity : AppCompatActivity() {
         }
         saveSlow(slowMode())
         saveStyleName()
+        saveWaistEgg(waistEgg())
         refreshColorRow()
         // 镜头柔度：机身属性，全局一个值（不按胶卷存）
         tvLens.text = "${prefs.getFloat(
@@ -709,6 +723,11 @@ class AboutActivity : AppCompatActivity() {
             tick()
             consoleRef?.dismiss()
             showJpegNormalizeDialog { showEngineerConsole() }
+        }
+        // 腰平彩蛋：关 → 自动 → 模拟，就地循环（改完回主界面的 onResume 会重算分区）
+        rowWaist.setOnClickListener {
+            tick(20, 160)
+            saveWaistEgg(com.filmcam.app.ui.FoldPosture.nextEgg(waistEgg()))
         }
 
         // 工程师模式开关：关掉 = 这些旋钮重新藏起来，入口回到"连点 10 次"

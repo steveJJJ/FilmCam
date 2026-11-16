@@ -32,9 +32,13 @@ import com.filmcam.app.filter.FilmRollRepository
 import com.filmcam.app.flash.FlashController
 import com.filmcam.app.flash.FlashMode
 import com.filmcam.app.ui.AdvanceRitual
+import com.filmcam.app.ui.attachEdgeHaptics
 import com.filmcam.app.ui.T3LcdView
 import com.filmcam.app.ui.ViewfinderFrameView
 import com.google.android.material.bottomsheet.BottomSheetDialog
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.launch
 import java.util.Locale
 import kotlin.math.roundToInt
 
@@ -76,7 +80,33 @@ class MainActivity : AppCompatActivity() {
     private val saveExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
     /** 日期水印：11-13 起新装默认关；老用户已存过的档位照旧。 */
     private var dateStampEnabled = DefaultSettings.DATE_STAMP_ENABLED
-    private var exposureComp = 0  // 曝光补偿 -3 ~ +3
+    private var exposureComp = 0  // 曝光补偿 -3 ~ +3（OFF / INT 档的整数 AE 补偿）
+    // EXT 档专用：切到外闪后机顶 EV 拨盘就地变成闪光灯细档补偿（0.5 EV/档）。
+    // 两套值分开存，切档互不覆盖；默认 0 = 不改变原有出片。
+    private var flashCompEv = 0f
+    // 腰平取景（折叠屏彩蛋）：总闸在工程模式（off / auto / simulate，默认 auto）。
+    // waistApplied 表示当前确实处于半屏分区，refitChrome 在此期间不能按整屏尺寸重算。
+    private var waistEgg = "auto"
+    private var waistApplied = false
+    /**
+     * 本次半开已被用户收起：直到重新展平才允许再次自动进入。
+     * 否则 CLOSE / 返回键刚退出，下一帧 FoldingFeature 又会把它拉回来。
+     */
+    private var waistDismissed = false
+    /** 最近一次窗口布局里的折痕（窗口坐标）；展平 / 直板机 = 全部复位。 */
+    private var foldHalfOpened = false
+    private var foldSeparating = false
+    private var foldHinge = com.filmcam.app.ui.FoldPosture.Hinge.NONE
+    private var foldBounds: android.graphics.Rect? = null
+    /**
+     * 腰平画幅档：AUTO 按取景窗几何自动判定（方窗→6×6、宽窗→3:2、竖窗→2:3），
+     * SQUARE/STANDARD 手动覆盖（误判兜底）。画幅跟取景窗走，成片形状 = 取景窗形状。
+     */
+    private var waistGateStyle = com.filmcam.app.ui.FoldPosture.GateStyle.AUTO
+    /** 当前生效的腰平画幅（w/h，来自 posture.gateAspect）；0 = 未在腰平态。 */
+    private var waistGateAspect = 0f
+    /** 腰平态才启用的返回键回调：按下=收起腰平，不退 App（退出通道②）。 */
+    private var waistBackCallback: androidx.activity.OnBackPressedCallback? = null
     private var softFocusEnabled = DefaultSettings.SOFT_FOCUS_ENABLED  // 模拟失焦：2% 默认开
     private var softFocusProb = DefaultSettings.SOFT_FOCUS_PROB         // 0-100（工程师可调；0=关）
     /** 慢门档位（胶片曝光模型）：关 / 自然 / 偏慢 —— 决定暗光下「糊一下」的概率 */
@@ -258,6 +288,15 @@ class MainActivity : AppCompatActivity() {
 
         updateLcd()
         updateFilmInfo()
+        // 退出通道②：返回键只在腰平分区时启用，交给 applyWaistLevel 按 waistApplied 开关。
+        waistBackCallback = object : androidx.activity.OnBackPressedCallback(false) {
+            override fun handleOnBackPressed() {
+                setWaistLevel(false)
+            }
+        }.also { onBackPressedDispatcher.addCallback(this, it) }
+        // 恢复腰平彩蛋总闸（prefs 里的工程模式三态），再开始监听折痕
+        applyWaistLevel()
+        observeFolding()
 
         // 点屏对焦 + 上下滑调曝光（GCam 风格）
         // 滑动过程只在 EV 整数档位真正变化时才下发相机参数（最多 6 次），
@@ -266,6 +305,7 @@ class MainActivity : AppCompatActivity() {
         var touchStartX = 0f
         var touchStartY = 0f
         var touchStartEv = 0
+        var touchStartFlashEv = 0f
         var touchMoved = false
         var wbDragging = false          // 本次手势是否已进入横滑调白平衡
         var touchStartWbIndex = 0
@@ -298,15 +338,18 @@ class MainActivity : AppCompatActivity() {
                     binding.viewfinderFrame.notifyActivity()
                     // 只有落在预览内容矩形内才对焦：letterbox 黑边、预览窗之外一律忽略
                     if (!binding.viewfinderFrame.contentRect().contains(fx, fy)) return true
-                    // 点屏对焦：不做任何视觉标记，合焦后仅给一次短震动
+                    // 点屏对焦：不做任何视觉标记，合焦后仅给一次短震动。
+                    // 腰平态传画幅比：预览是裁切填充（不是 letterbox），对焦映射走同一套裁切公式。
                     cameraController?.focusAt(
                         fx, fy,
-                        binding.glSurfaceView.width, binding.glSurfaceView.height
-                    ) {
-                        vibrate(24, 185)
-                        // v82 段 2 检测点：新手第一次对焦成功 → LCD 接力下一条
-                        if (OnboardingGuide.onFocusDone(this@MainActivity)) showOnboardingHint()
-                    }
+                        binding.glSurfaceView.width, binding.glSurfaceView.height,
+                        onFocused = {
+                            vibrate(24, 185)
+                            // v82 段 2 检测点：新手第一次对焦成功 → LCD 接力下一条
+                            if (OnboardingGuide.onFocusDone(this@MainActivity)) showOnboardingHint()
+                        },
+                        waistGateAspect = if (waistApplied) waistGateAspect else 0f,
+                    )
                     return true
                 }
             }
@@ -337,6 +380,7 @@ class MainActivity : AppCompatActivity() {
                     touchStartX = event.rawX
                     touchStartY = event.rawY
                     touchStartEv = exposureComp
+                    touchStartFlashEv = flashCompEv
                     touchStartWbIndex = wbIndex
                 }
                 android.view.MotionEvent.ACTION_MOVE -> {
@@ -370,16 +414,23 @@ class MainActivity : AppCompatActivity() {
                     }
 
                     val delta = (touchStartY - event.rawY) / 100f
-                    val newEv = (touchStartEv + delta.toInt()).coerceIn(-3, 3)
-                    if (newEv != exposureComp) {
-                        // 统一入口：原先这里只调 setExposureComp + notifyActivity，
-                        // 漏了 applyExposure（外置闪光开关会失效）与 updateLcd（LCD 读数不更新）
-                        setEv(newEv, persist = false)   // 抬手时统一 saveSettings
-                        // 每过一档给一记轻震：曝光补偿是「档位」机械感，
-                        // 手指要能感觉到自己拨过了一格（与胶卷列表滑动触感同一套语言）
-                        vibrate(14, 115)
-                        // v82 段 2 检测点：新手第一次拨 EV → LCD 接力「按快门」
-                        if (OnboardingGuide.onEvChanged(this)) showOnboardingHint()
+                    if (flash.mode == FlashMode.EXTERNAL) {
+                        // EXT 档：同一个拨盘每 100px 走半档（0.5 EV），补齐整数档之间的空档
+                        val next = (touchStartFlashEv + delta.toInt() * 0.5f).coerceIn(-3f, 3f)
+                        if (next != flashCompEv) {
+                            flashCompEv = next
+                            applyFlashCompUi(persist = false)  // 抬手时统一 saveSettings
+                            vibrate(14, 115)
+                            if (OnboardingGuide.onEvChanged(this)) showOnboardingHint()
+                        }
+                    } else {
+                        val newEv = (touchStartEv + delta.toInt()).coerceIn(-3, 3)
+                        if (newEv != exposureComp) {
+                            // 统一入口：值 → 按钮数字 → LCD → 取景器 → 相机参数全同步
+                            setEv(newEv, persist = false)
+                            vibrate(14, 115)
+                            if (OnboardingGuide.onEvChanged(this)) showOnboardingHint()
+                        }
                     }
                 }
                 android.view.MotionEvent.ACTION_UP,
@@ -396,10 +447,13 @@ class MainActivity : AppCompatActivity() {
                             wbVisible = false
                             lastIndicatorKey = ""   // 强制下一次去重放过，允许重画
                             updateViewfinderIndicators(lastAfState, lastExposureSec)
+                            updateWaistWbReadout()   // 腰平取景窗读数同步收起
                         }, 900)
                         return@setOnTouchListener true
                     }
-                    if (exposureComp != touchStartEv) saveSettings()
+                    if (flash.mode == FlashMode.EXTERNAL) {
+                        if (flashCompEv != touchStartFlashEv) saveSettings()
+                    } else if (exposureComp != touchStartEv) saveSettings()
                     // 点按对焦已交给 tapDetector（只在完整手势序列上触发）
                 }
             }
@@ -438,7 +492,7 @@ class MainActivity : AppCompatActivity() {
         if (landscape == chromeLandscape) {
             // 同族方向变化：layout 资源不变，只重采诊断 + 重算安全区
             runCatching { recordDeviceBasics() }
-            binding.root.post { refitChrome() }
+            binding.root.post { applyWaistLevel() }
             return
         }
         chromeLandscape = landscape
@@ -448,7 +502,7 @@ class MainActivity : AppCompatActivity() {
         if (!swapped) {
             // 换 chrome 失败就保持现状（相机仍不关），只重采诊断，别把半套状态再刷一遍
             runCatching { recordDeviceBasics() }
-            binding.root.post { refitChrome() }
+            binding.root.post { applyWaistLevel() }
             return
         }
         // 新 chrome 是全新 View 实例：inset 补偿基准、机身配色、读数都要重新压回去
@@ -457,7 +511,7 @@ class MainActivity : AppCompatActivity() {
         updateLcd()
         updateFilmInfo()
         runCatching { recordDeviceBasics() }
-        binding.root.post { refitChrome() }
+        binding.root.post { applyWaistLevel() }
     }
 
     /**
@@ -530,15 +584,34 @@ class MainActivity : AppCompatActivity() {
             startActivity(android.content.Intent(this, GalleryActivity::class.java))
         }
         binding.settingsKey.hapticClick { showSettings() }
+        // 腰平控件是 root 的常驻 child，不随换朝向重建；setOnClickListener 覆盖即幂等
+        binding.waistShutter.hapticClick { triggerShutter() }
+        // 退出通道①：折叠前盖 CLOSE
+        binding.waistClose.hapticClick { setWaistLevel(false) }
+        // 画幅档循环：AUTO → 1:1（6×6）→ 3:2（135）→ AUTO
+        binding.waistRotate.hapticClick {
+            setWaistGateStyle(
+                when (waistGateStyle) {
+                    com.filmcam.app.ui.FoldPosture.GateStyle.AUTO ->
+                        com.filmcam.app.ui.FoldPosture.GateStyle.SQUARE
+                    com.filmcam.app.ui.FoldPosture.GateStyle.SQUARE ->
+                        com.filmcam.app.ui.FoldPosture.GateStyle.STANDARD
+                    com.filmcam.app.ui.FoldPosture.GateStyle.STANDARD ->
+                        com.filmcam.app.ui.FoldPosture.GateStyle.AUTO
+                }
+            )
+        }
+        // 退出通道③：长按摄像头那半屏（黑屏），手不用摸回底部
+        binding.waistMask.setOnLongClickListener {
+            com.filmcam.app.ui.Haptics.vibrate(this, 18)
+            setWaistLevel(false)
+            true
+        }
         binding.flashKey.hapticClick { cycleFlashMode() }
         binding.evKey.hapticClick { cycleEvValue() }
         binding.filmInfoText.hapticClick { showFilmRollPicker() }
-        binding.btnEvPlus.hapticClick {
-            setEv(if (exposureComp >= 3) -3 else exposureComp + 1)
-        }
-        binding.btnEvMinus.hapticClick {
-            setEv(if (exposureComp <= -3) 3 else exposureComp - 1)
-        }
+        binding.btnEvPlus.hapticClick { stepEv(1) }
+        binding.btnEvMinus.hapticClick { stepEv(-1) }
         binding.tvProToggle.hapticClick { toggleProMode() }
         binding.tvIso.hapticClick { cycleIso() }
         binding.tvShutter.hapticClick { cycleShutter() }
@@ -579,7 +652,7 @@ class MainActivity : AppCompatActivity() {
                     )
                     DeviceGeometryReportIo.flush(this)
                 }
-                binding.root.post { refitChrome() }
+                binding.root.post { applyWaistLevel() }
             },
             // 只在取景器页隐藏系统栏：拍摄更沉浸，其余 4 页保留时间与通知
             immersive = true,
@@ -588,6 +661,9 @@ class MainActivity : AppCompatActivity() {
 
     /** 旋转 / 分辨率 / 显示大小变化后重新量一次（值不变时不写，不会自激循环）。 */
     private fun refitChrome() {
+        // 腰平模式下 viewfinderFrame 只剩半屏，contentRect() 是半屏内的局部坐标；
+        // 再拿它和整屏 root 尺寸混算会污染安全区与诊断报告（控件此时也已隐藏）。
+        if (waistApplied) return
         val changed = com.filmcam.app.ui.ChromeSafeArea.apply(
             binding.root, binding.topBar, binding.bottomBar, binding.brandLogo,
             binding.lcdDisplay, binding.evKey, binding.settingsKey,
@@ -618,6 +694,181 @@ class MainActivity : AppCompatActivity() {
                 )
             }
         }
+    }
+
+    /**
+     * 腰平取景（P0）：设置面板的可见开关 → 纯函数求分区 → 幂等应用。
+     * 只改「取景显示在哪一半」，相机请求 / 冲洗 / EXIF / 成片方向一律不动。
+     * P1 接 androidx.window 后把 halfOpened / hinge / bounds 填进 Input 即可。
+     */
+    private fun applyWaistLevel() {
+        val root = binding.root
+        root.post {
+            if (isFinishing || isDestroyed) return@post
+            val realFold = waistEgg == com.filmcam.app.ui.FoldPosture.EGG_AUTO &&
+                foldHalfOpened && foldSeparating
+            val simulate = waistEgg == com.filmcam.app.ui.FoldPosture.EGG_SIMULATE
+            // 彩蛋语义的唯一判定：关＝永不；自动＝真折痕半开+分离；模拟＝直板机调试
+            val allowed = com.filmcam.app.ui.FoldPosture.allowsWaist(
+                waistEgg, foldHalfOpened, foldSeparating, waistDismissed
+            )
+            val b = foldBounds
+            val posture = com.filmcam.app.ui.FoldPosture.solve(
+                com.filmcam.app.ui.FoldPosture.Input(
+                    windowW = root.width,
+                    windowH = root.height,
+                    displayW = displayWidthPx(),
+                    displayH = displayHeightPx(),
+                    // 只有真实折痕才带 hinge；模拟档沿用平分（直板机没有折痕）
+                    hinge = if (allowed && realFold) foldHinge
+                    else com.filmcam.app.ui.FoldPosture.Hinge.NONE,
+                    halfOpened = allowed && realFold,
+                    boundsLeft = b?.left ?: 0,
+                    boundsTop = b?.top ?: 0,
+                    boundsRight = b?.right ?: 0,
+                    boundsBottom = b?.bottom ?: 0,
+                    manual = allowed && simulate,
+                    gateStyle = waistGateStyle,
+                )
+            )
+            waistApplied = posture.mode == com.filmcam.app.ui.FoldPosture.Mode.WAIST
+            com.filmcam.app.ui.WaistLevelChrome.apply(
+                root, binding.glSurfaceView, binding.viewfinderFrame,
+                binding.waistMask, binding.waistTopBar, binding.waistFinderOverlay,
+                binding.waistBar, binding.developingOverlay, posture
+            )
+            // 腰平态取景屏只保留 MF-2 那套：T3 标记整体不画；预览改为裁切填充：
+            // 表面即画幅，4:3 内容按拍摄朝向裁切铺满（零拉伸，所见即成片）。
+            binding.viewfinderFrame.waistSuppress = waistApplied
+            binding.viewfinderFrame.waistGate = waistApplied
+            binding.glSurfaceView.waistFill = waistApplied
+            waistGateAspect = if (waistApplied) posture.gateAspect else 0f
+            applyWaistGateStyle()
+            // 腰平态接管系统返回键：返回=收起腰平，不退 App；退出后立即交还。
+            waistBackCallback?.isEnabled = waistApplied
+            if (waistApplied) updateWaistReadout()
+            // 进/出腰平都重算一次：退出时清空短时读数，避免下次进入残留上一档刻字
+            updateWaistWbReadout()
+            // 退出腰平后等布局重算完，再按整屏尺寸重跑安全区，避免残留半屏 margin。
+            if (!waistApplied) root.post { refitChrome() }
+        }
+    }
+
+    /**
+     * 腰平模式的唯一入口。CLOSE / 返回键 / 长按黑屏三条退出通道都走这里。
+     *
+     * enabled=false = 用户主动收起：记为「本次半开已收起」，直到重新展平才允许
+     * 再次自动进入（否则下一帧 FoldingFeature 会立刻把它拉回来）。
+     * 总闸在工程模式（waistEgg），这里不写 prefs。
+     */
+    private fun setWaistLevel(enabled: Boolean) {
+        if (enabled) {
+            waistDismissed = false
+        } else {
+            if (!waistApplied) return
+            waistDismissed = true
+        }
+        applyWaistLevel()
+        updateWaistReadout()
+        showLcdNotice(
+            getString(if (enabled) R.string.lcd_notice_waist else R.string.lcd_notice_waist_off)
+        )
+    }
+
+    /**
+     * 腰平彩蛋的折痕监听：FoldingFeature 只区分展平 / 半开，没有角度读数，
+     * 「折到 90°」在这里就是 `HALF_OPENED + isSeparating`（折痕真的把窗口分成两半）。
+     * 展平时复位 [waistDismissed]，下次折起还能自动进。
+     */
+    private fun observeFolding() {
+        lifecycleScope.launch {
+            runCatching {
+                androidx.window.layout.WindowInfoTracker.getOrCreate(this@MainActivity)
+                    .windowLayoutInfo(this@MainActivity)
+                    .collect { info ->
+                        val f = info.displayFeatures
+                            .filterIsInstance<androidx.window.layout.FoldingFeature>()
+                            .firstOrNull()
+                        val wasHalf = foldHalfOpened
+                        if (f == null) {
+                            foldHalfOpened = false
+                            foldSeparating = false
+                            foldHinge = com.filmcam.app.ui.FoldPosture.Hinge.NONE
+                            foldBounds = null
+                        } else {
+                            foldHalfOpened = f.state ==
+                                androidx.window.layout.FoldingFeature.State.HALF_OPENED
+                            foldSeparating = f.isSeparating
+                            foldHinge = when (f.orientation) {
+                                androidx.window.layout.FoldingFeature.Orientation.HORIZONTAL ->
+                                    com.filmcam.app.ui.FoldPosture.Hinge.HORIZONTAL
+                                else -> com.filmcam.app.ui.FoldPosture.Hinge.VERTICAL
+                            }
+                            foldBounds = f.bounds
+                        }
+                        // 展平了 → 解除「本次已收起」，下次折起重新自动进入
+                        if (wasHalf && !foldHalfOpened) waistDismissed = false
+                        applyWaistLevel()
+                    }
+            }.onFailure {
+                android.util.Log.w("WaistFold", "折痕监听不可用，按直板机处理", it)
+            }
+        }
+    }
+
+    /** 整块屏幕宽（不是窗口宽）：判「系统是否已经缩窗」要用它。 */
+    private fun displayWidthPx(): Int =
+        if (android.os.Build.VERSION.SDK_INT >= 30)
+            windowManager.maximumWindowMetrics.bounds.width()
+        else resources.displayMetrics.widthPixels
+
+    private fun displayHeightPx(): Int =
+        if (android.os.Build.VERSION.SDK_INT >= 30)
+            windowManager.maximumWindowMetrics.bounds.height()
+        else resources.displayMetrics.heightPixels
+
+    /**
+     * 腰平画幅档切换（AUTO / 1:1 6×6 / 3:2 135）。真机 MF-2 的磨砂屏就是固定片窗，
+     * 画幅随取景窗几何走；手动档只是误判兑底。改档重算分区（画幅矩形 / 预览裁切 /
+     * 成片画幅全部跟着 posture.gateAspect 变）。
+     */
+    private fun setWaistGateStyle(style: com.filmcam.app.ui.FoldPosture.GateStyle) {
+        if (waistGateStyle == style) return
+        waistGateStyle = style
+        saveSettings()
+        applyWaistLevel()
+    }
+
+    /** 把当前画幅档落到前盖按钮文字（幂等，可反复调）。 */
+    private fun applyWaistGateStyle() {
+        try {
+            binding.waistRotate.text = when (waistGateStyle) {
+                com.filmcam.app.ui.FoldPosture.GateStyle.AUTO -> "AUTO"
+                com.filmcam.app.ui.FoldPosture.GateStyle.SQUARE -> "1:1"
+                com.filmcam.app.ui.FoldPosture.GateStyle.STANDARD -> "3:2"
+            }
+        } catch (_: Exception) {}
+    }
+
+    /** 折叠前盖中间那行读数：EV（EXT 用细档）· 闪光档位 · 卷内帧数 · 当前画幅。 */
+    private fun updateWaistReadout() {
+        try {
+            val ev = if (flash.mode == FlashMode.EXTERNAL) formatEv(flashCompEv)
+            else formatEv(exposureComp.toFloat())
+            val flashLabel = when (flash.mode) {
+                FlashMode.OFF -> "OFF"
+                FlashMode.BUILT_IN -> "INT"
+                FlashMode.EXTERNAL -> "EXT"
+            }
+            val gateLabel = when {
+                waistGateAspect <= 0f -> ""
+                kotlin.math.abs(waistGateAspect - 1f) < 0.01f -> " · 6×6"
+                waistGateAspect > 1f -> " · 3:2"
+                else -> " · 2:3"
+            }
+            binding.waistReadout.text =
+                "EV $ev · $flashLabel · ${currentShotCount()}/$FILM_MAX$gateLabel"
+        } catch (_: Exception) {}
     }
 
     override fun onNewIntent(intent: android.content.Intent) {
@@ -701,6 +952,14 @@ class MainActivity : AppCompatActivity() {
         intent.getIntExtra(EXTRA_SAME_EV, Int.MIN_VALUE)
             .takeIf { it != Int.MIN_VALUE }
             ?.let { setEv(it, persist = false) }
+        // EXT 档的细档补偿也随「拍摄同款」还原：只回到整数 EV 的话，
+        // 外闪固定曝光量对不上，同款成片亮度会与样张不一致。
+        intent.getFloatExtra(EXTRA_SAME_FLASH_EV, Float.NaN)
+            .takeIf { !it.isNaN() }
+            ?.let {
+                flashCompEv = it.coerceIn(-3f, 3f)
+                applyFlashCompUi(persist = false)
+            }
         // 输出风格：整卷统一的口味，同款要一并还原（印相 / Frontier / Noritsu）
         intent.getIntExtra(EXTRA_SAME_STYLE, Int.MIN_VALUE)
             .takeIf { it != Int.MIN_VALUE }
@@ -735,6 +994,16 @@ class MainActivity : AppCompatActivity() {
         val prefs = getSharedPreferences("filmcam", MODE_PRIVATE)
         dateStampEnabled = prefs.getBoolean("dateStamp", DefaultSettings.DATE_STAMP_ENABLED)
         exposureComp = prefs.getInt("ev", 0)
+        // 半档网格规整：老 prefs 若被外部写进 0.37 之类，回到最近的 0.5
+        flashCompEv = (Math.round(prefs.getFloat("flashEv", 0f) / 0.5f) * 0.5f)
+            .coerceIn(-3f, 3f)
+        // 腰平彩蛋总闸：工程模式三态（off / auto / simulate），默认自动
+        waistEgg = prefs.getString("waistEgg", "auto") ?: "auto"
+        waistGateStyle = when (prefs.getString("waistGateStyle", "auto")) {
+            "square" -> com.filmcam.app.ui.FoldPosture.GateStyle.SQUARE
+            "standard" -> com.filmcam.app.ui.FoldPosture.GateStyle.STANDARD
+            else -> com.filmcam.app.ui.FoldPosture.GateStyle.AUTO
+        }
         softFocusEnabled = prefs.getBoolean("softFocus", DefaultSettings.SOFT_FOCUS_ENABLED)
         // 11-13 起新装缺省 2%（工程师滑杆文案「0% = 关闭」）；已存过的键不覆盖
         softFocusProb = prefs.getInt("softFocus_prob", DefaultSettings.SOFT_FOCUS_PROB)
@@ -786,6 +1055,13 @@ class MainActivity : AppCompatActivity() {
         val prefs = getSharedPreferences("filmcam", MODE_PRIVATE).edit()
         prefs.putBoolean("dateStamp", dateStampEnabled)
         prefs.putInt("ev", exposureComp)
+        prefs.putFloat("flashEv", flashCompEv)
+        // 腰平总闸在工程模式（waistEgg），不在这里写；这里只持久化画幅档
+        prefs.putString("waistGateStyle", when (waistGateStyle) {
+            com.filmcam.app.ui.FoldPosture.GateStyle.SQUARE -> "square"
+            com.filmcam.app.ui.FoldPosture.GateStyle.STANDARD -> "standard"
+            else -> "auto"
+        })
         prefs.putBoolean("softFocus", softFocusEnabled)
         prefs.putBoolean("filmRollMode", filmRollMode)
         prefs.putInt("hapticLevel", hapticLevel)
@@ -867,6 +1143,13 @@ class MainActivity : AppCompatActivity() {
             row(id).findViewById<android.widget.TextView>(R.id.tvSetLabel).text = labels[i]
             row(id).findViewById<android.widget.TextView>(R.id.tvSetHint).text = hints[i]
         }
+        // v87 限高滚动：底沿渐隐与刻线窗。都常驻 XML，只在这里取引用，
+        // 运行时 addView 出来的控件会漏掉主题重映射（历史上踩过一次）。
+        val setScroll = view.findViewById<android.widget.ScrollView>(R.id.setScroll)
+        val setFade = view.findViewById<android.view.View>(R.id.setFade)
+        val setMoreRule = view.findViewById<android.view.View>(R.id.setMoreRule)
+        val setMoreTick = view.findViewById<android.view.View>(R.id.setMoreTick)
+
         // 机身行右侧是「色版」—— 一块当前外壳色的圆点，比单看文字更直白。
         // 这两块装饰常驻 XML 只在这里点亮：运行时 addView 出来的控件会漏掉主题重映射。
         val swatch = row(R.id.rowSetBody).findViewById<android.view.View>(R.id.viewSetSwatch)
@@ -876,11 +1159,32 @@ class MainActivity : AppCompatActivity() {
         val tvClose = view.findViewById<android.widget.TextView>(R.id.tvSetClose)
 
         /**
+         * 底沿渐隐按面板底色现画：黑钛是 #1A1A1A、钛银是浅钛面，
+         * 系统 fadingEdge 的黑色压在浅钛面板上会像一道脏边，只能自己画。
+         */
+        fun paintFade() {
+            setFade.background = android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.BOTTOM_TOP,
+                intArrayOf(theme.panelBg, android.graphics.Color.TRANSPARENT)
+            )
+            setMoreRule.setBackgroundColor(theme.cardStroke)
+        }
+
+        /** 亮刻线 + 渐隐 = 「下面还有行」；滚到底就收起。始终占位，不会改高度 */
+        fun updateMoreHint(canScrollDown: Boolean = setScroll.canScrollVertically(1)) {
+            setFade.visibility = if (canScrollDown) android.view.View.VISIBLE
+            else android.view.View.INVISIBLE
+            setMoreTick.setBackgroundColor(if (canScrollDown) theme.accent else theme.trackBg)
+        }
+
+        /**
          * 把面板刷成当前机身档位。重映射是幂等的（表里没有反向 key），
          * 所以切换机身色时可以连着刷好几次 —— 面板跟着机身当场变色，不需要重建弹窗。
          */
         fun paintPanel() {
             theme.applyToViewTree(view)
+            paintFade()
+            updateMoreHint()
             rows.forEach { id ->
                 row(id).findViewById<android.widget.ImageView>(R.id.ivSetChevron)
                     .setColorFilter(theme.onBodyTextSecondary)
@@ -946,6 +1250,26 @@ class MainActivity : AppCompatActivity() {
         //   右边空 182px（tmp/ui_dump_2031.xml：rowSetBody=[28,557][870,693]）。
         val dm = resources.displayMetrics
         val w = (dm.widthPixels * 0.78f).toInt().coerceAtMost((400 * dm.density).toInt())
+
+        // ⚠️ v87 限高（11-16）：11 行「名称 + 说明 + 读数」自然高 ≈1800px，
+        // S25U 可用高约 2100px → 面板几乎顶满整屏，像一条又窄又长的铭牌。
+        // 这里在 show() 前用 UNSPECIFIED 量出自然高，再把 setScroll 的高度减掉
+        // 超出量，ScrollView 才真正拿到高度上限、滚动才会生效。窗口仍是
+        // WRAP_CONTENT（不碰 78% 宽度契约），首帧即最终形态、零跳变。
+        val maxPanelH = (dm.heightPixels * 0.58f).toInt()
+        val widthSpec = android.view.View.MeasureSpec.makeMeasureSpec(
+            w, android.view.View.MeasureSpec.EXACTLY)
+        val heightSpec = android.view.View.MeasureSpec.makeMeasureSpec(
+            0, android.view.View.MeasureSpec.UNSPECIFIED)
+        view.measure(widthSpec, heightSpec)
+        val naturalH = view.measuredHeight
+        if (naturalH > maxPanelH) {
+            val lp = setScroll.layoutParams
+            lp.height = (setScroll.measuredHeight - (naturalH - maxPanelH))
+                .coerceAtLeast((120 * dm.density).toInt())
+            setScroll.layoutParams = lp
+            view.measure(widthSpec, heightSpec)   // 同步 measure 结果，滚动判定才准
+        }
         val dialog = androidx.appcompat.app.AlertDialog.Builder(this, theme.dialogTheme)
             .setView(view)
             .create()
@@ -959,6 +1283,14 @@ class MainActivity : AppCompatActivity() {
         win?.setBackgroundDrawable(theme.panelDrawable())
 
         refreshValues()
+
+        // 滚动触感：约每滚过一行给一记 8ms 轻 tick（55ms 节流），到顶/到底
+        // 再给一记机械限位震；强度跟随设置里的低/中/强（Haptics 读 hapticLevel）。
+        // 只挂一条 OnScrollChangeListener，避免二次 set 把限位震冲掉。
+        val detents = com.filmcam.app.ui.ScrollDetents(this, (44 * dm.density).toInt())
+        setScroll.attachEdgeHaptics(detents = detents) { canScrollDown ->
+            updateMoreHint(canScrollDown)
+        }
 
         row(R.id.rowSetBody).hapticClick {
             // 就地换外壳：面板不关，跟着机身一起翻色
@@ -1052,6 +1384,8 @@ class MainActivity : AppCompatActivity() {
         dialog.show()
         // 兜底：个别 ROM 在 addView 阶段可能改写 attrs.width；值相同不产生可见跳变
         dialog.window?.setLayout(w, android.view.ViewGroup.LayoutParams.WRAP_CONTENT)
+        // 首帧后按实际 layout 结果再校正一次「下面还有行」（measure 期判定可能偏早）
+        view.post { updateMoreHint() }
     }
 
     /** 设置面板「关于」行右侧的刻字版本号（v1.2.3） */
@@ -1336,23 +1670,39 @@ class MainActivity : AppCompatActivity() {
         binding.lcdDisplay.showMessage(text)
     }
 
-    // ===== 白平衡（闪光开启后，预览上左右拖动切换） =====
+    // ===== 白平衡（预览上左右拖动切换，任何闪光档都能拨） =====
 
-    /** 白平衡档位：语义对应胶片机的校色滤镜片，顺序即横滑从左到右的档位 */
     private enum class WbIcon { AUTO, BULB, TUBE, SUN, CLOUD_SUN, SHADE, TWILIGHT }
 
-    private data class WbPreset(val label: String, val awbMode: Int, val icon: WbIcon)
+    /**
+     * 白平衡档位：语义对应胶片机的校色滤镜片，顺序即横滑从左到右的档位。
+     *
+     * kelvin 是 **AOSP 3A 文档给每档 AWB_MODE 的标称适用光源近似值**
+     * （source.android.com/devices/camera/camera3_3Amodes.html：
+     *  INCANDESCENT 2700K / FLUORESCENT 5000K / DAYLIGHT 5500K /
+     *  CLOUDY_DAYLIGHT 6500K / SHADE 7500K / TWILIGHT 15000K）。
+     * Android 只承诺「approximately match CIE standard illuminant」，各厂商 HAL
+     * 实现有差异 —— 所以这是**档位标称值，不是传感器实测色温**，UI 上带 ≈ 号，
+     * 也绝不拿它去调引擎参数。AUTO 档由 3A 动态决定，没有固定 K，只显示 AUTO。
+     */
+    private data class WbPreset(
+        val label: String,
+        val awbMode: Int,
+        val icon: WbIcon,
+        val kelvin: Int?,
+        val code: String,
+    )
 
     // lazy：label 要读本地化资源，必须在 Activity attach 之后才能取 getString
     private val wbPresets by lazy {
         listOf(
-            WbPreset("AUTO", android.hardware.camera2.CameraMetadata.CONTROL_AWB_MODE_AUTO, WbIcon.AUTO),
-            WbPreset(getString(R.string.main_wb_incandescent), android.hardware.camera2.CameraMetadata.CONTROL_AWB_MODE_INCANDESCENT, WbIcon.BULB),
-            WbPreset(getString(R.string.main_wb_fluorescent), android.hardware.camera2.CameraMetadata.CONTROL_AWB_MODE_FLUORESCENT, WbIcon.TUBE),
-            WbPreset(getString(R.string.main_wb_daylight), android.hardware.camera2.CameraMetadata.CONTROL_AWB_MODE_DAYLIGHT, WbIcon.SUN),
-            WbPreset(getString(R.string.main_wb_cloudy), android.hardware.camera2.CameraMetadata.CONTROL_AWB_MODE_CLOUDY_DAYLIGHT, WbIcon.CLOUD_SUN),
-            WbPreset(getString(R.string.main_wb_shade), android.hardware.camera2.CameraMetadata.CONTROL_AWB_MODE_SHADE, WbIcon.SHADE),
-            WbPreset(getString(R.string.main_wb_twilight), android.hardware.camera2.CameraMetadata.CONTROL_AWB_MODE_TWILIGHT, WbIcon.TWILIGHT)
+            WbPreset("AUTO", android.hardware.camera2.CameraMetadata.CONTROL_AWB_MODE_AUTO, WbIcon.AUTO, null, "AUTO"),
+            WbPreset(getString(R.string.main_wb_incandescent), android.hardware.camera2.CameraMetadata.CONTROL_AWB_MODE_INCANDESCENT, WbIcon.BULB, 2700, "INCAND"),
+            WbPreset(getString(R.string.main_wb_fluorescent), android.hardware.camera2.CameraMetadata.CONTROL_AWB_MODE_FLUORESCENT, WbIcon.TUBE, 5000, "FLUOR"),
+            WbPreset(getString(R.string.main_wb_daylight), android.hardware.camera2.CameraMetadata.CONTROL_AWB_MODE_DAYLIGHT, WbIcon.SUN, 5500, "DAYLIGHT"),
+            WbPreset(getString(R.string.main_wb_cloudy), android.hardware.camera2.CameraMetadata.CONTROL_AWB_MODE_CLOUDY_DAYLIGHT, WbIcon.CLOUD_SUN, 6500, "CLOUDY"),
+            WbPreset(getString(R.string.main_wb_shade), android.hardware.camera2.CameraMetadata.CONTROL_AWB_MODE_SHADE, WbIcon.SHADE, 7500, "SHADE"),
+            WbPreset(getString(R.string.main_wb_twilight), android.hardware.camera2.CameraMetadata.CONTROL_AWB_MODE_TWILIGHT, WbIcon.TWILIGHT, 15000, "TWILIGHT")
         )
     }
     private var wbIndex = 0
@@ -1374,6 +1724,26 @@ class MainActivity : AppCompatActivity() {
     private fun applyWbIndex() {
         cameraController?.setAwbMode(wbPresets[wbIndex].awbMode)
         updateViewfinderIndicators(lastAfState, lastExposureSec)
+        updateWaistWbReadout()
+    }
+
+    /**
+     * 腰平取景窗里的**短时**白平衡读数。腰平态抑制了 T3 整层标记（含原 WB 面板），
+     * 横滑换片时屏幕上什么都没有，只剩震动 —— 这里把当前档位的标称色温写进
+     * MF-2 取景格。仅 `waistApplied && wbVisible`（横滑起手置位、抬手 900ms 后清）
+     * 显示；整屏模式、静止态、退出腰平后一律为空。**不改机顶 LCD、不改整屏 T3 面板、不常驻**。
+     */
+    private fun updateWaistWbReadout() {
+        try {
+            val preset = wbPresets.getOrNull(wbIndex)
+            val label = when {
+                preset == null -> ""
+                preset.kelvin == null -> "WB AUTO"
+                else -> "WB ≈${preset.kelvin}K · ${preset.code}"
+            }
+            binding.waistFinderOverlay.wbReadout =
+                if (waistApplied && wbVisible) label else ""
+        } catch (_: Exception) {}
     }
 
     /** 选中胶卷：切换 LUT + 更新图标。fromUser=false 用于启动时恢复设置（不做拦截）。 */
@@ -1408,10 +1778,89 @@ class MainActivity : AppCompatActivity() {
 
     // ===== T3 机身 UI 交互 =====
 
-    /** 曝光补偿键：-3 → +3 循环 */
+    /**
+     * 落卷时把相机层实测的这一帧曝光参数并进拍摄快照。
+     * 只在这里补：拍照 request 构造 / TotalCaptureResult 都晚于 shutterDown
+     * 里生成 lastShotJson 的时刻，落盘是唯一能拿到真值的点。
+     */
+    private fun shotJsonWithCapture(): String {
+        val base = com.filmcam.app.film.ShotMeta.fromJson(lastShotJson)
+            ?: com.filmcam.app.film.ShotMeta()
+        val iso = cameraController?.lastCaptureIso ?: 0
+        val ns = cameraController?.lastCaptureShutterNs ?: 0L
+        return base.copy(
+            sensorIso = iso,
+            sensorShutterSec = if (ns > 0L) ns / 1_000_000_000f else 0f,
+            aperture = cameraController?.lastCaptureAperture ?: 0f,
+            focalMm = cameraController?.lastCaptureFocalMm ?: 0f,
+        ).toJson()
+    }
+
+    /**
+     * 当前外置灯的档案快照（灯名 / MAC / 通道 / 触发指令）。
+     * 在 shutterDown 的主线程读一次，落盘线程不再碰 filesDir；
+     * 注册表条目给出「实际连的是哪盏」，档案给出协议细节。
+     */
+    private fun currentExternalFlashInfo(): ExtFlashInfo? {
+        val entry = runCatching {
+            com.filmcam.app.flash.ExternalFlashRegistry.preferredEntry()
+        }.getOrNull() ?: return null
+        val profiles = runCatching {
+            com.filmcam.app.flash.FlashProfileStore(this).list()
+        }.getOrDefault(emptyList())
+        val p = profiles.firstOrNull { it.address in entry.knownAddresses }
+            ?: profiles.maxByOrNull { it.pairedAt }
+        return ExtFlashInfo(
+            displayName = p?.displayName?.takeIf { it.isNotBlank() } ?: entry.displayName,
+            address = p?.address ?: entry.knownAddresses.firstOrNull().orEmpty(),
+            channel = p?.writeCharUuid.orEmpty(),
+            triggerHex = p?.triggerHex.orEmpty(),
+        )
+    }
+
+    private data class ExtFlashInfo(
+        val displayName: String, val address: String, val channel: String, val triggerHex: String
+    )
+
+    /** 机顶 EV 键：到顶回卷。EXT 档下同一颗键改拨 0.5 EV/档的闪光灯细档。 */
     private fun cycleEvValue() {
-        // 统一入口：原先这里漏了 tvEvValue 的同步（按 EV 键按钮旁数字不变）
-        setEv(if (exposureComp >= 3) -3 else exposureComp + 1)
+        if (flash.mode == FlashMode.EXTERNAL) {
+            flashCompEv = if (flashCompEv >= 3f) -3f else flashCompEv + 0.5f
+            applyFlashCompUi()
+        } else {
+            setEv(if (exposureComp >= 3) -3 else exposureComp + 1)
+        }
+    }
+
+    /** EV± 按钮与上下滑手势的统一分流：steps>0 加档，<0 减档。 */
+    private fun stepEv(steps: Int, persist: Boolean = true) {
+        if (flash.mode == FlashMode.EXTERNAL) {
+            val next = (flashCompEv + steps * 0.5f).coerceIn(-3f, 3f)
+            if (next == flashCompEv) return
+            flashCompEv = next
+            applyFlashCompUi(persist)
+        } else {
+            val next = (exposureComp + steps).let {
+                if (it > 3) -3 else if (it < -3) 3 else it
+            }
+            setEv(next, persist)
+        }
+    }
+
+    /** 细档补偿落盘 + 下发相机 + 刷新全部读数（与 setEv 的同步纪律一致）。 */
+    private fun applyFlashCompUi(persist: Boolean = true) {
+        binding.tvEvValue.text = formatEv(flashCompEv)
+        applyExposure()
+        updateLcd()
+        binding.viewfinderFrame.notifyActivity()
+        if (persist) saveSettings()
+    }
+
+    /** 读数格式：整数不带小数、半档显示 .5、正数带 +、0 显示 0。 */
+    private fun formatEv(v: Float): String {
+        val s = if (v == v.toInt().toFloat()) v.toInt().toString()
+        else String.format(java.util.Locale.US, "%.1f", v)
+        return if (v > 0f) "+$s" else s
     }
 
     // ===== 曝光补偿反馈 =====
@@ -1445,6 +1894,7 @@ class MainActivity : AppCompatActivity() {
             cameraController?.setManualIso(null)
             cameraController?.setManualExposure(null)
             cameraController?.setExposureComp(exposureComp)
+            cameraController?.setExternalFlashComp(flashCompEv)
             cameraController?.setExternalFlashSync(flash.mode == FlashMode.EXTERNAL)
         } catch (_: Exception) {}
     }
@@ -1486,7 +1936,8 @@ class MainActivity : AppCompatActivity() {
         try {
             val iso = isoValues[isoValue]?.toString() ?: "A"
             val count = "${currentShotCount()}/$FILM_MAX"
-            val ev = if (exposureComp > 0) "+$exposureComp" else "$exposureComp"
+            val ev = if (flash.mode == FlashMode.EXTERNAL) formatEv(flashCompEv)
+            else if (exposureComp > 0) "+$exposureComp" else "$exposureComp"
             val flashLabel = when (flash.mode) {
                 FlashMode.OFF -> "OFF"
                 FlashMode.BUILT_IN -> "INT"
@@ -1499,12 +1950,15 @@ class MainActivity : AppCompatActivity() {
                     filmMax = FILM_MAX,
                     mode = currentMode,
                     isoLabel = iso,
-                    evSteps = exposureComp.toFloat(),
+                    evSteps = if (flash.mode == FlashMode.EXTERNAL) flashCompEv
+                    else exposureComp.toFloat(),
                     flashLabel = flashLabel,
                     battery = batteryIconLevel()
                 )
             )
         } catch (_: Exception) {}
+        // 腰平前盖读数跟随机顶 LCD 一起刷新（EV / 闪光 / 帧数同源同刻）
+        updateWaistReadout()
         updateViewfinderIndicators(null, lastExposureSec)
     }
 
@@ -1548,15 +2002,16 @@ class MainActivity : AppCompatActivity() {
         val slowWarn = slowShutterMode != FilmExposure.Mode.OFF &&
             slowSec != null && slowSec >= 1f / 45f
         // WB 状态必须进 key：否则横滑换档时因为其它字段没变，被去重直接跳过不重画
-        val key = "${focus.ordinal}|$exposureComp|${lit.joinToString(",")}|$blink|$slowWarn|" +
+        val currentEv = if (flash.mode == FlashMode.EXTERNAL) flashCompEv else exposureComp.toFloat()
+        val key = "${focus.ordinal}|$currentEv|${lit.joinToString(",")}|$blink|$slowWarn|" +
             "${flash.mode}|$wbVisible|$wbIndex"
         if (key == lastIndicatorKey) return
         lastIndicatorKey = key
         binding.viewfinderFrame.setIndicators(
             ViewfinderFrameView.Indicators(
                 focus = focus,
-                evCompOn = exposureComp != 0,
-                evSteps = exposureComp,
+                evCompOn = currentEv != 0f,
+                evSteps = currentEv,
                 flash = if (flash.mode != FlashMode.OFF) ViewfinderFrameView.LedMode.ON
                         else ViewfinderFrameView.LedMode.OFF,
                 shutterLit = lit,
@@ -1718,6 +2173,10 @@ class MainActivity : AppCompatActivity() {
         flash.setBuiltInEnabled(flash.mode == FlashMode.BUILT_IN)
         applyExposure()
         updateLcd()
+        // 切到 EXT：明确告诉用户机顶拨盘已换语义（0.5 EV/档的闪光灯补偿）
+        if (flash.mode == FlashMode.EXTERNAL) {
+            showLcdNotice(getString(R.string.lcd_notice_flash_ev_fine))
+        }
         // 点亮取景器内的闪光指示
         binding.viewfinderFrame.notifyActivity()
         saveSettings()
@@ -1833,6 +2292,13 @@ class MainActivity : AppCompatActivity() {
 
         // 工程师模式里可能刚改过慢门触发机制/档位：回前台重新对齐，不必重启 App
         val prefs = getSharedPreferences("filmcam", MODE_PRIVATE)
+        // 腰平彩蛋总闸同理：工程模式里刚改的 off / auto / simulate，回前台立刻生效
+        val egg = prefs.getString("waistEgg", "auto") ?: "auto"
+        if (egg != waistEgg) {
+            waistEgg = egg
+            waistDismissed = false
+            applyWaistLevel()
+        }
         // RAW 负片开关同理：控制台里刚拨的，回到取景器就要生效
         rawNegativeEnabled = prefs.getBoolean("filmcam_dev_raw", false)
         cameraController?.rawNegativeEnabled = rawNegativeEnabled
@@ -1966,7 +2432,7 @@ class MainActivity : AppCompatActivity() {
                     val iso = isoValues[isoValue]
                     val count = UndevelopedFilmStore.saveFrame(
                         roll.rollId, bytes, System.currentTimeMillis(), iso, rotation,
-                        shotJson = lastShotJson, rawDng = rawDng
+                        shotJson = shotJsonWithCapture(), rawDng = rawDng
                     )
                     runOnUiThread {
                         // v82 段 2 检测点：首张落卷 = 三步实操走完，停掉超时轮转，
@@ -2186,7 +2652,8 @@ class MainActivity : AppCompatActivity() {
         // 把按键时刻打出来，才能和 FlashNotify / 拍照完成对齐，判断灯落在窗口内外。
         android.util.Log.i(
             "FlashDiag",
-            "shutterDown seq=$seq mode=${flash.mode} ev=$exposureComp raw=$rawNegativeEnabled " +
+            "shutterDown seq=$seq mode=${flash.mode} ev=$exposureComp " +
+                "flashEv=$flashCompEv raw=$rawNegativeEnabled " +
                 "at=$captureStartMs"
         )
 
@@ -2228,6 +2695,9 @@ class MainActivity : AppCompatActivity() {
                 // 慢门本身已经是「废片」的一个来源，同一张再叠失焦就太狠了，概率减半。
                 val prob = if (slowNs > 0L) softFocusProb / 2 else softFocusProb
                 val defocus = softFocusEnabled && java.util.Random().nextInt(100) < prob
+                // 外闪档顺手把「这一帧用的是哪盏灯、哪个通道、哪条指令」刻进快照：
+                // 过曝复盘时只看 ISO/快门还不够，灯与触发帧同样是配方的一部分。
+                val extInfo = if (flash.mode == FlashMode.EXTERNAL) currentExternalFlashInfo() else null
                 // 这一张的拍摄参数随帧落盘（冲洗时写进 EXIF），拍摄同款要靠它复现
                 lastShotJson = com.filmcam.app.film.ShotMeta(
                     flash = flash.mode.name,
@@ -2238,7 +2708,20 @@ class MainActivity : AppCompatActivity() {
                     defocus = defocus,
                     // 这一张实际用的 35mm 视角裁切比：冲洗端按帧取它补裁 RAW，
                     // 不依赖「相机是否刚在这台机上初始化过」
-                    zoom = cameraController?.currentZoomRatio ?: 0f
+                    zoom = cameraController?.currentZoomRatio ?: 0f,
+                    // 外闪细档补偿随帧落盘，冲洗时进 EXIF UserComment，便于复盘 / 拍摄同款
+                    flashCompEv = if (flash.mode == FlashMode.EXTERNAL) this.flashCompEv else 0f,
+                    flashDevice = extInfo?.displayName.orEmpty(),
+                    flashAddress = extInfo?.address.orEmpty(),
+                    flashChannel = extInfo?.channel.orEmpty(),
+                    flashTriggerHex = extInfo?.triggerHex.orEmpty(),
+                    // 腰平方窗拍的是 120 6×6（1:1）；整屏 / 非方窗一律 135（3:2）。
+                    // 冲洗端按帧选片门与片框版式，老帧没这个字段回落 135。
+                    gate = if (waistApplied && kotlin.math.abs(waistGateAspect - 1f) < 0.01f) {
+                        app.spektralab.engine.FilmStockMapper.FilmGate.MF6x6.key
+                    } else {
+                        app.spektralab.engine.FilmStockMapper.FilmGate.F135.key
+                    },
                 ).toJson()
                 cameraController?.takePicture(defocus, slowNs, slowIso)
                 android.util.Log.i(
@@ -2411,6 +2894,8 @@ class MainActivity : AppCompatActivity() {
         const val EXTRA_SAME_WB = "same_wb"
         /** 曝光补偿档位 */
         const val EXTRA_SAME_EV = "same_ev"
+        /** EXT 档闪光灯细档补偿（EV，0.5 步进） */
+        const val EXTRA_SAME_FLASH_EV = "same_flash_ev"
         /** 成片出口档位（OutputStyle.prefs；缺省 = 印相） */
         const val EXTRA_SAME_STYLE = "same_output_style"
 
@@ -2424,7 +2909,8 @@ class MainActivity : AppCompatActivity() {
         val EXTRA_SAME_KEYS = arrayOf(
             EXTRA_SAME_FILM, EXTRA_SAME_PAPER, EXTRA_SAME_GRAIN,
             EXTRA_SAME_HALATION, EXTRA_SAME_GLARE, EXTRA_SAME_EXPOSURE,
-            EXTRA_SAME_FLASH, EXTRA_SAME_WB, EXTRA_SAME_EV, EXTRA_SAME_STYLE
+            EXTRA_SAME_FLASH, EXTRA_SAME_WB, EXTRA_SAME_EV,
+            EXTRA_SAME_FLASH_EV, EXTRA_SAME_STYLE
         )
     }
 }

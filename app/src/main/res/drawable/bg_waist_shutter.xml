@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 腰平快门：黑底银圈 + 红心（全黑机身里唯一的一点颜色，按下有涟漪）。
+     52dp 按钮里外圈 1.5dp 灰描边，中心 22dp 红点。 -->
+<ripple xmlns:android="http://schemas.android.com/apk/res/android"
+    android:color="#33FFFFFF">
+    <item>
+        <layer-list>
+            <item>
+                <shape android:shape="oval">
+                    <solid android:color="#0C0C0E" />
+                    <stroke
+                        android:width="1.5dp"
+                        android:color="#8A8880" />
+                </shape>
+            </item>
+            <item
+                android:bottom="14dp"
+                android:left="14dp"
+                android:right="14dp"
+                android:top="14dp">
+                <shape android:shape="oval">
+                    <solid android:color="#E24B4A" />
+                </shape>
+            </item>
+        </layer-list>
+    </item>
+</ripple>

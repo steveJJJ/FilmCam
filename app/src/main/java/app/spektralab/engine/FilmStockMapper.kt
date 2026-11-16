@@ -120,6 +120,25 @@ object FilmStockMapper {
     val DEFAULT_OUTPUT_STYLE: OutputStyle = OutputStyle.FRONTIER
 
     /**
+     * 成片画幅（跟腰平取景窗走）：
+     *  - [F135]：135 全幅 36×24（3:2 / 2:3，跟帧朝向）—— 整屏拍摄与默认腰平；
+     *  - [MF6x6]：120 中画幅 6×6（1:1）—— 方形取景窗的腰平成片。
+     * 引擎 overscan 格式表实锤支持 120_6x6（还有 120_645/6x7/6x8/6x9、135_xpan
+     * 等全家），6×6 的片框（纸背、无齿孔、帧号）由引擎真画，不是 App 模拟。
+     * 老帧没这个字段 → 回落 [F135]，行为与升级前完全一致。
+     */
+    enum class FilmGate(val key: String, val overscanFormat: String, val gateAspect: Float) {
+        F135("135", "135", 36f / 24f),
+        MF6x6("6x6", "120_6x6", 1f);
+
+        val isMediumFormat: Boolean get() = this != F135
+
+        companion object {
+            fun fromKey(s: String?): FilmGate = if (s == MF6x6.key) MF6x6 else F135
+        }
+    }
+
+    /**
      * 片框档位：成片要不要把片基一起扫进来，扫哪一格。
      *
      * 真机那卷胶卷是"一整条"——画面之外还有齿孔、片基边缘印的胶卷型号和帧号。
@@ -769,6 +788,12 @@ object FilmStockMapper {
         extraEntries: List<Pair<String, String>>? = null,
         flashShot: Boolean = false,
         flashEntries: List<Pair<String, String>>? = null,
+        /**
+         * 底片幅宽（mm）：135 = 36.0（历史固定值，默认不变）；120 6×6 = 56.0。
+         * 引擎拿它换算镜头柔度 / 颗粒尺度与片门毫米数，中画幅必须按 120 报，
+         * 否则方画幅会被当成 36mm 的片门去算。
+         */
+        filmFormatMm: Float = 36f,
     ): String {
         val effectivePrintStock = settings.paperOverride?.takeIf { it.isNotBlank() } ?: printStockId
         // scan_film 只对反转片成立：正片本身就是可直接观看的正像。
@@ -805,7 +830,7 @@ object FilmStockMapper {
           // 默认值在工程师「冲洗参数」面板可调（全局键 filmcam_dev_lens_blur），
           // 最终定值以用户在真机上的对比结论为准。
           .append("\"lens_blur_um\":").append(jsonNum(settings.lensBlurUm)).append(',')
-          .append("\"film_format_mm\":36.0")
+          .append("\"film_format_mm\":").append(jsonNum(filmFormatMm))
         // 直闪味（预检后的子集；全部被拒时只剩上面的辉光增强）
         if (flashShot) {
             flashEntries?.forEach { (k, v) ->
@@ -990,6 +1015,27 @@ object FilmStockMapper {
      */
     fun overscanCandidates(preferred: FrameFormat): List<String> =
         listOfNotNull(preferred.overscanFormat ?: OVERSCAN_FORMAT_FULL)
+
+    /**
+     * 指定画幅的片框版式候选：135 一如既往；6×6 用引擎的 120_6x6（120 无齿孔带
+     * 纸背，引擎画的就是中画幅的框）。同样要走冲洗前小图真跑预检。
+     */
+    fun overscanCandidatesForGate(gate: FilmGate): List<String> = when (gate) {
+        FilmGate.F135 -> listOf(OVERSCAN_FORMAT_FULL)
+        FilmGate.MF6x6 -> listOf(gate.overscanFormat)
+    }
+
+    /**
+     * 按画幅 + 帧朝向取成片宽高比（w/h）：6×6 恒 1:1；135 横帧 3:2 / 竖帧 2:3。
+     * 冲洗侧的 gateCrop、预览侧的取景格都用它，两边必须一致。
+     */
+    fun gateAspectOf(gate: FilmGate, portrait: Boolean): Float = when (gate) {
+        FilmGate.F135 -> if (portrait) 1f / GATE135_ASPECT else GATE135_ASPECT
+        FilmGate.MF6x6 -> 1f
+    }
+
+    /** 135 片门横置比例（36×24），与 ViewfinderFrameView.GATE_ASPECT 同值。 */
+    const val GATE135_ASPECT = 36f / 24f
 
     /**
      * 店扫档追加的参数。都作用在成片链末端，不碰印相反相本身：

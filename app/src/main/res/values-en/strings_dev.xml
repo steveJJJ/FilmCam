@@ -83,4 +83,13 @@
     <string name="lcd_notice_dev_done">Developed %1$d prints</string>
     <string name="lcd_notice_raw_unavailable">No RAW support, using JPEG</string>
 
+    <!-- ===== Real capture parameters (standard EXIF tags, separate from the simulated nameplate) ===== -->
+    <string name="pf_capture_iso">Sensor ISO %1$s</string>
+    <string name="pf_capture_shutter">Shutter %1$s</string>
+    <string name="pf_capture_ext_flash">EXT flash %1$s</string>
+    <string name="pf_capture_builtin">Built-in flash</string>
+    <string name="pf_capture_channel">CH %1$s</string>
+    <string name="pf_capture_trigger">TRIG %1$s</string>
+    <string name="pf_capture_flash_ev">Flash comp %1$.1f EV</string>
+
 </resources>

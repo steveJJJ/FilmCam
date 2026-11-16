@@ -78,6 +78,13 @@ object DateStampRenderer {
     val CONTENT_LANDSCAPE = ContentRect(0.01f, 0.141f, 0.99f, 0.866f)
 
     /**
+     * 120 6×6 带框成片（腰平方窗）的保守画面区：120 纸背没有齿孔带，四周只是
+     * 一圈片基留边，所以对称内缩。⚠️这是**待真机标定**的初值 —— 引擎 120_6x6
+     * 画布的确切画面区还没量过；落点先按最保守取，宁可往里收也不会印到纸背上。
+     */
+    val CONTENT_SQUARE_FRAMED = ContentRect(0.08f, 0.08f, 0.92f, 0.92f)
+
+    /**
      * 竖拍：引擎只有横置 135 版式，整条胶片被旋转 90° 套在竖画布上 →
      * 齿孔列落在 x 0.059~0.141 / 0.866~0.946，画面列对应横拍的
      * y 0.141~0.866，即 **x 0.141~0.866**，y 方向几乎满高。
@@ -136,8 +143,11 @@ object DateStampRenderer {
      * 按位图比例判断是不是「带片框的成片」。纯画面（片门 3:2 / 2:3、或 gateCrop
      * 的 4:3）传 null；带框成片横拍约 1.083、竖拍约 0.924，按朝向给内容区。
      * 用比例而不是参数判断 —— 竖拍版式自检失败时引擎会静默关框，参数仍写着 true。
+     *
+     * [mediumFormat] = 120 6×6 帧：干净的 1:1 成片（无片框 / 白边档）按整图落戳；
+     * 带 120 纸背框的用对称保守内容区，别把日期印到片基上。135 老路径一字不改。
      */
-    internal fun contentForAspect(w: Int, h: Int): ContentRect? {
+    internal fun contentForAspect(w: Int, h: Int, mediumFormat: Boolean = false): ContentRect? {
         if (w <= 0 || h <= 0) return null
         val r = w.toFloat() / h.toFloat()
         val bare = kotlin.math.abs(r - 1.5f) < 0.06f ||
@@ -145,6 +155,10 @@ object DateStampRenderer {
             kotlin.math.abs(r - 4f / 3f) < 0.04f ||
             kotlin.math.abs(r - 3f / 4f) < 0.04f
         if (bare) return null
+        if (mediumFormat) {
+            // 干净的方画幅（裸画面 / 纯画面）按整图；带纸背框的比例会偏离 1:1。
+            return if (kotlin.math.abs(r - 1f) < 0.04f) null else CONTENT_SQUARE_FRAMED
+        }
         return if (w < h) CONTENT_PORTRAIT else CONTENT_LANDSCAPE
     }
 
