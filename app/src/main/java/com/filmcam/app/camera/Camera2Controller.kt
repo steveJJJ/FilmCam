@@ -504,6 +504,21 @@ class Camera2Controller(private val context: Context) {
                 timestamp: Long,
                 frameNumber: Long
             ) {
+                // EXT 取证：指令发出 → 真正开曝光的间隔。这条值直接把「灯闪了但
+                // 快门晚了」与「指令根本没发」分开 —— 小米/HyperOS 的 still 通路
+                // 常见 onCaptureStarted 早于真实积分，光看延迟中位数会误判。
+                if (extExposurePending && extLastTriggerAtMs > 0L) {
+                    extTriggerToExposureMs =
+                        android.os.SystemClock.elapsedRealtime() - extLastTriggerAtMs
+                    extExposurePending = false
+                    android.util.Log.w(
+                        "FlashSync",
+                        "取证：指令→曝光开始=${extTriggerToExposureMs}ms " +
+                            "where=$extLastTriggerWhere preRoll=${extLastPreRollMs}ms " +
+                            "halLatency=${flashHalLatencyMs}ms frame=$frameNumber"
+                    )
+                    reportExtFlashState()
+                }
                 // 自适应触发时机：这是 HAL 唯一明确告知「曝光已开始」的事件，
                 // 用它实测「提交 → 曝光开始」的延迟，供下一帧算前置量。
                 // 此处不发灯 —— 灯起辉约 200ms 远大于 100ms 曝光窗口，
@@ -825,6 +840,14 @@ class Camera2Controller(private val context: Context) {
 
     private var flashTriggerPosted = false
 
+    // ---- EXT 外闪取证（写进诊断报告，用来区分「指令没发」和「发晚了」）----
+    private var extTriggerCount = 0
+    @Volatile private var extLastTriggerAtMs = 0L
+    @Volatile private var extLastTriggerWhere = "-"
+    @Volatile private var extLastPreRollMs = -1L
+    @Volatile private var extTriggerToExposureMs = -1L
+    @Volatile private var extExposurePending = false
+
     /** 提交拍照请求的 wall-clock；配合 onCaptureStarted 实测「提交 → 曝光开始」。 */
     @Volatile private var flashSubmitRealtimeMs = 0L
     /** 最近 3 次实测延迟（只在 backgroundHandler 线程访问），取中位数抗抖动。 */
@@ -864,6 +887,11 @@ class Camera2Controller(private val context: Context) {
             "触发外接灯 @ $where offset=${flashTriggerOffsetMs}ms" +
                 " halLatency=${flashHalLatencyMs}ms t=${android.os.SystemClock.elapsedRealtime()}"
         )
+        extTriggerCount++
+        extLastTriggerAtMs = android.os.SystemClock.elapsedRealtime()
+        extLastTriggerWhere = where
+        extExposurePending = true
+        reportExtFlashState()
         onExposureStarted?.invoke()
     }
 
@@ -1823,6 +1851,7 @@ class Camera2Controller(private val context: Context) {
         val handler = backgroundHandler
         if (externalFlashSync && !slowShutter && handler != null) {
             val preRoll = flashPreRollMs(flashHalLatencyMs, flashTriggerOffsetMs)
+            extLastPreRollMs = preRoll
             if (preRoll > 0L && !flashTriggerPosted) {
                 android.util.Log.i(
                     "FlashSync",
@@ -2145,6 +2174,24 @@ class Camera2Controller(private val context: Context) {
         )
     }
 
+    /**
+     * EXT 外闪取证：只写内存快照，不在这里 flush（拍摄路径每帧都会调，
+     * 落盘交给既有的状态变化 flush，避免快门路径上做文件 IO）。
+     */
+    private fun reportExtFlashState() {
+        runCatching {
+            com.filmcam.app.develop.DeviceGeometryReport.putAll(
+                "flash.extSync" to externalFlashSync,
+                "flash.extTriggers" to extTriggerCount,
+                "flash.extLastTriggerWhere" to extLastTriggerWhere,
+                "flash.extLastPreRollMs" to extLastPreRollMs,
+                "flash.extHalLatencyMs" to flashHalLatencyMs,
+                "flash.extTriggerToExposureMs" to extTriggerToExposureMs,
+                "flash.extTriggerPosted" to flashTriggerPosted,
+            )
+        }
+    }
+
     /** v74 P2：把闪光灯状态写进诊断报告（状态变化时才落盘，随反馈邮件正文发出） */
     private fun reportFlashState() {
         runCatching {
@@ -2160,6 +2207,7 @@ class Camera2Controller(private val context: Context) {
                 "flash.precaptureCancels" to flashPrecaptureCancels,
                 "flash.resetLastReason" to lastFlashResetReason,
             )
+            reportExtFlashState()
             // 有变化才落盘（flush 内部用 snapshotIfDirty）；反馈邮件走 read() 拿内存全文，
             // 这里保证文件导出也能看到最新的 flash 状态。
             com.filmcam.app.develop.DeviceGeometryReportIo.flush(context)

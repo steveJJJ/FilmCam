@@ -96,6 +96,12 @@ class FotorGearFlash(
     @Volatile private var released = false
     private var reconnectAttempts = 0
 
+    /**
+     * 连接看门狗：connectGatt 回调丢失时 `connecting` 会永久卡 true，
+     * 之后 scheduleReconnect 的守卫把重连全挡掉（详见 LearnedProfileDriver 同名逻辑）。
+     */
+    private val connectWatchdog = Runnable { onConnectWatchdog() }
+
     override var onStatusChange: ((String) -> Unit)? = null
 
     private val bluetoothAdapter: BluetoothAdapter? by lazy {
@@ -118,6 +124,17 @@ class FotorGearFlash(
         handler.postDelayed({ onStatusChange?.invoke("SCAN_TIMEOUT") }, 15_000)
     }
 
+    private fun onConnectWatchdog() {
+        if (released || writeChar != null) return
+        android.util.Log.w(TAG, "连接回调超时，强制复位后重连 #$reconnectAttempts")
+        connecting = false
+        runCatching { gatt?.close() }
+        gatt = null
+        writeChar = null
+        onStatusChange?.invoke("RECONNECT_WATCHDOG")
+        scheduleReconnect(300L)
+    }
+
     /** 灯休眠后 Android 的 connectGatt 常直接给 status=147 超时；定时重试直到连上。 */
     @RequiresPermission("android.permission.BLUETOOTH_CONNECT")
     private fun scheduleReconnect(delayMs: Long = 2_000L) {
@@ -134,6 +151,8 @@ class FotorGearFlash(
         if (connecting || released) return
         val device = bluetoothAdapter?.getRemoteDevice(address) ?: return
         connecting = true
+        handler.removeCallbacks(connectWatchdog)
+        handler.postDelayed(connectWatchdog, 6_000L)
         // 关掉上一条 GATT，避免 client_if 越堆越多把连接互相顶掉
         runCatching { gatt?.close() }
         onStatusChange?.invoke("GATT_CONNECTING")
@@ -141,6 +160,7 @@ class FotorGearFlash(
             @RequiresPermission("android.permission.BLUETOOTH_CONNECT")
             override fun onConnectionStateChange(g: BluetoothGatt, status: Int, newState: Int) {
                 connecting = false
+                handler.removeCallbacks(connectWatchdog)
                 android.util.Log.i(
                     TAG,
                     "连接状态 newState=$newState status=$status target=$targetName"
@@ -413,6 +433,7 @@ class FotorGearFlash(
         val char = writeChar ?: run {
             android.util.Log.w(TAG, "0xFFE1 未就绪，本帧漏闪，立即重连")
             onStatusChange?.invoke("TRIGGER_SKIP NOT_READY")
+            if (gatt == null) connecting = false
             scheduleReconnect(500L)
             return
         }

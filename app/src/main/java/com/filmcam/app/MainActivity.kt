@@ -243,6 +243,9 @@ class MainActivity : AppCompatActivity() {
             advanceSoundId = advanceSoundPool?.load(this, R.raw.t3_advance, 1) ?: 0
         }
         flash.onStatusChange = { status ->
+            // 外闪状态串进诊断报告：TRIGGER_SENT / TRIGGER_FAIL / TRIGGER_SKIP NOT_READY
+            // 三类结果直接决定「是没连上」还是「连上了但写不进去」。
+            runCatching { com.filmcam.app.develop.DeviceGeometryReport.put("flash.extStatus", status) }
             runOnUiThread {
                 // 只在外置闪光模式时显示 BLE 状态
                 if (flash.mode == FlashMode.EXTERNAL) {

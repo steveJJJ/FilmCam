@@ -34,6 +34,13 @@ class LearnedProfileDriver(
         private const val TAG = "LearnedFlash"
         private const val RECONNECT_DELAY_MS = 2_000L
         private const val CONNECT_TIMEOUT_MS = 15_000L
+        /**
+         * 连接看门狗：connectGatt 的 onConnectionStateChange 在部分 ROM 上会彻底
+         * 丢失（133 / 0 之后静默）。`connecting` 一旦卡在 true，
+         * [scheduleReconnect] 的守卫会把后续所有重连挡掉 —— 灯从此再也点不亮，
+         * 而配对向导用的是自己那条 GATT，所以「试闪能亮、拍摄不闪」。
+         */
+        private const val CONNECT_WATCHDOG_MS = 6_000L
     }
 
     override var onStatusChange: ((String) -> Unit)? = null
@@ -71,6 +78,8 @@ class LearnedProfileDriver(
     private fun connectGatt(device: android.bluetooth.BluetoothDevice) {
         if (connecting || released) return
         connecting = true
+        handler.removeCallbacks(connectWatchdog)
+        handler.postDelayed(connectWatchdog, CONNECT_WATCHDOG_MS)
         runCatching { gatt?.close() }
         onStatusChange?.invoke("GATT_CONNECTING")
         val newGatt = runCatching {
@@ -78,6 +87,7 @@ class LearnedProfileDriver(
                 @RequiresPermission("android.permission.BLUETOOTH_CONNECT")
                 override fun onConnectionStateChange(g: BluetoothGatt, status: Int, newState: Int) {
                     connecting = false
+                    handler.removeCallbacks(connectWatchdog)
                     android.util.Log.i(TAG, "连接状态 newState=$newState status=$status ${profile.displayName}")
                     onStatusChange?.invoke("STATE: $newState (status=$status)")
                     if (newState == BluetoothProfile.STATE_CONNECTED && status == 0) {
@@ -125,6 +135,20 @@ class LearnedProfileDriver(
         }
     }
 
+    /** 看门狗实体：到点强制复位连接状态再重连（幂等，连上了就什么都不做）。 */
+    private val connectWatchdog = Runnable { onConnectWatchdog() }
+
+    private fun onConnectWatchdog() {
+        if (released || writeChar != null) return
+        android.util.Log.w(TAG, "连接回调超时，强制复位后重连 ${profile.displayName}")
+        connecting = false
+        runCatching { gatt?.close() }
+        gatt = null
+        writeChar = null
+        onStatusChange?.invoke("RECONNECT_WATCHDOG")
+        scheduleReconnect(300L)
+    }
+
     /** 灯休眠后 Android 的 connectGatt 常直接给超时 status；定时重试直到连上。 */
     private fun scheduleReconnect(delayMs: Long = RECONNECT_DELAY_MS) {
         handler.postDelayed({
@@ -142,6 +166,8 @@ class LearnedProfileDriver(
         val char = writeChar ?: run {
             android.util.Log.w(TAG, "写特征未就绪，本帧漏闪，立即重连 ${profile.displayName}")
             onStatusChange?.invoke("TRIGGER_SKIP NOT_READY")
+            // 没有活着的 gatt 却卡在 connecting：先复位，否则 500ms 后的重连会被守卫挡掉
+            if (gatt == null) connecting = false
             scheduleReconnect(500L)
             return
         }
