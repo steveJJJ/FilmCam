@@ -139,7 +139,6 @@ Memory available: %10$d MB / %11$d MB total
         <item>Undo the extra colour added by the phone ISP: Standard / Soft / Original. JPG and imports only; RAW is untouched. Fine-tune 0-100% in the engineer console</item>
         <item>Save a RAW negative (DNG) with each shot; developing bypasses the phone ISP for truer detail and grain. Falls back to JPEG on unsupported devices; same switch as the engineer console</item>
         <item>View, copy or delete paired external flashes; import a shared profile or teach the app a new light</item>
-        <item>Foldable easter egg moved to the engineer console (tap the version 10 times): off / auto / simulate</item>
         <item>Nameplate and licenses</item>
     </string-array>
 

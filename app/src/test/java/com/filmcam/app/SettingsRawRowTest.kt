@@ -68,6 +68,24 @@ class SettingsRawRowTest {
     }
 
     @Test
+    fun `set_hints 与 set_labels 逐项对齐 不留孤儿说明`() {
+        // 教训：腰平行搬进工程模式时只删了 set_labels 项，set_hints 留下孤儿，
+        // 后面的行说明整体前移错位，「关于」行读到了彩蛋文案。
+        for (rel in listOf("res/values/strings.xml", "res/values-en/strings.xml")) {
+            val xml = read(rel) ?: return
+            val labels = Regex("<item>").findAll(
+                xml.substringAfter("set_labels", "").substringBefore("</string-array>")
+            ).count()
+            val hints = Regex("<item>").findAll(
+                xml.substringAfter("set_hints", "").substringBefore("</string-array>")
+            ).count()
+            assertEquals("$rel 的 set_hints 必须与 set_labels 元素数一致（按 index 对齐）", labels, hints)
+        }
+        val zh = read("res/values/strings.xml") ?: return
+        assertTrue("设置面板不得再出现彩蛋搬运说明", !zh.contains("彩蛋已搬到"))
+    }
+
+    @Test
     fun `点击就地翻转 写 filmcam_dev_raw 并立即下发 不支持不翻`() {
         val main = read("java/com/filmcam/app/MainActivity.kt") ?: return
         val handler = main.substringAfter("row(R.id.rowSetRaw).hapticClick {", "")
