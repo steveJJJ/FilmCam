@@ -179,6 +179,17 @@ class RollRegistryTest {
         assertFalse(RollRegistry.isUndeveloped(roll(status = "developed")))
     }
 
+    @Test
+    fun `v2 editable 状态 序列化往返与判定`() {
+        val editable = roll(status = RollRegistry.STATUS_EDITABLE)
+        assertTrue(RollRegistry.isEditable(editable))
+        assertFalse(RollRegistry.isShooting(editable))
+        assertFalse(RollRegistry.isUndeveloped(editable))
+        // 落盘格式保持：editable 字符串能原样往返
+        val back = RollRegistry.deserialize(RollRegistry.serialize(listOf(editable)))
+        assertEquals(RollRegistry.STATUS_EDITABLE, back[0].status)
+    }
+
     // ---------- 对外快照契约 ----------
 
     @Test

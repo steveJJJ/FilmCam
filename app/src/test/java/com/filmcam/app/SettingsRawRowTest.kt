@@ -48,12 +48,16 @@ class SettingsRawRowTest {
         val rowsFn = main.substringAfter("val rows = intArrayOf(", "")
             .substringBefore(")", "")
         val rowOrder = listOf(
-            "rowSetBody", "rowSetDatestamp", "rowSetHaptic", "rowSetWb", "rowSetLanguage",
-            "rowSetQuality", "rowSetFrame", "rowSetColor", "rowSetRaw", "rowSetAbout"
+            "rowSetBody", "rowSetHaptic", "rowSetWb", "rowSetLanguage",
+            "rowSetQuality", "rowSetColor", "rowSetRaw", "rowSetAbout"
         )
         rowOrder.forEach { id ->
             assertTrue("rows 数组缺 $id", rowsFn.contains("R.id.$id"))
         }
+        // v21（11-18）：日期水印与胶片相框已搬进暗房编辑页，设置面板不得再有这两行
+        // —— 两处都能改会让「到底哪边说了算」变得不可预期，用户明确要求删掉。
+        assertTrue("设置面板不应再有日期水印行", !rowsFn.contains("rowSetDatestamp"))
+        assertTrue("设置面板不应再有画框行", !rowsFn.contains("rowSetFrame"))
         val idxRaw = rowsFn.indexOf("rowSetRaw")
         val idxAbout = rowsFn.indexOf("rowSetAbout")
         assertTrue("rows 数组里 rowSetRaw 要在 rowSetAbout 之前", idxRaw in 0 until idxAbout)

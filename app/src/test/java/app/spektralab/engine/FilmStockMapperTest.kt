@@ -103,6 +103,15 @@ class FilmStockMapperTest {
     }
 
     @Test
+    fun `每支胶卷都配了适用场景与英文场景`() {
+        // v16：右侧场景说明是用户「哪卷适合什么」的主要答案，任何一支空着都会露出空栏
+        com.filmcam.app.filter.FilmRollRepository.rolls.forEach {
+            assertTrue("${it.name} 中文场景为空", it.scene.isNotBlank())
+            assertTrue("${it.name} 英文场景为空", it.sceneEn.isNotBlank())
+        }
+    }
+
+    @Test
     fun `每支反转片都标记为 positive`() {
         val positives = catalog.types.filterValues { it == "positive" }.keys
         assertEquals("catalog 里应有 4 支反转片", 4, positives.size)

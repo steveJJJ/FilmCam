@@ -55,6 +55,7 @@ object UndevelopedFilmStore {
     const val STATUS_SHOOTING = RollRegistry.STATUS_SHOOTING
     const val STATUS_DEVELOPING = RollRegistry.STATUS_DEVELOPING
     const val STATUS_DEVELOPED = RollRegistry.STATUS_DEVELOPED
+    const val STATUS_EDITABLE = RollRegistry.STATUS_EDITABLE
 
     @Volatile
     private var appContext: Context? = null
@@ -245,6 +246,15 @@ object UndevelopedFilmStore {
         findRec(loadAll(), rollId).frames.firstOrNull { it.index == index }?.shot.orEmpty()
     }
 
+    /**
+     * v2 暗房改造：原始帧 handle（MediaStore uri 或点目录路径）。
+     * 母片登记用它作为重渲源——注意冲洗后此 handle 不再被成片覆盖（新流程下）。
+     */
+    fun frameHandle(rollId: String, index: Int): String = synchronized(this) {
+        findRec(loadAll(), rollId).frames.firstOrNull { it.index == index }?.handle
+            ?: throw IllegalArgumentException("帧不存在: $rollId/$index")
+    }
+
     /** 该帧像素需顺时针旋转的角度（0/90/180/270）。缺省 0。 */
     fun frameOrientation(rollId: String, index: Int): Int = synchronized(this) {
         findRec(loadAll(), rollId).frames.firstOrNull { it.index == index }?.orientation ?: 0
@@ -276,6 +286,16 @@ object UndevelopedFilmStore {
     /** status in (shooting, developing) 的卷 */
     fun undevelopedRolls(): List<RollInfo> = synchronized(this) {
         loadAll().filter { RollRegistry.isUndeveloped(it) }.map { it.toInfo() }
+    }
+
+    /** v2 编辑导出用：按 id 取任意状态卷的信息（含 editable）。未知卷抛异常。 */
+    fun rollInfo(rollId: String): RollInfo = synchronized(this) {
+        findRec(loadAll(), rollId).toInfo()
+    }
+
+    /** v2 暗房：待编辑的母片卷（冲洗完成、编辑保存后才出成片）。 */
+    fun editableRolls(): List<RollInfo> = synchronized(this) {
+        loadAll().filter { RollRegistry.isEditable(it) }.map { it.toInfo() }
     }
 
     fun markDeveloping(rollId: String) = synchronized(this) {
@@ -394,6 +414,32 @@ object UndevelopedFilmStore {
         }.onFailure { Log.w(TAG, "补救成片拍摄时间失败", it) }
         if (fixed > 0) Log.i(TAG, "补救了 $fixed 张缺少拍摄时间的成片")
         fixed
+    }
+
+    /**
+     * v2 暗房改造：卷已冲洗为母片、待编辑导出（状态 → editable）。
+     * 与 finishRoll 的区别：不建 MediaStore 成片、不清 pending 行——原始帧 handle
+     * 要留给编辑保存时的重渲用。清残留只清 API26-28 的空点目录（那批已无引用）。
+     */
+    fun markEditable(rollId: String) = synchronized(this) {
+        val rolls = loadAll()
+        val roll = findRec(rolls, rollId)
+        roll.status = RollRegistry.STATUS_EDITABLE
+        persist(rolls)
+    }
+
+    /**
+     * v2 编辑完成：卷内所有母片帧都已导出成片入相册 → 状态 editable → developed，
+     * 从暗房"待冲洗/待编辑"列表移除。不清点目录（母片原始 handle 可能还在里面），
+     * 也不动已入相册的成片。仅对 editable 卷生效，防止误伤其它状态。
+     */
+    fun markDevelopedFromEdit(rollId: String): Boolean = synchronized(this) {
+        val rolls = loadAll()
+        val roll = findRec(rolls, rollId)
+        if (roll.status != STATUS_EDITABLE) return false
+        roll.status = STATUS_DEVELOPED
+        persist(rolls)
+        true
     }
 
     /** 整卷冲洗完成：状态 → developed，清残留。 */

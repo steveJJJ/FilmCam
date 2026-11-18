@@ -68,6 +68,28 @@ class FlashPairContractTest {
     }
 
     @Test
+    fun `写 HID 通道触发配置变化时向导不得重建 否则试闪被打回认灯`() {
+        val manifest = read("AndroidManifest.xml") ?: return
+        // 真机取证（Godox A2，00010203-…-2B12）：这个特征在厂商 HID 服务里，
+        // 写入成功后系统会接入 HID 键盘并触发配置变化；Activity 一旦重建，
+        // onCreate 无条件回第 1 页 + engine.close() 掐断 GATT，用户只看到「点通道就退出」。
+        assertTrue(
+            "FlashPairActivity 必须自行接管 keyboard 配置变化",
+            Regex("FlashPairActivity[\\s\\S]{0,600}configChanges=\"[^\"]*\\bkeyboard\\b").containsMatchIn(manifest)
+        )
+        assertTrue(
+            "HID 接入还会带 navigation / keyboardHidden，同样必须接管",
+            Regex("FlashPairActivity[\\s\\S]{0,600}configChanges=\"[^\"]*navigation").containsMatchIn(manifest) &&
+                Regex("FlashPairActivity[\\s\\S]{0,600}configChanges=\"[^\"]*keyboardHidden").containsMatchIn(manifest)
+        )
+        assertTrue(
+            "屏幕类配置变化也要接管（向导只有单套 layout，不能重建丢状态）",
+            Regex("FlashPairActivity[\\s\\S]{0,600}configChanges=\"[^\"]*orientation[\\s\\S]{0,120}screenSize")
+                .containsMatchIn(manifest)
+        )
+    }
+
+    @Test
     fun `MainActivity 长按闪光状态字进向导 单击切档不受影响`() {
         val main = read("java/com/filmcam/app/MainActivity.kt") ?: return
         assertTrue(

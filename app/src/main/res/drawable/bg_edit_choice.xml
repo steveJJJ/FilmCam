@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 编辑页 pill：未选=哑黑细边，选中=安全灯红描边 + 暗红底。
+     与暗房主界面的红光铭牌同一套材质，不使用系统默认 RadioButton 外观。 -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_checked="true">
+        <shape android:shape="rectangle">
+            <solid android:color="#3A1010" />
+            <stroke android:width="1.2dp" android:color="#C43838" />
+            <corners android:radius="8dp" />
+        </shape>
+    </item>
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="#141213" />
+            <stroke android:width="0.8dp" android:color="#3A3030" />
+            <corners android:radius="8dp" />
+        </shape>
+    </item>
+</selector>

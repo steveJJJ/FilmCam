@@ -94,6 +94,9 @@ class FlashPairActivity : AppCompatActivity(), FlashPairEngine.Listener {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // 取证：若这里在配对中途又打一次，说明 Activity 被重建（配置变化/内存回收），
+        // 那「跳回认灯」就不是导航 bug，而是状态没恢复。
+        android.util.Log.w("FlashPairNav", "onCreate nullState=${savedInstanceState == null}")
         setContentView(R.layout.activity_flash_pair)
         engine = FlashPairEngine(this).also { it.listener = this }
         store = FlashProfileStore(this)
@@ -194,7 +197,10 @@ class FlashPairActivity : AppCompatActivity(), FlashPairEngine.Listener {
     // ---- 页状态机：任一时刻只有一页可见 ----
 
     private fun showPage(p: Page, animate: Boolean = true) {
+        val from = page
         page = p
+        // 取证：页间跳转全留痕（release 会裁 Log.d，这里必须用 Log.w）
+        android.util.Log.w("FlashPairNav", "showPage ${from.no} -> ${p.no}")
         val pages = listOf(
             Page.DEVICE to stepScan,
             Page.CHAR to stepChar,
@@ -254,6 +260,7 @@ class FlashPairActivity : AppCompatActivity(), FlashPairEngine.Listener {
     }
 
     private fun handlePrimary() {
+        android.util.Log.w("FlashPairNav", "primary on page ${page.no}")
         when (page) {
             Page.DEVICE -> if (manageVisible) switchToScan() else restartScan()
             Page.CHAR -> backToDevice()
@@ -264,6 +271,7 @@ class FlashPairActivity : AppCompatActivity(), FlashPairEngine.Listener {
 
     /** 机身 BACK 键 / 系统返回键：一页一页退，不直接把用户甩出向导。 */
     private fun handleBack() {
+        android.util.Log.w("FlashPairNav", "back on page ${page.no}")
         when (page) {
             Page.DEVICE -> if (manageMode && !manageVisible) showManage() else finish()
             Page.CHAR -> backToDevice()
@@ -273,6 +281,8 @@ class FlashPairActivity : AppCompatActivity(), FlashPairEngine.Listener {
     }
 
     private fun backToDevice() {
+        // 打全调用栈：这一步是「点通道却退回认灯」的唯一入口，必须看清是谁调的
+        android.util.Log.w("FlashPairNav", "backToDevice (page ${page.no})", Throwable("nav-caller"))
         engine.disconnect()
         selectedDevice = null
         selectedChar = null
@@ -667,6 +677,7 @@ class FlashPairActivity : AppCompatActivity(), FlashPairEngine.Listener {
         ).apply { topMargin = dp(2) })
         row.setOnClickListener {
             Haptics.vibrate(this, 24)
+            android.util.Log.w("FlashPairNav", "channel tapped ${c.charUuid} wnr=${c.writeNoResponse}")
             selectedChar = c
             enterFrameStep()
         }
@@ -676,6 +687,7 @@ class FlashPairActivity : AppCompatActivity(), FlashPairEngine.Listener {
     // ---- 03 试闪：未试 / 已试分组 + 命中确认 ----
 
     private fun enterFrameStep() {
+        android.util.Log.w("FlashPairNav", "enterFrameStep ${selectedChar?.charUuid}")
         clearFrameState()
         for (hex in FlashPairEngine.CANDIDATE_FRAMES) {
             frameRows[hex] = frameRow(hex)

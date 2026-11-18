@@ -48,7 +48,7 @@ object DefaultSettings {
 
     /**
      * 日期水印：11-13 用户指定**默认关闭**（成片右下角不再印 `'yy MM dd`）。
-     * 只是默认档，设置面板的开关和 DateStampRenderer 绘制链路一行没删，
+     * 只是默认档；日期开关已搬进暗房编辑页（设置面板那行已删），
      * 用户想开随时能就地翻转；老用户手动存过的 true 也绝不被覆盖。
      * ⚠️ 拍摄侧（MainActivity 字段 / restoreSettings）与冲洗侧
      * （DevelopmentService.isDateStampEnabled）必须同时引用这个常量，否则会出现

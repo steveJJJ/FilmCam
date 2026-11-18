@@ -9,6 +9,7 @@
   切换类控件（开关 / 推子 / 单选）留在下面，因为它们本来就是"调一下看效果"的形态。
 -->
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/engScroll"
     android:layout_width="match_parent"
     android:layout_height="wrap_content">
 
@@ -31,6 +32,17 @@
             android:paddingBottom="12dp"
             android:text="@string/eng_mode_title"
             android:textSize="15sp" />
+
+        <!-- 镜头柔度：机身属性，单独一层。放在开关正下方 —— 控制台行多，
+             以前排第 6 行，滚动失效时用户根本看不到（11-18 反馈）。 -->
+        <include
+            android:id="@+id/rowEngLens"
+            layout="@layout/item_setting_row" />
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="#26262A" />
 
         <!-- 会影响出片的三项：与设置面板同一套行样式，读数就在右边 -->
         <View
@@ -82,15 +94,6 @@
             android:layout_height="1dp"
             android:background="#26262A" />
 
-        <include
-            android:id="@+id/rowEngLens"
-            layout="@layout/item_setting_row" />
-
-        <View
-            android:layout_width="match_parent"
-            android:layout_height="1dp"
-            android:background="#26262A" />
-
         <!-- v50 输入侧反 ISP 归一化：只作用 JPEG / 导入通路，全局一项 -->
         <include
             android:id="@+id/rowEngJpeg"
@@ -105,6 +108,15 @@
              三态 关 / 自动 / 模拟：自动＝只有真实折痕半开才触发；模拟＝直板机调试 -->
         <include
             android:id="@+id/rowEngWaist"
+            layout="@layout/item_setting_row" />
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="#26262A" />
+
+        <!-- v2 暗房编辑流程：默认关；开后冲洗只出母片，编辑保存才入相册 -->
+        <include
+            android:id="@+id/rowEngDarkroomV2"
             layout="@layout/item_setting_row" />
 
         <View

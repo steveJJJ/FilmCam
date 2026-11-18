@@ -45,7 +45,8 @@ class FilmRollAdapter(
         holder.chip.setImageResource(roll.iconResId)
         holder.name.text = roll.name
         holder.desc.text = roll.description
-        holder.tag.text = roll.tag
+        // v16：右侧优先显示适用场景；没配场景的老数据回落分类标签
+        holder.tag.text = roll.scene.ifBlank { roll.tag }
         if (roll.available) {
             holder.itemView.alpha = 1f
             holder.itemView.setOnClickListener { onSelect(roll) }

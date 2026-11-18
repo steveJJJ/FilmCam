@@ -127,12 +127,6 @@
                 <View style="@style/AboutSpecDivider" />
 
                 <include
-                    android:id="@+id/rowSetDatestamp"
-                    layout="@layout/item_setting_row" />
-
-                <View style="@style/AboutSpecDivider" />
-
-                <include
                     android:id="@+id/rowSetHaptic"
                     layout="@layout/item_setting_row" />
 
@@ -160,13 +154,7 @@
 
                 <View style="@style/AboutSpecDivider" />
 
-                <include
-                    android:id="@+id/rowSetFrame"
-                    layout="@layout/item_setting_row" />
-
-                <View style="@style/AboutSpecDivider" />
-
-                <!-- v73：色彩浓度。就地循环，与「胶片相框 / 冲洗画质」同一套交互 -->
+                <!-- v73：色彩浓度。就地循环，与「冲洗画质」同一套交互 -->
                 <include
                     android:id="@+id/rowSetColor"
                     layout="@layout/item_setting_row" />

@@ -1,5 +1,6 @@
 package com.filmcam.app
 
+import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -89,6 +90,26 @@ class GalleryActivity : AppCompatActivity() {
         val minItemPx = (104f * dm.density).toInt().coerceAtLeast(1)
         val spanCount = (dm.widthPixels / minItemPx).coerceIn(3, 6)
         rvGallery.layoutManager = GridLayoutManager(this, spanCount)
+        // v15：滑动暗房成片网格加刻度震动（与冲洗条 stripDragged 同一手感）。
+        // 每滑过一格震一记短促轻震，纯视觉滚动会让人不确定有没有翻动。
+        rvGallery.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+            private var tickAccum = 0
+            private var dragging = false
+            override fun onScrollStateChanged(rv: RecyclerView, newState: Int) {
+                dragging = newState == RecyclerView.SCROLL_STATE_DRAGGING
+                if (!dragging) tickAccum = 0
+            }
+            override fun onScrolled(rv: RecyclerView, dx: Int, dy: Int) {
+                if (!dragging) return
+                val cell = rv.getChildAt(0)?.width ?: (rv.width / spanCount)
+                if (cell <= 0) return
+                tickAccum += kotlin.math.abs(dy)
+                if (tickAccum >= cell) {
+                    tickAccum -= cell
+                    com.filmcam.app.ui.Haptics.vibrate(rv.context, 8L, 90)
+                }
+            }
+        })
         rvUndeveloped.layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
         // 暗房不跟随机身主题：机身配色是相机外壳的事，暗房是红灯下的工作环境，
         // 全黑底才能看片（银底会把成片的暗部压掉，也会破坏暗房氛围）。
@@ -116,23 +137,27 @@ class GalleryActivity : AppCompatActivity() {
         askFilmAndImport(uris)
     }
 
+    /**
+     * 选装哪卷。v16：从系统 AlertDialog 条目列表换成与主界面「换卷」同一套底部弹层
+     * （[com.filmcam.app.ui.FilmRollPicker]）——可滚动、带齿轮触感、每支右侧有适用场景，
+     * 与选择照片的体验一致。用户反馈列表弹窗既丑又看不出哪卷适合什么场景。
+     */
     private fun askFilmAndImport(uris: List<Uri>) {
-        val rolls = com.filmcam.app.filter.FilmRollRepository.rolls
-        val ids = rolls.map { runCatching { FilmStockMapper.filmStockIdFor(it.name) }.getOrNull() }
-        val names = rolls.map { runCatching { FilmStockMapper.stockDisplayName(FilmStockMapper.filmStockIdFor(it.name)) }.getOrDefault(it.name) }
-        androidx.appcompat.app.AlertDialog.Builder(this, com.filmcam.app.ui.BodyTheme.dialogTheme)
-            .setTitle(getString(R.string.gallery_import_pick_film))
-            .setItems(names.toTypedArray()) { d, which ->
-                d.dismiss()
-                val id = ids[which]
+        com.filmcam.app.ui.FilmRollPicker.show(
+            this,
+            onPick = { roll ->
+                val id = runCatching { FilmStockMapper.filmStockIdFor(roll.name) }.getOrNull()
                 if (id == null) {
-                    Toast.makeText(this, getString(R.string.gallery_import_failed, names[which]), Toast.LENGTH_SHORT).show()
+                    Toast.makeText(
+                        this, getString(R.string.gallery_import_failed, roll.name), Toast.LENGTH_SHORT
+                    ).show()
                 } else {
                     importAsRoll(uris, id)
                 }
-            }
-            .setNegativeButton(getString(R.string.main_cancel), null)
-            .show()
+            },
+            onVibrate = { ms, amp -> com.filmcam.app.ui.Haptics.vibrate(this, ms, amp) },
+            guard = { /* 画廊非取景器，无需吞掉关闭事件 */ },
+        )
     }
 
     private fun importAsRoll(uris: List<Uri>, stockId: String) {
@@ -517,7 +542,13 @@ class GalleryActivity : AppCompatActivity() {
         val st = com.filmcam.app.develop.DevelopmentState
         val doneRollId =
             if (st.phase == com.filmcam.app.develop.DevelopmentState.PHASE_DONE) st.rollId else null
-        val rolls = UndevelopedFilmStore.undevelopedRolls().filter { it.rollId != doneRollId }
+        val rolls = mutableListOf<RollInfo>()
+        rolls.addAll(UndevelopedFilmStore.undevelopedRolls().filter { it.rollId != doneRollId })
+        // v2 暗房改造（开关默认关）：待编辑的母片卷也显示在这一栏，按钮变「编辑」。
+        // 开关关时 editableRolls 恒空（没有卷会进这个状态），行为与改造前一致。
+        if (com.filmcam.app.develop.DarkroomV2.isEnabled(this)) {
+            rolls.addAll(UndevelopedFilmStore.editableRolls())
+        }
         if (rolls.isEmpty()) {
             layoutUndeveloped.visibility = View.GONE
             return
@@ -572,7 +603,18 @@ class GalleryActivity : AppCompatActivity() {
                 FilmStockMapper.stockDisplayName(roll.filmStockId)
             (holder.card.findViewWithTag<TextView>("count")).text = "${roll.shotCount}/36"
             val btn = holder.card.findViewWithTag<Button>("btn")
-            if (roll.status == UndevelopedFilmStore.STATUS_DEVELOPING) {
+            if (roll.status == UndevelopedFilmStore.STATUS_EDITABLE) {
+                // v2：母片卷已冲洗待编辑，点「编辑」进编辑页选相框/日期
+                btn.text = ctx.getString(R.string.pf_edit)
+                btn.setOnClickListener {
+                    com.filmcam.app.ui.Haptics.vibrate(ctx, 26, 190)
+                    val all = UndevelopedFilmStore.rollInfo(roll.rollId).frames
+                    ctx.startActivity(Intent(ctx, com.filmcam.app.develop.EditActivity::class.java).apply {
+                        putExtra(com.filmcam.app.develop.EditActivity.EXTRA_ROLL_ID, roll.rollId)
+                        putExtra(com.filmcam.app.develop.EditActivity.EXTRA_INDICES, all.toIntArray())
+                    })
+                }
+            } else if (roll.status == UndevelopedFilmStore.STATUS_DEVELOPING) {
                 // 这一卷已经在冲洗了：再点「冲洗」只会被服务防重入拒绝（什么也不发生），
                 // 按钮直接改成看进度，用户才知道去哪儿看它洗到哪了。
                 btn.text = ctx.getString(R.string.pf_dev_view_progress)

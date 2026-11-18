@@ -68,6 +68,38 @@ class EngineerModeNoteTest {
     }
 
     @Test
+    fun `控制台限高且镜头柔度排在最前`() {
+        val layout = read("res/layout/dialog_hidden_settings.xml") ?: return
+        assertTrue("ScrollView 必须有 id 才能在 show 前限高",
+            layout.contains("android:id=\"@+id/engScroll\""))
+        assertTrue("镜头柔度行必须在", layout.contains("@+id/rowEngLens"))
+        val lensAt = layout.indexOf("@+id/rowEngLens")
+        val slowAt = layout.indexOf("@+id/rowEngSlow")
+        assertTrue("镜头柔度必须排在慢门前面（否则滚动失效时看不到）",
+            lensAt > 0 && slowAt > 0 && lensAt < slowAt)
+
+        val about = read("java/com/filmcam/app/AboutActivity.kt") ?: return
+        val console = about.substringAfter("private fun showEngineerConsole()", "")
+            .substringBefore("private fun showSlowShutterDialog", "")
+        assertTrue("必须在 show() 前量自然高", console.contains("MeasureSpec.UNSPECIFIED"))
+        assertTrue("必须给 ScrollView 设高度上限", console.contains("lp.height ="))
+        assertTrue("根 ScrollView 的 layoutParams 可能为 null，必须补建后再写 height",
+            console.contains("engScroll.layoutParams ?: android.view.ViewGroup.LayoutParams"))
+        assertTrue("Dialog 宽度要固定，否则测量宽度与实际不符",
+            console.contains("win?.setLayout(panelW"))
+        assertTrue("setView 根必须包一层 wrap 容器（AppCompat 会覆盖根 lp，限高被静默抹掉）",
+            console.contains("setView(consoleRoot)"))
+        assertTrue("包裹时必须原样保留钳制后的 lp，传新 LayoutParams 会把限高再次抹掉",
+            console.contains("consoleRoot.addView(view, view.layoutParams"))
+        assertTrue("控制台滚动必须挂棘轮触感（与设置面板同口径），否则滑动无震动",
+            console.contains("engScroll.attachEdgeHaptics") &&
+                console.contains("ScrollDetents"))
+        assertTrue("钳制高度必须落在内层 ScrollView 而非被覆盖的根上",
+            console.contains("engScroll.layoutParams = lp") &&
+                console.indexOf("engScroll.layoutParams = lp") < console.indexOf("setView(consoleRoot)"))
+    }
+
+    @Test
     fun `工程师模式控制台入口与行 hint 绑定没有被撤掉`() {
         val about = read("java/com/filmcam/app/AboutActivity.kt") ?: return
         assertTrue("控制台入口必须在", about.contains("showEngineerConsole()"))

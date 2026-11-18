@@ -134,7 +134,7 @@ class AboutActivity : AppCompatActivity() {
     // ===================== 工程模式（Pro 内购） =====================
 
     /**
-     * 铭牌上的「工程模式 PRO」一行：未解锁显示价格，点击走 Google Play 内购；
+     * 铭牌上的「工程模式 PRO」一行：未解锁显示价格，点击走应用市场内购（华为 IAP / Google Play，视安装渠道）；
      * 已解锁显示 PRO，点击直接进控制台。
      *
      * 说明：版本号连点 10 次那条彩蛋入口**保留**，方便开发期在正式包上直接进控制台，
@@ -590,6 +590,7 @@ class AboutActivity : AppCompatActivity() {
         val rowColor = view.findViewById<View>(R.id.rowEngColor)
         val rowJpeg = view.findViewById<View>(R.id.rowEngJpeg)
         val rowWaist = view.findViewById<View>(R.id.rowEngWaist)
+        val rowDarkroomV2 = view.findViewById<View>(R.id.rowEngDarkroomV2)
 
         /** 绑定一行「名称 + 说明」，返回右侧读数 TextView */
         fun bindRow(row: View, labelRes: Int, hintRes: Int): TextView {
@@ -607,6 +608,9 @@ class AboutActivity : AppCompatActivity() {
         val tvColor = bindRow(rowColor, R.string.eng_cc, R.string.eng_cc_hint)
         val tvJpeg = bindRow(rowJpeg, R.string.eng_jpeg_norm, R.string.eng_jpeg_norm_hint)
         val tvWaist = bindRow(rowWaist, R.string.eng_waist, R.string.eng_waist_hint)
+        val darkroomV2 = com.filmcam.app.develop.DarkroomV2.isEnabled(this)
+        val tvDarkroomV2 = bindRow(rowDarkroomV2, R.string.eng_darkroom_v2, R.string.eng_darkroom_v2_hint)
+        tvDarkroomV2.text = getString(if (darkroomV2) R.string.eng_darkroom_v2_on else R.string.eng_darkroom_v2_off)
 
         fun slowMode(): com.filmcam.app.camera.FilmExposure.Mode =
             com.filmcam.app.camera.FilmExposure.Mode.fromPrefs(
@@ -729,6 +733,16 @@ class AboutActivity : AppCompatActivity() {
             tick(20, 160)
             saveWaistEgg(com.filmcam.app.ui.FoldPosture.nextEgg(waistEgg()))
         }
+        // v2 暗房编辑流程开关：默认关，打开后需真机验证整条链路
+        rowDarkroomV2.setOnClickListener {
+            tick(20, 160)
+            val on = !com.filmcam.app.develop.DarkroomV2.isEnabled(this)
+            com.filmcam.app.develop.DarkroomV2.setEnabled(this, on)
+            tvDarkroomV2.text = getString(if (on) R.string.eng_darkroom_v2_on else R.string.eng_darkroom_v2_off)
+            Toast.makeText(this,
+                if (on) "暗房编辑 v2 已开（冲洗只出母片）" else "暗房编辑 v2 已关（冲洗直接入相册）",
+                Toast.LENGTH_LONG).show()
+        }
 
         // 工程师模式开关：关掉 = 这些旋钮重新藏起来，入口回到"连点 10 次"
         swEngineer.isChecked = EngineerMode.isOn(this)
@@ -805,11 +819,63 @@ class AboutActivity : AppCompatActivity() {
             tvCrash.setOnClickListener { tick(); showCrashLog(crashText) }
         }
 
+        // 🔴11-18：控制台有 9 行 + 子面板 + 诊断区，ScrollView 用 wrap_content 时
+        // Dialog 会被撑满整屏、滚动失效 —— 镜头柔度原来排第 6 行，用户根本看不到。
+        // 与设置面板同款修法：show() 前用 UNSPECIFIED 量自然高，把超出量从 ScrollView
+        // 高度里减掉，Scroll 才真正拿到上限。
+        // 11-18「长条」反馈：0.72 屏高上限让面板近乎满屏（≈1:2.4 的细长竖条）。
+        // 宽度不动（78% 口径是 11-14 侧滑误触的定稿，86% 每侧仅 29dp 被契约否决），
+        // 只把高度上限压到 0.52 屏高，比例回到 ≈1:1.7 的卡片感，超出部分靠滚动。
+        val engScroll = view.findViewById<android.widget.ScrollView>(R.id.engScroll)
+        val dm = resources.displayMetrics
+        val panelW = (dm.widthPixels * 0.78f).toInt().coerceAtMost((400 * dm.density).toInt())
+        val maxPanelH = (dm.heightPixels * 0.52f).toInt()
+        val widthSpec = android.view.View.MeasureSpec.makeMeasureSpec(
+            panelW, android.view.View.MeasureSpec.EXACTLY)
+        val heightSpec = android.view.View.MeasureSpec.makeMeasureSpec(
+            0, android.view.View.MeasureSpec.UNSPECIFIED)
+        view.measure(widthSpec, heightSpec)
+        val naturalH = view.measuredHeight
+        if (naturalH > maxPanelH) {
+            // 根 ScrollView 是 inflate(..., null) 出来的，parent 为 null ⇒ layoutParams 也为 null。
+            // 必须先补一份再写 height，否则点版本号直接 NPE（11-18 实测崩溃）。
+            val lp = engScroll.layoutParams ?: android.view.ViewGroup.LayoutParams(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+            )
+            lp.height = (engScroll.measuredHeight - (naturalH - maxPanelH))
+                .coerceAtLeast((120 * dm.density).toInt())
+            engScroll.layoutParams = lp
+            view.measure(widthSpec, heightSpec)   // 同步 measure 结果，滚动判定才准
+        }
+
+        // 11-18 用户反馈「工程模式滑动无震动」：控制台从设置面板搬出来时漏了滚动触感
+        // —— 设置面板有 ScrollDetents 棘轮 + 滚到头限位震，控制台的 engScroll 什么都没挂。
+        // 补上同口径（44dp 一档棘轮 + 边缘限位）；控制台没有底沿渐隐刻线，不传 onScroll。
+        engScroll.attachEdgeHaptics(
+            detents = com.filmcam.app.ui.ScrollDetents(this, (44 * dm.density).toInt())
+        )
+
+        // 🔴11-18「长条」根因二：AppCompat AlertController 会把 setView 根的 layoutParams
+        // 覆盖成 MATCH_PARENT —— 根就是钳好高度的 ScrollView 时，限高被静默抹掉，
+        // 真机窗口实测 h=2205（≈满屏）。包一层 wrap 根，让固定高度落在内层 ScrollView，
+        // 窗口 WRAP_CONTENT 收敛到 maxPanelH + 标题/按钮。
+        // ⚠️ addView 必须原样传回 view 的 layoutParams（钳制后的固定高度）；
+        //    传新 LayoutParams(WRAP_CONTENT) 会把钳制再次抹掉（11-18 二次实测）。
+        val consoleRoot = android.widget.FrameLayout(this)
+        consoleRoot.addView(view, view.layoutParams ?: android.view.ViewGroup.LayoutParams(
+            android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+            android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+        ))
+
         val dialog = androidx.appcompat.app.AlertDialog.Builder(this, com.filmcam.app.ui.BodyTheme.dialogTheme)
             .setTitle(R.string.hidden_title)
-            .setView(view)
+            .setView(consoleRoot)
             .setPositiveButton(R.string.set_close) { d, _ -> d.dismiss() }
             .create()
+        val win = dialog.window
+        win?.decorView            // 先 installDecor()，此后 setLayout 不再被重置
+        win?.setLayout(panelW, android.view.ViewGroup.LayoutParams.WRAP_CONTENT)
         consoleRef = dialog
         dialog.show()
     }

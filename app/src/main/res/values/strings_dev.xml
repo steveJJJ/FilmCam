@@ -92,4 +92,44 @@
     <string name="pf_capture_trigger">TRIG %1$s</string>
     <string name="pf_capture_flash_ev">闪补 %1$.1f EV</string>
 
+    <string name="pf_edit">编辑</string>
+
+    <string name="dev_go_edit">去暗房编辑</string>
+
+    <string name="eng_darkroom_v2">暗房编辑流程 (v2)</string>
+    <string name="eng_darkroom_v2_hint">开：冲洗只出母片，编辑保存才入相册（需真机验证）</string>
+    <string name="eng_darkroom_v2_off">关</string>
+    <string name="eng_darkroom_v2_on">开</string>
+
+    <string name="edit_export_failed">%1$d 张导出失败，请重试或删除废片</string>
+
+    <string name="edit_swipe_hint">← 滑动切换照片 →</string>
+
+    <string name="edit_date_on">开启</string>
+    <string name="edit_date_off">关闭</string>
+
+    <!-- v2 暗房编辑页 -->
+    <string name="edit_title">编 辑</string>
+    <string name="edit_frame_label">相框</string>
+    <string name="edit_frame_none">无</string>
+    <string name="edit_frame_film">片边</string>
+    <string name="edit_frame_white">白边</string>
+    <string name="edit_date_label">日期</string>
+    <string name="edit_scope_label">应用到</string>
+    <string name="edit_scope_one">仅此张</string>
+    <string name="edit_scope_all">全部</string>
+    <string name="edit_hint_white">白边档本地合成，很快</string>
+    <string name="edit_hint_film">片边档需重跑引擎，约 1-2 秒/张</string>
+    <string name="edit_hint_none">无相框，直接输出母片</string>
+    <string name="edit_date_rendering">正在冲洗这一帧（日期由引擎印字）…</string>
+    <string name="edit_save">保 存 到 相 册</string>
+    <string name="edit_saving">正在导出 %1$d / %2$d …</string>
+    <string name="edit_saved">已保存 %1$d 张到相册</string>
+    <string name="edit_export_wait">正在导出，请稍候</string>
+    <string name="edit_unsaved_title">放弃修改？</string>
+    <string name="edit_unsaved_msg">相框 / 日期改了但还没保存，返回将放弃这次修改。</string>
+    <string name="edit_unsaved_code">UNSAVED</string>
+    <string name="edit_discard">放弃</string>
+    <string name="edit_keep">继续编辑</string>
+
 </resources>

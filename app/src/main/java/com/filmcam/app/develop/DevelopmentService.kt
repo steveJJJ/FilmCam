@@ -136,6 +136,9 @@ class DevelopmentService : Service() {
     // ---------- 主冲洗循环 ----------
 
     private fun runDevelopment(rollId: String) {
+        // v2 暗房改造：母片模式（默认关）。开时冲洗只出母片+预览，不直接入相册，
+        // 效果（片框/日期/白边）推迟到编辑页保存时再施加。开关关时下方全部逻辑逐字节不变。
+        val motherMode = DarkroomV2.isEnabled(applicationContext)
         try {
             // 1) 定位卷（status 会自动变 developing）
             val roll: RollInfo = UndevelopedFilmStore.undevelopedRolls()
@@ -230,6 +233,9 @@ class DevelopmentService : Service() {
             // 交给引擎的参数：只包含引擎认识的键。
             // （曾把 output_style 这个自定义标记塞进去，引擎报 unknown parameter，整卷 0 帧出图。）
             val paramsJson = FilmStockMapper.buildParamsJson(roll.filmStockId, mappedPrint, effective)
+            // v2 母片配方：纯色彩参数（activeParamsJson 在下方兜底链确定后才赋值，
+            // 这里先记 base paramsJson，landAsMother 用它作为重渲基线）。
+            val motherRecipeJson = paramsJson
             // 写进 EXIF 的快照：引擎参数 + 风格标记，「拍摄同款」靠它还原档位
             val exifParamsJson = FilmStockMapper.buildExifParamsJson(roll.filmStockId, mappedPrint, effective)
             // 兜底链：扫描档下发了一批引擎新参数，机型/引擎版本认不全就整卷冲不出来。
@@ -420,32 +426,72 @@ class DevelopmentService : Service() {
                 notifyStateToMain()
 
                 val frameStart = android.os.SystemClock.elapsedRealtime()
+                // v2 片边重渲一致性：回传本帧反 ISP 归一化 k（JPEG 帧写入，RAW 帧保持 0）
+                val frameNormK = FloatArray(1) { 0f }
+                // v2 RAW 片边复刻：回传本帧实际输入增益/最终参数（JPEG 帧保持 0/空）
+                val frameRawGain = FloatArray(1) { 0f }
+                val frameRawParams = arrayOfNulls<String>(1)
                 try {
+                    // 日期印字由**引擎**在成像链路里当「额外曝光」印上去（`date_imprint_*`），
+                    // 不再用 Canvas 在成片上补画 —— 手绘融不进镜头柔度/颗粒/印相曲线，
+                    // 怎么调都像贴纸。暗房母片不印（日期推迟到编辑导出），且日期逐帧不同，
+                    // 所以每次调用时现合成一份参数（不能烘进整卷共用的 activeParamsJson）。
+                    val frameDate = if (!motherMode && isDateStampEnabled()) {
+                        val at = runCatching { UndevelopedFilmStore.frameTakenAt(roll.rollId, index) }
+                            .getOrDefault(System.currentTimeMillis())
+                        app.spektralab.engine.DateImprint.t3Style(
+                            app.spektralab.engine.DateImprint.textForMillis(at),
+                            portrait = UndevelopedFilmStore.frameOrientation(roll.rollId, index)
+                                .let { it == 90 || it == 270 },
+                        )
+                    } else null
+                    val chainJson = if (frameDate == null) activeFallbackChain
+                    else buildList {
+                        // 先试「带日期」的各档；最后退回「不带日期」的同一批 ——
+                        // 引擎万一不认 date_imprint_*，也要能出图，绝不因为日期丢帧。
+                        addAll(activeFallbackChain.mapNotNull {
+                            app.spektralab.engine.DateImprint.inject(it, frameDate)
+                        })
+                        addAll(activeFallbackChain)
+                    }
                     val usedFallback = processOneFrame(
-                        roll, index, activeParamsJson, exifParamsJson, filmDisplayName,
-                        tmpJpeg, framePixelLimit, activeFallbackChain,
+                        roll, index,
+                        app.spektralab.engine.DateImprint.inject(activeParamsJson, frameDate)!!,
+                        exifParamsJson, filmDisplayName,
+                        tmpJpeg, framePixelLimit, chainJson,
+                        outNormK = frameNormK,
+                        outRawGainEv = frameRawGain,
+                        outRawParamsJson = frameRawParams,
                         // 对照实验只在第一帧跑一次（基线用保守档，实验结果才好对比）
                         matrixBaseJson = if (index == 1) safeJson else null,
                         // 片框的帧号逐帧递增（底片暗边本来就印着"1""2"…"36"）
-                        frameNumber = if (perFrameNumber != 0) index else 0,
+                        // 🔴motherMode 冲洗只出纯色彩母片：片框推迟到编辑导出时加。
+                        // 这里若还传 frameParamsJson，JPG 4:3 画面喂给要求 3:2 gate 的
+                        // overscan 片框 → 引擎报 "not the 135 gate's shape"（RAW 因
+                        // prepareGateDng 预裁了 gate 才没中招，所以表现为「RAW 正常 JPG 报错」）。
+                        frameNumber = if (motherMode) 0 else if (perFrameNumber != 0) index else 0,
                         // 成片片门（横 36×24 / 竖 24×36）：画面按这一格裁
                         gate = gate,
-                        frameParamsJson = frameParamsJson,
+                        frameParamsJson = if (motherMode) null
+                            else app.spektralab.engine.DateImprint.inject(frameParamsJson, frameDate),
                         frameOkPortrait = frameCheck.okPortrait,
                         // 直闪帧变体（闪光的帧用它，非闪光帧不受影响）
-                        flashParamsJson = flashParamsJson,
-                        flashFrameParamsJson = flashFrameParamsJson,
+                        flashParamsJson = app.spektralab.engine.DateImprint.inject(flashParamsJson, frameDate),
+                        flashFrameParamsJson = app.spektralab.engine.DateImprint.inject(flashFrameParamsJson, frameDate),
                         inputEv = jpegInputEv,
                         rawInputEv = userInputEv,
                         jpegNormStrength = effective.jpegNormalizeStrength,
                         rollNormBaseline = rollNormBaseline,
                         // v66：白边档在两条通路的落盘前各自外扩（整卷统一，开卷读一次）
                         whiteBorder = effective.frameFormat.isWhiteBorder,
-                        // 6×6 帧专用参数（无 6×6 帧的卷全是 null，完全走老路径）
-                        mf66ParamsJson = mf66ParamsJson,
-                        mf66FlashParamsJson = mf66FlashParamsJson,
-                        mf66FrameParamsJson = mf66FrameParamsJson,
-                        mf66FlashFrameParamsJson = mf66FlashFrameParamsJson,
+                        // 6×6 帧专用参数：纯色彩的 mf66ParamsJson 保留（母片要正确的 6×6 片门），
+                        // 只把「带片框」的两份置空，片框推迟到编辑导出
+                        mf66ParamsJson = app.spektralab.engine.DateImprint.inject(mf66ParamsJson, frameDate),
+                        mf66FlashParamsJson = app.spektralab.engine.DateImprint.inject(mf66FlashParamsJson, frameDate),
+                        mf66FrameParamsJson = null,
+                        mf66FlashFrameParamsJson = null,
+                        motherMode = motherMode,
+                        motherRecipeJson = if (motherMode) motherRecipeJson else "",
                     )
                     if (usedFallback) {
                         fallbackFrames++
@@ -453,6 +499,17 @@ class DevelopmentService : Service() {
                         activeFallbackChain.firstOrNull()?.let { accepted ->
                             activeParamsJson = accepted
                             activeFallbackChain = emptyList()
+                        }
+                    }
+                    // v2 预渲染：片边档带框成片趁热渲好存私有目录，导出时直接取图秒出。
+                    // 只在开关开 + 母片模式 + 这卷确实用片框档时做；失败静默忽略
+                    // （导出侧会回落即时重渲），绝不影响冲洗主链路。同步跑在这帧之后，
+                    // 复用刚热好的引擎会话；每帧多 ~5s，用户已确认用「冲洗变慢换导出秒出」。
+                    if (motherMode && com.filmcam.app.develop.DarkroomV2.isEnabled(this)) {
+                        runCatching {
+                            com.filmcam.app.develop.FramedPreRenderer.preRender(this, rollId, index)
+                        }.onFailure {
+                            Log.w(TAG, "帧 $index 带框预渲染失败（不影响冲洗）: ${it.message}")
                         }
                     }
                     DevelopmentState.done = index
@@ -491,7 +548,11 @@ class DevelopmentService : Service() {
                     )
                 )
             } else {
-                UndevelopedFilmStore.finishRoll(rollId)
+                if (motherMode) {
+                    UndevelopedFilmStore.markEditable(rollId)
+                } else {
+                    UndevelopedFilmStore.finishRoll(rollId)
+                }
                 DevelopmentState.phase = DevelopmentState.PHASE_DONE
                 // 走了兜底必须让用户知道：成片是按印相档出的，不是他选的那档口味
                 if (fallbackFrames > 0) {
@@ -598,6 +659,38 @@ class DevelopmentService : Service() {
         }
     }
 
+    /**
+     * v2 母片模式落盘：把引擎输出的纯色彩 tmpJpeg 缩成预览存私有目录，
+     * 并登记母片（原始输入引用 + 色彩配方 + 指纹）。**不写 MediaStore，相册不可见**。
+     * 原始 JPEG 帧 handle 与 RAW DNG 都不动，供编辑保存时重渲。
+     */
+    private fun landAsMother(
+        roll: RollInfo,
+        index: Int,
+        tmpJpeg: File,
+        recipeJson: String,
+        shotJson: String,
+        inputEv: Float = 0f,
+        normK: Float = 0f,
+        rawGainEv: Float = 0f,
+        rawParamsJson: String = "",
+    ) {
+        val sourceHandle = UndevelopedFilmStore.frameHandle(roll.rollId, index)
+        val rawPath = UndevelopedFilmStore.frameRawPath(roll.rollId, index).orEmpty()
+        com.filmcam.app.film.MotherNegativeStore.savePreview(roll.rollId, index, tmpJpeg)
+        // 全分辨率纯色彩母片：供编辑页白边/无框档 fast-path 出片（不重渲引擎）
+        runCatching { com.filmcam.app.film.MotherNegativeStore.saveFull(roll.rollId, index, tmpJpeg) }
+            .onFailure { Log.w(TAG, "帧 $index 全分辨率母片保存失败（片边档仍可重渲）", it) }
+        com.filmcam.app.film.MotherNegativeStore.addMother(
+            rollId = roll.rollId, index = index,
+            sourceHandle = sourceHandle, rawPath = rawPath,
+            recipeJson = recipeJson, shotJson = shotJson,
+            inputEv = inputEv, normK = normK,
+            rawGainEv = rawGainEv, rawParamsJson = rawParamsJson,
+        )
+        Log.i(TAG, "帧 $index [母片] 已登记（预览+配方），未入相册")
+    }
+
     private fun processOneFrame(
         roll: RollInfo,
         index: Int,
@@ -640,6 +733,14 @@ class DevelopmentService : Service() {
          * >= 0 时全卷沿用，不再重复采样。保证一卷里 36 张浓淡一致。
          */
         rollNormBaseline: FloatArray = FloatArray(1) { -1f },
+        /**
+         * v2 片边重渲用：回传本帧实际施加的反 ISP 归一化有效 k（JPEG 帧）。
+         * 长度 1 输出槽，导出时用它复刻同一归一化，保证片边成片与母片同色。
+         */
+        outNormK: FloatArray? = null,
+        /** v2 RAW 片边重渲复刻槽：回传本帧 RAW 实际增益 EV / 最终参数串。 */
+        outRawGainEv: FloatArray? = null,
+        outRawParamsJson: Array<String?>? = null,
         /** v66：白边相框档（App 侧外扩；本档不带任何 `overscan_*`）。 */
         whiteBorder: Boolean = false,
         /** 6×6 帧的 120 参数四变体；null = 这卷没有中画幅帧。 */
@@ -647,6 +748,10 @@ class DevelopmentService : Service() {
         mf66FlashParamsJson: String? = null,
         mf66FrameParamsJson: String? = null,
         mf66FlashFrameParamsJson: String? = null,
+        /** v2 母片模式：true=跳过片框/日期/白边，只出纯色彩母片+预览，不入相册 */
+        motherMode: Boolean = false,
+        /** 母片重渲配方（纯色彩参数 JSON）；motherMode 时随母片登记保存 */
+        motherRecipeJson: String = "",
     ): Boolean {
         val tTotal0 = android.os.SystemClock.elapsedRealtime()
 
@@ -685,11 +790,15 @@ class DevelopmentService : Service() {
                     tmpJpeg, fallbackParamsJsons, frameNumber, gate,
                     frameParamsJson, frameOkPortrait, flashParamsJson, flashFrameParamsJson,
                     userInputEv = rawInputEv,
-                    whiteBorder = whiteBorder,
+                    whiteBorder = if (motherMode) false else whiteBorder,
+                    motherMode = motherMode,
+                    motherRecipeJson = motherRecipeJson,
                     mf66ParamsJson = mf66ParamsJson,
                     mf66FlashParamsJson = mf66FlashParamsJson,
                     mf66FrameParamsJson = mf66FrameParamsJson,
                     mf66FlashFrameParamsJson = mf66FlashFrameParamsJson,
+                    outRawGainEv = outRawGainEv,
+                    outRawParamsJson = outRawParamsJson,
                 )
             }.onFailure {
                 Log.w(TAG, "帧 $index RAW 通路失败，落回 JPEG 通路: ${it.message}", it)
@@ -778,25 +887,10 @@ class DevelopmentService : Service() {
             // 这一帧的拍摄参数（闪光/白平衡/EV/快门/失焦/画幅）随成片 EXIF 保存，供「拍摄同款」复现
             val shotJson = frameShotJson
 
-            // 日期戳：直接画在进引擎的位图上，省掉一次全尺寸 decode + encode；
-            // 水印会随 LUT 一起调色（等同底片曝光日期）。失败不影响整卷冲洗。
-            // v42：竖拍且片框开着时，引擎会把这张裸竖画面映射进横置 135 版式
-            // （成片画面区 x 0.17~0.85），整图右下角会落到右侧片基上 →
-            // 传等效内容区，把日期戳在裸画面上就往左收并放大，映射后右端
-            // 约 0.805（v43：v42 的 0.78 离片框太远），与 RAW 通路的带框
-            // 成片落点一致。片框关闭 / 横拍传 null。
-            if (isDateStampEnabled()) {
-                try {
-                    DateStampRenderer.drawOnBitmap(
-                        applicationContext, bmp, takenAt,
-                        DateStampRenderer.portraitFramedSource(
-                            bmp.width, bmp.height, frameParamsJson != null
-                        ),
-                    )
-                } catch (e: Throwable) {
-                    Log.e(TAG, "日期戳绘制失败（跳过）: ${e.message}", e)
-                }
-            }
+            // 日期戳：已改为**引擎原生** `date_imprint_*`（见调用点的 DateImprint 注入）。
+            // 这里不再用 Canvas 补画 —— 手绘只能叠在成片上，融不进镜头柔度/颗粒/印相曲线，
+            // 无论怎么调参数都像贴纸（用户 11-18：「越来越丑」）。
+            // 顺序上日期在引擎内先印、这里的暗角后压，与真机「日期同样透过这支镜头」一致。
 
             // 镜头光学：暗角压在日期戳之后（真机的日期也是透过同一支镜头曝在底片上的）
             try {
@@ -823,6 +917,7 @@ class DevelopmentService : Service() {
                     k
                 } else baseline
                 val effectiveK = norm.effectiveStrength(adaptive, jpegNormStrength)
+                outNormK?.set(0, effectiveK)   // v2：回传供片边重渲复刻，与母片同色
                 val ok = norm.apply(bmp, inputEv.toDouble(), effectiveK)
                 val tail = "倍率=${"%.2f".format(jpegNormStrength)} " +
                     "实际=${"%.3f".format(effectiveK)} " +
@@ -892,12 +987,13 @@ class DevelopmentService : Service() {
             // v66 白边相框：本档引擎输出的是纯画面（无片基 / 齿孔），在 EXIF 与落盘之前
             // 外扩四边等宽的纸白边。日期戳、暗角是在进引擎前就画在画面内的，外扩后
             // 自然留在画面右下角，不会印到白边上。代价是多一次 JPEG 编解码（95 质量）。
-            val finalSize = if (whiteBorder) {
+            val effectiveWhiteBorder = whiteBorder && !motherMode
+            val finalSize = if (effectiveWhiteBorder) {
                 WhiteBorderRenderer.applyToJpeg(tmpJpeg)
             } else {
                 WhiteBorderRenderer.Size(result.width, result.height)
             }
-            if (whiteBorder) {
+            if (effectiveWhiteBorder) {
                 outW = finalSize.width
                 outH = finalSize.height
             }
@@ -923,11 +1019,16 @@ class DevelopmentService : Service() {
                 "冲洗后临时 JPEG 为空: ${tmpJpeg.absolutePath}"
             }
 
-            // 落地为成片
+            // 落地：v2 母片模式只登记母片+预览（不进相册），否则照旧写成片
             val tIo0 = android.os.SystemClock.elapsedRealtime()
-            val uri = UndevelopedFilmStore.writeDevelopedFrame(roll.rollId, index, tmpJpeg)
+            if (motherMode) {
+                landAsMother(roll, index, tmpJpeg, motherRecipeJson, shotJson,
+                    inputEv = inputEv, normK = outNormK?.get(0) ?: 0f)
+            } else {
+                val uri = UndevelopedFilmStore.writeDevelopedFrame(roll.rollId, index, tmpJpeg)
+                Log.d(TAG, "帧 $index 落盘完成 uri=$uri")
+            }
             tIoMs = android.os.SystemClock.elapsedRealtime() - tIo0
-            Log.d(TAG, "帧 $index 落盘完成 uri=$uri")
             // 方案A：成片反馈闭环取样（tmpJpeg 删前；非直闪帧内部自跳过，
             // 统计失败静默降级，绝不影响冲洗落盘）
             runCatching {
@@ -988,6 +1089,11 @@ class DevelopmentService : Service() {
         mf66FlashParamsJson: String? = null,
         mf66FrameParamsJson: String? = null,
         mf66FlashFrameParamsJson: String? = null,
+        motherMode: Boolean = false,
+        motherRecipeJson: String = "",
+        /** 片边重渲复刻用：回传本帧 RAW 的实际输入增益 EV / 最终参数串（长度1槽）。 */
+        outRawGainEv: FloatArray? = null,
+        outRawParamsJson: Array<String?>? = null,
     ): Boolean {
         val takenAt = try {
             UndevelopedFilmStore.frameTakenAt(roll.rollId, index)
@@ -1052,6 +1158,15 @@ class DevelopmentService : Service() {
                     Log.w(TAG, "ISP 输入曝光定标失败，回落 v32 参数链（不影响冲洗）", it)
                 }.getOrNull()
             } else null
+        // 空白底片探测（11-17 真机取证）：冷启动立刻抢拍会产出整帧黑电平的 DNG，
+        // 引擎忠实渲染就是黑底颗粒的品红噪点。只告警不阻断，导出侧验真兜底不入册。
+        runCatching {
+            com.filmcam.app.develop.DngQuickProbe.probe(java.io.File(dngPath))
+        }.getOrNull()?.let { probe ->
+            if (probe.garbage) {
+                Log.w(TAG, "帧 $index [RAW] 疑似废片底片: ${probe.summary} · ${probe.reason}")
+            }
+        }
         // 绝对曝光：相机 RAW 由 ISP 引导定标，导入 RAW 用固定基准（没有参考可追）。
         // 用户补偿在两支上都叠加 —— 但必须在输入层（印相层会连片框一起冲浓）。
         val baseGainEv = if (importedRaw) {
@@ -1067,6 +1182,10 @@ class DevelopmentService : Service() {
         val finalFallbacks = if (lockPrint) {
             rawFallbacks.map { SpektraProcessor.withFixedPrintExposure(it) }
         } else rawFallbacks
+        // 片边重渲复刻槽：无论是否 lockPrint 都回传「引擎实际收到的参数 + 增益」，
+        // 保证片边档与母片同一曝光/印相口径（11-18 RAW 片边偏暗根因修复）。
+        outRawGainEv?.set(0, totalGainEv.toFloat())
+        outRawParamsJson?.set(0, finalParamsJson)
         if (lockPrint) {
             Log.i(
                 TAG,
@@ -1149,28 +1268,12 @@ class DevelopmentService : Service() {
                     Log.d(TAG, "帧 $index [RAW] 片门裁切 ${crop.w}x${crop.h}")
                 }
             }
-            if (isDateStampEnabled()) {
-                runCatching {
-                    // v36：RAW 在这里画的是「引擎输出（已含片框）」，必须把日期戳
-                    // 定位到画面区而不是整张带框成片的右下角，否则会印到片基 /
-                    // 暗边印刷带上（用户 11-07 14:49 报的「日期水印被搞到相框上」）。
-                    // 片框关闭 / gateCrop 出裸画面时 contentForAspect 返回 null，
-                    // 行为与 JPEG 通路一致（按整图定位）。
-                    // 6×6 帧带的是 120 纸背框（对称留边、无齿孔），不能用 135 的内容区。
-                    DateStampRenderer.drawOnBitmap(
-                        applicationContext, bmp, takenAt,
-                        DateStampRenderer.contentForAspect(
-                            bmp.width, bmp.height,
-                            mediumFormat = frameGate(shotJson).isMediumFormat,
-                        ),
-                    )
-                }.onFailure { Log.w(TAG, "帧 $index [RAW] 日期戳绘制失败（跳过）", it) }
-            }
+            // 日期戳已在引擎内印（`date_imprint_*`），此处不再补画。
             runCatching { applySonnarVignette(bmp) }
             // v66 白边相框必须是最后一步：日期戳与暗角已经画在画面内，外扩后
             // 它们留在纯画面右下角，不会印到纸白边上。白边档没有 `overscan_active`，
             // 上面的 FrameBorderLock 会自动跳过，不会把白边当片基去校色。
-            if (whiteBorder) {
+            if (whiteBorder && !motherMode) {
                 val expanded = WhiteBorderRenderer.apply(bmp)
                 bmp.recycle()
                 bmp = expanded
@@ -1178,6 +1281,12 @@ class DevelopmentService : Service() {
                 finalH = bmp.height
             }
             // 回写 tmpJpeg（引擎输出被后处理替换）
+            // v2 RAW 尺寸补偿：T3 视角裁切把传感器 4080×3060 裁到 2596×1947(5MP)，
+            // 这里按同一 ratio 放大回去（≈4080×3060），补回成片分辨率。JPEG 帧不走本函数。
+            // 放在所有后处理之后、回写之前，母片 full.jpg / 白边 fast-path 一起受益。
+            bmp = com.filmcam.app.develop.RawUpscaler.upscale(bmp, shotJson)
+            finalW = bmp.width
+            finalH = bmp.height
             java.io.FileOutputStream(tmpJpeg).use { out ->
                 bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 95, out)
             }
@@ -1196,9 +1305,17 @@ class DevelopmentService : Service() {
             paramsJson = exifParamsJson,
             shotJson = shotJson,
         )
-        check(tmpJpeg.exists() && tmpJpeg.length() > 0) { "RAW 冲洗后临时 JPEG 为空: $tmpJpeg" }
-        val uri = UndevelopedFilmStore.writeDevelopedFrame(roll.rollId, index, tmpJpeg)
-        Log.d(TAG, "帧 $index [RAW] 落盘完成 uri=$uri")
+        check(tmpJpeg.exists() && tmpJpeg.length() > 0) { "RAW 冲洗后临时 JPEG 为空: ${tmpJpeg}" }
+        if (motherMode) {
+            landAsMother(
+                roll, index, tmpJpeg, motherRecipeJson, shotJson,
+                rawGainEv = outRawGainEv?.get(0) ?: 0f,
+                rawParamsJson = outRawParamsJson?.get(0) ?: "",
+            )
+        } else {
+            val uri = UndevelopedFilmStore.writeDevelopedFrame(roll.rollId, index, tmpJpeg)
+            Log.d(TAG, "帧 $index [RAW] 落盘完成 uri=$uri")
+        }
         // 方案A：成片反馈闭环取样（非内置直闪帧内部自跳过）
         runCatching {
             com.filmcam.app.camera.FlashFeedbackLoop.onDevelopedFrame(tmpJpeg, shotJson)

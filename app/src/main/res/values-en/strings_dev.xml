@@ -92,4 +92,44 @@
     <string name="pf_capture_trigger">TRIG %1$s</string>
     <string name="pf_capture_flash_ev">Flash comp %1$.1f EV</string>
 
+    <string name="pf_edit">Edit</string>
+
+    <string name="dev_go_edit">Edit in darkroom</string>
+
+    <string name="eng_darkroom_v2">Darkroom editor flow (v2)</string>
+    <string name="eng_darkroom_v2_hint">On: develop to mother only, save to export (needs device test)</string>
+    <string name="eng_darkroom_v2_off">Off</string>
+    <string name="eng_darkroom_v2_on">On</string>
+
+    <string name="edit_export_failed">%1$d failed to export, retry or delete</string>
+
+    <string name="edit_swipe_hint">← swipe to browse →</string>
+
+    <string name="edit_date_on">ON</string>
+    <string name="edit_date_off">OFF</string>
+
+    <!-- v2 darkroom editor -->
+    <string name="edit_title">EDIT</string>
+    <string name="edit_frame_label">Frame</string>
+    <string name="edit_frame_none">None</string>
+    <string name="edit_frame_film">Film edge</string>
+    <string name="edit_frame_white">White</string>
+    <string name="edit_date_label">Date</string>
+    <string name="edit_scope_label">Apply to</string>
+    <string name="edit_scope_one">This one</string>
+    <string name="edit_scope_all">All</string>
+    <string name="edit_hint_white">White border is composed locally, fast</string>
+    <string name="edit_hint_film">Film edge re-renders via engine, ~1-2s each</string>
+    <string name="edit_hint_none">No frame, output the mother negative</string>
+    <string name="edit_date_rendering">Developing this frame (date printed by engine)…</string>
+    <string name="edit_save">SAVE TO GALLERY</string>
+    <string name="edit_saving">Exporting %1$d / %2$d …</string>
+    <string name="edit_saved">Saved %1$d to gallery</string>
+    <string name="edit_export_wait">Exporting, please wait</string>
+    <string name="edit_unsaved_title">Discard changes?</string>
+    <string name="edit_unsaved_msg">Frame / date changed but not saved. Going back will discard them.</string>
+    <string name="edit_unsaved_code">UNSAVED</string>
+    <string name="edit_discard">Discard</string>
+    <string name="edit_keep">Keep editing</string>
+
 </resources>

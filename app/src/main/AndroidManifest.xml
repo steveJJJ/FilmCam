@@ -99,10 +99,16 @@
             android:exported="false"
             android:screenOrientation="fullSensor" />
         <!-- 外闪自学习配对向导：长按取景器闪光状态字进入（非 launcher 入口，不导出） -->
+        <!-- 真机取证（Godox A2 / 00010203 HID 通道）：往厂商 HID 服务里的特征写指令会
+             让系统把灯当成 HID 键盘接入，触发 keyboard / navigation 配置变化。
+             不声明 configChanges 时 Activity 被销毁重建，onCreate 无条件回到第 1 页，
+             engine.close() 还会掐断 GATT —— 表现就是「点通道就退回认灯」。
+             向导只有一套 layout（无 layout-land），这里全部自行接管，不许重建。 -->
         <activity
             android:name=".flash.FlashPairActivity"
             android:exported="false"
-            android:screenOrientation="fullSensor" />
+            android:screenOrientation="fullSensor"
+            android:configChanges="keyboard|keyboardHidden|navigation|uiMode|orientation|screenLayout|screenSize|smallestScreenSize|density|touchscreen" />
 
         <!-- 暗房冲洗 -->
         <activity
@@ -111,6 +117,15 @@
             android:screenOrientation="fullSensor" />
         <service
             android:name=".develop.DevelopmentService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+        <!-- v2 暗房编辑：母片编辑页 + 导出服务 -->
+        <activity
+            android:name=".develop.EditActivity"
+            android:exported="false"
+            android:screenOrientation="fullSensor" />
+        <service
+            android:name=".develop.EditExportService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
         <!-- AndroidX 多语言：由框架托管 App 语言（API 33+ 交给系统 LocaleManager，

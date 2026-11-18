@@ -1133,9 +1133,9 @@ class MainActivity : AppCompatActivity() {
         val labels = resources.getStringArray(R.array.set_labels)
         val hints = resources.getStringArray(R.array.set_hints)
         val rows = intArrayOf(
-            R.id.rowSetBody, R.id.rowSetDatestamp, R.id.rowSetHaptic,
+            R.id.rowSetBody, R.id.rowSetHaptic,
             R.id.rowSetWb, R.id.rowSetLanguage, R.id.rowSetQuality,
-            R.id.rowSetFrame, R.id.rowSetColor, R.id.rowSetRaw,
+            R.id.rowSetColor, R.id.rowSetRaw,
             R.id.rowSetFlash, R.id.rowSetAbout
         )
         val theme = com.filmcam.app.ui.BodyTheme
@@ -1220,13 +1220,10 @@ class MainActivity : AppCompatActivity() {
 
         fun refreshValues() {
             value(R.id.rowSetBody).text = theme.name(this@MainActivity)
-            value(R.id.rowSetDatestamp).text =
-                if (dateStampEnabled) getString(R.string.common_on) else getString(R.string.common_off)
             value(R.id.rowSetHaptic).text = hapticLevelName()
             value(R.id.rowSetWb).text = wbName()
             value(R.id.rowSetLanguage).text = languageName()
             value(R.id.rowSetQuality).text = qualityName()
-            value(R.id.rowSetFrame).text = frameBorderName()
             value(R.id.rowSetColor).text = colorStrengthName()
             value(R.id.rowSetRaw).text = rawSettingName()
             // v86：外闪灯管理行的读数 = 已配对档案状态（灯名 / 台数 / 未配对），
@@ -1302,11 +1299,6 @@ class MainActivity : AppCompatActivity() {
             refreshValues()
             dialog.window?.setBackgroundDrawable(theme.panelDrawable())
         }
-        row(R.id.rowSetDatestamp).hapticClick {
-            dateStampEnabled = !dateStampEnabled
-            saveSettings()
-            refreshValues()
-        }
         row(R.id.rowSetHaptic).hapticClick {
             hapticLevel = (hapticLevel + 1) % HAPTIC_LEVEL_SCALE.size
             saveSettings()
@@ -1334,16 +1326,6 @@ class MainActivity : AppCompatActivity() {
             // 只影响下次冲洗的成片分辨率，当前正在跑的冲洗不受影响。
             com.filmcam.app.develop.DevQuality.cycle(this@MainActivity)
             refreshValues()
-        }
-        row(R.id.rowSetFrame).hapticClick {
-            // 胶片相框：关 → 全画幅 135（3:2，按 36×24 片门裁）→ 白边相框 → 关。就地循环，只影响下次冲洗。
-            val next = FilmStockMapper.cycleFrameFormat(this@MainActivity)
-            refreshValues()
-            // 当场问一次引擎：片门形状是渲染期才校验的（setParams 会收下、solve 才拒绝），
-            // 与其等冲完一卷才发现这机器不认这一格，不如现在就知道。
-            // 正在冲洗时不插队：两边共用同一个引擎实例，抢着开 session 只会互相打断
-            // v66：白边档是 App 侧画的，不走引擎片门自检（next.isOn 已排除它）
-            if (next.isOn && !developingNow()) probeFrameGate(next)
         }
         row(R.id.rowSetColor).hapticClick {
             // v73 色彩浓度：标准 → 淡 → 原始 → 标准。就地循环、面板不关，
@@ -2682,9 +2664,9 @@ class MainActivity : AppCompatActivity() {
             }
 
         if (slowNs > 0L) {
-            // 慢门：快门还开着，得等曝光走完才有「闭帘」和过卷声。
-            // 真机也是曝光结束马达才过片，这段等待本身就是慢门的仪式感。
-            postAt(seq, closeAt) { playShutterCloseFeedback() }
+            // v15（11-18）：慢门原本在闭帘时再补一记快门声 + 一记振动（两声、抖一下），
+            // 用户反馈困扰。现在整条链路只保留开帘那一记反馈（见上 playShutterFeedback），
+            // 闭帘不再补声/补振 —— 曝光/过卷时序不变，只是少一次重复反馈。
             postAt(seq, closeAt + 40) { showDevelopingAnimation(seq, advanceAt) }
         } else {
             // 常规：快门 + 过卷一体声，过卷动画立即同步启动

@@ -40,13 +40,19 @@
             android:layout_marginTop="4dp" />
     </LinearLayout>
 
+    <!-- v16：右侧由「彩色/黑白」分类换成适用场景说明（用户最常问的问题）。
+         maxWidth + 右对齐 + 两行内换行，短标签如「人像·婚礼」「夜景·霓虹」。 -->
     <TextView
         android:id="@+id/tvRollTag"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:textColor="#FFD54F"
+        android:layout_marginStart="10dp"
+        android:maxWidth="96dp"
+        android:gravity="end"
+        android:lineSpacingExtra="1dp"
+        android:textColor="#D9A06B"
         android:textSize="10sp"
-        android:padding="4dp"
-        android:background="#222" />
+        android:padding="5dp"
+        android:background="#221C16" />
 
 </LinearLayout>

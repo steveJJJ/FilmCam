@@ -29,7 +29,9 @@ object FilmRollRepository {
             description = "暖调人像，肤色细腻",
             tag = "彩色",
             descriptionEn = "Warm portrait tones, smooth skin",
-            tagEn = "Color"
+            tagEn = "Color",
+            scene = "人像·婚礼",
+            sceneEn = "Portrait·Wedding"
         ),
         FilmRoll(
             name = "EKTAR 100",
@@ -37,7 +39,9 @@ object FilmRollRepository {
             description = "高饱和，鲜艳明快",
             tag = "彩色",
             descriptionEn = "High saturation, vivid and punchy",
-            tagEn = "Color"
+            tagEn = "Color",
+            scene = "风光·建筑",
+            sceneEn = "Landscape·Arch"
         ),
         FilmRoll(
             name = "GOLD 200",
@@ -45,7 +49,9 @@ object FilmRollRepository {
             description = "暖黄复古，日常扫街",
             tag = "彩色",
             descriptionEn = "Warm amber retro, everyday street",
-            tagEn = "Color"
+            tagEn = "Color",
+            scene = "日常·晴天",
+            sceneEn = "Daily·Sunny"
         ),
         FilmRoll(
             name = "SUPERIA 400",
@@ -53,7 +59,9 @@ object FilmRollRepository {
             description = "富士清新，通透自然",
             tag = "彩色",
             descriptionEn = "Fuji fresh, clean and natural",
-            tagEn = "Color"
+            tagEn = "Color",
+            scene = "日常·街拍",
+            sceneEn = "Daily·Street"
         ),
         FilmRoll(
             name = "KODACHROME 64",
@@ -61,7 +69,9 @@ object FilmRollRepository {
             description = "柯达经典反转片，浓郁暖红调",
             tag = "反转",
             descriptionEn = "Kodak classic slide, deep warm reds",
-            tagEn = "Slide"
+            tagEn = "Slide",
+            scene = "纪实·旅行",
+            sceneEn = "Doc·Travel"
         ),
         FilmRoll(
             name = "VISION3 250D",
@@ -69,7 +79,9 @@ object FilmRollRepository {
             description = "柯达电影卷，日光平衡柔和",
             tag = "电影",
             descriptionEn = "Kodak cine stock, soft daylight balance",
-            tagEn = "Cine"
+            tagEn = "Cine",
+            scene = "日光·广告",
+            sceneEn = "Daylight·Editorial"
         ),
         FilmRoll(
             name = "TRI-X 400",
@@ -77,7 +89,9 @@ object FilmRollRepository {
             description = "黑白胶片，颗粒浓郁",
             tag = "黑白",
             descriptionEn = "Classic B&W, heavy grain",
-            tagEn = "B&W"
+            tagEn = "B&W",
+            scene = "街拍·纪实",
+            sceneEn = "Street·Doc"
         ),
         FilmRoll(
             name = "HP5 PLUS",
@@ -85,7 +99,9 @@ object FilmRollRepository {
             description = "黑白高对比，硬朗",
             tag = "黑白",
             descriptionEn = "High-contrast B&W, hard edged",
-            tagEn = "B&W"
+            tagEn = "B&W",
+            scene = "人像·通用",
+            sceneEn = "Portrait·Allround"
         ),
         FilmRoll(
             name = "CINESTILL 800T",
@@ -93,7 +109,9 @@ object FilmRollRepository {
             description = "钨丝灯平衡，夜色霓虹",
             tag = "彩色",
             descriptionEn = "Tungsten balanced, night neon",
-            tagEn = "Color"
+            tagEn = "Color",
+            scene = "夜景·霓虹",
+            sceneEn = "Night·Neon"
         ),
         // ---- 引擎 catalog 全量胶卷（与 FilmStockMapper.ROLL_TABLE 一一对应）----
         FilmRoll(
@@ -102,7 +120,9 @@ object FilmRollRepository {
             description = "柯达人像，柔润低反差",
             tag = "彩色",
             descriptionEn = "Kodak portrait, soft low contrast",
-            tagEn = "Color"
+            tagEn = "Color",
+            scene = "棚拍·人像",
+            sceneEn = "Studio·Portrait"
         ),
         FilmRoll(
             name = "PORTRA 800",
@@ -110,7 +130,9 @@ object FilmRollRepository {
             description = "柯达高感人像，弱光可用",
             tag = "彩色",
             descriptionEn = "Kodak fast portrait, holds up in low light",
-            tagEn = "Color"
+            tagEn = "Color",
+            scene = "弱光·活动",
+            sceneEn = "LowLight·Event"
         ),
         FilmRoll(
             name = "PORTRA 800 PUSH 1",
@@ -118,7 +140,9 @@ object FilmRollRepository {
             description = "波特拉 800 增感 1 档",
             tag = "彩色",
             descriptionEn = "Portra 800 pushed 1 stop",
-            tagEn = "Color"
+            tagEn = "Color",
+            scene = "弱光·手持",
+            sceneEn = "LowLight·Handheld"
         ),
         FilmRoll(
             name = "PORTRA 800 PUSH 2",
@@ -126,7 +150,9 @@ object FilmRollRepository {
             description = "波特拉 800 增感 2 档",
             tag = "彩色",
             descriptionEn = "Portra 800 pushed 2 stops",
-            tagEn = "Color"
+            tagEn = "Color",
+            scene = "极暗·高感",
+            sceneEn = "VeryDark·HighISO"
         ),
         FilmRoll(
             name = "ULTRAMAX 400",
@@ -134,7 +160,9 @@ object FilmRollRepository {
             description = "柯达日常卷，活泼色彩",
             tag = "彩色",
             descriptionEn = "Kodak everyday stock, lively color",
-            tagEn = "Color"
+            tagEn = "Color",
+            scene = "日常·聚会",
+            sceneEn = "Daily·Party"
         ),
         FilmRoll(
             name = "C200",
@@ -142,7 +170,9 @@ object FilmRollRepository {
             description = "富士日光卷，清新自然",
             tag = "彩色",
             descriptionEn = "Fuji daylight stock, fresh and natural",
-            tagEn = "Color"
+            tagEn = "Color",
+            scene = "日光·人像",
+            sceneEn = "Daylight·Portrait"
         ),
         FilmRoll(
             name = "PRO 400H",
@@ -150,7 +180,9 @@ object FilmRollRepository {
             description = "富士人像，柔和粉调",
             tag = "彩色",
             descriptionEn = "Fuji portrait, soft pastel tones",
-            tagEn = "Color"
+            tagEn = "Color",
+            scene = "婚礼·人像",
+            sceneEn = "Wedding·Portrait"
         ),
         FilmRoll(
             name = "T-MAX 100",
@@ -158,7 +190,9 @@ object FilmRollRepository {
             description = "柯达黑白，细腻锐利",
             tag = "黑白",
             descriptionEn = "Kodak B&W, fine grained and sharp",
-            tagEn = "B&W"
+            tagEn = "B&W",
+            scene = "静物·建筑",
+            sceneEn = "Still·Arch"
         ),
         FilmRoll(
             name = "NEOPAN ACROS 100 II",
@@ -166,7 +200,9 @@ object FilmRollRepository {
             description = "富士黑白，超细颗粒",
             tag = "黑白",
             descriptionEn = "Fuji B&W, ultra-fine grain",
-            tagEn = "B&W"
+            tagEn = "B&W",
+            scene = "黑白·长曝",
+            sceneEn = "B&W·LongExp"
         ),
         FilmRoll(
             name = "PROVIA 100F",
@@ -174,7 +210,9 @@ object FilmRollRepository {
             description = "富士反转片，纯正色彩",
             tag = "反转",
             descriptionEn = "Fuji slide, faithful color",
-            tagEn = "Slide"
+            tagEn = "Slide",
+            scene = "产品·建筑",
+            sceneEn = "Product·Arch"
         ),
         FilmRoll(
             name = "VELVIA 100",
@@ -182,7 +220,9 @@ object FilmRollRepository {
             description = "富士反转片，浓郁风光",
             tag = "反转",
             descriptionEn = "Fuji slide, saturated landscapes",
-            tagEn = "Slide"
+            tagEn = "Slide",
+            scene = "风光·自然",
+            sceneEn = "Landscape·Nature"
         ),
         FilmRoll(
             name = "EKTACHROME 100",
@@ -190,7 +230,9 @@ object FilmRollRepository {
             description = "柯达反转片，明亮通透",
             tag = "反转",
             descriptionEn = "Kodak slide, bright and clean",
-            tagEn = "Slide"
+            tagEn = "Slide",
+            scene = "风光·时尚",
+            sceneEn = "Landscape·Fashion"
         ),
         FilmRoll(
             name = "VERITA 200D",
@@ -198,7 +240,9 @@ object FilmRollRepository {
             description = "柯达电影分装，复古色调",
             tag = "电影",
             descriptionEn = "Kodak cine respool, vintage tones",
-            tagEn = "Cine"
+            tagEn = "Cine",
+            scene = "复古·街拍",
+            sceneEn = "Retro·Street"
         ),
         FilmRoll(
             name = "VISION3 50D",
@@ -206,7 +250,9 @@ object FilmRollRepository {
             description = "柯达电影，日光下最细腻",
             tag = "电影",
             descriptionEn = "Kodak cine, finest grain in daylight",
-            tagEn = "Cine"
+            tagEn = "Cine",
+            scene = "日光·棚拍",
+            sceneEn = "Daylight·Studio"
         ),
         FilmRoll(
             name = "VISION3 200T",
@@ -214,7 +260,9 @@ object FilmRollRepository {
             description = "柯达电影，灯光色温平衡",
             tag = "电影",
             descriptionEn = "Kodak cine, balanced for tungsten",
-            tagEn = "Cine"
+            tagEn = "Cine",
+            scene = "室内·人像",
+            sceneEn = "Indoor·Portrait"
         ),
         FilmRoll(
             name = "VISION3 500T",
@@ -222,7 +270,9 @@ object FilmRollRepository {
             description = "柯达电影，夜景利器",
             tag = "电影",
             descriptionEn = "Kodak cine, made for night",
-            tagEn = "Cine"
+            tagEn = "Cine",
+            scene = "夜景·婚礼",
+            sceneEn = "Night·Wedding"
         )
     )
 

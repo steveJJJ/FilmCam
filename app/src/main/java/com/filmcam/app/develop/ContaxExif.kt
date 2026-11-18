@@ -39,7 +39,7 @@ object ContaxExif {
      *   两者刻意分开：导入的旧照片拍摄时刻可能是几个月前，若拿它当文件时间，
      *   系统相册会按拍摄时间排序，成片直接跑到历史位置去，用户以为没冲出来
      *   （真机实测：datetaken 被填成 2025-12-28，相册里根本翻不到）。
-     *   真正的拍摄日期刻在画面日期戳上（DateStampRenderer 用的是 [takenAtMs]），
+     *   真正的拍摄日期由引擎印在画面上（`date_imprint_text`，用的是 [takenAtMs]），
      *   同时也写进 UserComment 快照的 `orig_taken_at` 留档。
      * [filmDisplayName] 胶卷显示名（如 "Kodak Portra 400"），写入 LensModel。
      * [filmStockId] 引擎 film stock id（如 "kodak_portra_400"），写入 ImageDescription。

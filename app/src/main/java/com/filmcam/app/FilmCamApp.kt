@@ -21,6 +21,9 @@ class FilmCamApp : Application() {
         CrashLog.attach(this)
         CrashLog.install(Thread.getDefaultUncaughtExceptionHandler())
         com.filmcam.app.film.UndevelopedFilmStore.init(this)
+        // v2 暗房改造：母片登记与编辑配方的进程级初始化（与卷存储同生命周期）
+        com.filmcam.app.film.MotherNegativeStore.init(this)
+        com.filmcam.app.develop.EditsStore.init(this)
         // v55：竖屏倒过来时保持正竖（不让机身铭牌跑进物理顶部的状态栏 / 挖孔预留区），
         // 但保留两侧横屏 —— 相机主拍摄方向与商店首图都是横屏。
         com.filmcam.app.ui.ReversePortraitGuard.install(this)

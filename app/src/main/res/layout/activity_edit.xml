@@ -1,0 +1,254 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- v2 暗房编辑页：与 DevelopmentActivity 同一套暗房红光 + 铭牌刻字风。
+     顶/底由 EdgeToEdge.setup 注入系统栏 padding（唯一没做过的页面，之前文案被状态栏压住）。 -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/editRoot"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@drawable/bg_development_red">
+
+    <!-- 顶部：返回 / 标题 / 计数（铭牌刻字，与暗房同源） -->
+    <LinearLayout
+        android:id="@+id/editTopBar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingStart="14dp"
+        android:paddingEnd="18dp"
+        android:paddingTop="10dp"
+        android:paddingBottom="6dp">
+
+        <TextView
+            android:id="@+id/btnEditBack"
+            android:layout_width="46dp"
+            android:layout_height="46dp"
+            android:gravity="center"
+            android:text="‹"
+            android:textColor="#E8DDD6"
+            android:textSize="34sp"
+            android:background="@drawable/bg_nameplate_chip" />
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:text="@string/edit_title"
+            android:textColor="#E8DDD6"
+            android:textSize="17sp"
+            android:textStyle="bold"
+            android:letterSpacing="0.22" />
+
+        <TextView
+            android:id="@+id/tvEditCount"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:minWidth="52dp"
+            android:gravity="end"
+            android:textColor="#D9A06B"
+            android:textSize="14sp"
+            android:fontFamily="monospace" />
+    </LinearLayout>
+
+    <!-- 细刻线分隔 -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:layout_marginStart="18dp"
+        android:layout_marginEnd="18dp"
+        android:background="#3A2A20" />
+
+    <!-- 预览：母片纯色彩 + 相框/日期实时示意（图片 + 自绘覆盖层同几何） -->
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:padding="18dp">
+
+        <ImageView
+            android:id="@+id/ivEditPreview"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:layout_gravity="center"
+            android:adjustViewBounds="true"
+            android:scaleType="fitCenter" />
+    </FrameLayout>
+
+    <!-- 选项区：深红机身牌上三行刻字，pill 选中态红描边 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:layout_marginStart="14dp"
+        android:layout_marginEnd="14dp"
+        android:padding="12dp"
+        android:background="@drawable/bg_lcd">
+
+        <!-- 相框三档：每档一个带 mini 示意的 pill（无 / 片边 / 白边） -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/edit_frame_label"
+            android:textColor="#FF9A86"
+            android:textSize="12sp"
+            android:letterSpacing="0.16" />
+
+        <RadioGroup
+            android:id="@+id/rgEditFrame"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginTop="6dp">
+
+            <RadioButton
+                android:id="@+id/rbFrameNone"
+                android:layout_width="0dp"
+                android:layout_height="46dp"
+                android:layout_weight="1"
+                android:layout_marginEnd="3dp"
+                android:text="@string/edit_frame_none"
+                android:textColor="@color/edit_choice_text"
+                android:textSize="12.5sp"
+                android:button="@null"
+                android:gravity="center"
+                android:background="@drawable/bg_edit_choice" />
+
+            <RadioButton
+                android:id="@+id/rbFrameFilm"
+                android:layout_width="0dp"
+                android:layout_height="46dp"
+                android:layout_weight="1"
+                android:layout_marginStart="3dp"
+                android:layout_marginEnd="3dp"
+                android:text="@string/edit_frame_film"
+                android:textColor="@color/edit_choice_text"
+                android:textSize="12.5sp"
+                android:button="@null"
+                android:gravity="center"
+                android:background="@drawable/bg_edit_choice" />
+
+            <RadioButton
+                android:id="@+id/rbFrameWhite"
+                android:layout_width="0dp"
+                android:layout_height="46dp"
+                android:layout_weight="1"
+                android:layout_marginStart="3dp"
+                android:text="@string/edit_frame_white"
+                android:textColor="@color/edit_choice_text"
+                android:textSize="12.5sp"
+                android:button="@null"
+                android:gravity="center"
+                android:checked="true"
+                android:background="@drawable/bg_edit_choice" />
+        </RadioGroup>
+
+        <!-- 日期 + 范围同一行 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginTop="10dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/edit_date_label"
+                android:textColor="#FF9A86"
+                android:textSize="12sp"
+                android:letterSpacing="0.16" />
+
+            <!-- 日期开关：与相框档位同款的铭牌 pill（不用系统 Switch，视觉统一） -->
+            <RadioGroup
+                android:id="@+id/rgEditDate"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginStart="10dp">
+
+                <RadioButton
+                    android:id="@+id/rbDateOff"
+                    android:layout_width="wrap_content"
+                    android:layout_height="34dp"
+                    android:minWidth="56dp"
+                    android:paddingStart="12dp"
+                    android:paddingEnd="12dp"
+                    android:text="@string/edit_date_off"
+                    android:textColor="@color/edit_choice_text"
+                    android:textSize="12sp"
+                    android:button="@null"
+                    android:gravity="center"
+                    android:checked="true"
+                    android:background="@drawable/bg_edit_choice" />
+
+                <RadioButton
+                    android:id="@+id/rbDateOn"
+                    android:layout_width="wrap_content"
+                    android:layout_height="34dp"
+                    android:minWidth="56dp"
+                    android:layout_marginStart="4dp"
+                    android:paddingStart="12dp"
+                    android:paddingEnd="12dp"
+                    android:text="@string/edit_date_on"
+                    android:textColor="@color/edit_choice_text"
+                    android:textSize="12sp"
+                    android:button="@null"
+                    android:gravity="center"
+                    android:background="@drawable/bg_edit_choice" />
+            </RadioGroup>
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- 档位提示（左）+ 滑动切换提示（右） -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp"
+        android:paddingTop="8dp">
+
+        <TextView
+            android:id="@+id/tvEditHint"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:gravity="start"
+            android:textColor="#B08A72"
+            android:textSize="11sp" />
+
+        <TextView
+            android:id="@+id/tvEditSwipe"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:gravity="end"
+            android:text="@string/edit_swipe_hint"
+            android:textColor="#7A6E68"
+            android:textSize="11sp" />
+    </LinearLayout>
+
+    <!-- 保存到相册：暗房红按钮，与暗房「完成」同源 -->
+    <LinearLayout
+        android:id="@+id/editBottomBar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp"
+        android:paddingTop="12dp"
+        android:paddingBottom="12dp">
+
+        <TextView
+            android:id="@+id/btnEditSave"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:gravity="center"
+            android:background="@drawable/bg_development_red"
+            android:text="@string/edit_save"
+            android:textColor="#FFFFFF"
+            android:textSize="15sp"
+            android:textStyle="bold"
+            android:letterSpacing="0.18" />
+    </LinearLayout>
+</LinearLayout>

@@ -17,6 +17,8 @@ object RollRegistry {
     const val STATUS_SHOOTING = "shooting"
     const val STATUS_DEVELOPING = "developing"
     const val STATUS_DEVELOPED = "developed"
+    /** v2 暗房改造：已冲洗为母片、待编辑导出。老用户不会有这个状态。 */
+    const val STATUS_EDITABLE = "editable"
 
     /** 单帧记录。orientation 缺省 0：旧记录是拍摄侧已物理旋转过的老链路产物。
      *  shot 是拍摄参数 JSON（闪光/白平衡/EV/快门/失焦），旧记录为空串。 */
@@ -133,4 +135,7 @@ object RollRegistry {
     /** 未冲洗 = shooting 或 developing（developed 的卷不再出现在暗房列表）。 */
     fun isUndeveloped(roll: RollRec): Boolean =
         roll.status == STATUS_SHOOTING || roll.status == STATUS_DEVELOPING
+
+    /** v2：待编辑的母片卷（冲洗已完成、尚未导出成片）。 */
+    fun isEditable(roll: RollRec): Boolean = roll.status == STATUS_EDITABLE
 }

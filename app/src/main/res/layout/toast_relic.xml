@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Relic Cam 铭牌风 Toast：暗底 + 琥珀刻字 + 1dp 蚀刻描边，取代系统灰底白字 toast。 -->
+<TextView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/tvToastRelic"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:background="@drawable/bg_toast_relic"
+    android:fontFamily="monospace"
+    android:gravity="center"
+    android:includeFontPadding="false"
+    android:letterSpacing="0.06"
+    android:maxWidth="320dp"
+    android:paddingStart="18dp"
+    android:paddingTop="10dp"
+    android:paddingEnd="18dp"
+    android:paddingBottom="10dp"
+    android:textColor="#E8C9A0"
+    android:textSize="12sp" />

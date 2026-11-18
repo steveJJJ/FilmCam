@@ -125,12 +125,10 @@ App 版本：%1$s (%2$d)
     <string name="set_subtitle">机身设定</string>
     <string-array name="set_labels">
         <item>@string/set_body</item>
-        <item>@string/set_datestamp</item>
         <item>@string/set_haptic</item>
         <item>@string/set_wb</item>
         <item>@string/set_language</item>
         <item>@string/set_quality</item>
-        <item>@string/set_frame</item>
         <item>@string/set_color</item>
         <item>@string/set_raw</item>
         <item>@string/set_flash</item>
@@ -138,12 +136,10 @@ App 版本：%1$s (%2$d)
     </string-array>
     <string-array name="set_hints">
         <item>黑钛 / 钛银两种机身外壳</item>
-        <item>成片右下角打印拍摄日期</item>
         <item>过卷与按键的马达力度</item>
         <item>相当于换一片校色滤镜，拍完也保持不变；腰平取景窗横滑时显示该档标称色温（≈K，非实测）</item>
         <item>跟随系统 / 简体中文 / English</item>
         <item>完整＝原始分辨率，慢；标准≈1200 万像素，快约 3 倍</item>
-        <item>常规拍摄按 135 片门出片（竖拍走竖置那一格）；腰平方形取景窗按 120 6×6 出 1:1：关＝只出画面；全画幅连片基齿孔 / 120 纸背一起扫；白边＝暗房相纸留白</item>
         <item>退掉手机 ISP 多加的那层色彩：标准 / 淡 / 原始，仅 JPG 与导入照片，RAW 不变；工程师控制台可细调 0–100%</item>
         <item>拍摄时同时保存 RAW 底片（DNG），冲洗绕过手机 ISP，细节与颗粒更接近真实底片；本机不支持时自动回落 JPEG，工程师控制台同款开关</item>
         <item>查看、复制或删除已配对的外置闪光灯；导入别人的档案，或自学习配一盏新灯</item>
@@ -302,7 +298,7 @@ App 版本：%1$s (%2$d)
     <string name="pro_price_loading">获取中…</string>
     <string name="pro_buy">解锁 %1$s</string>
     <string name="pro_dialog_title">工程模式（Pro）</string>
-    <string name="pro_dialog_body">工程模式是给发烧友的专家面板：可以手工校准输入曝光、放大机曝光、乳剂与印相层参数，让每一卷按你的口味出片。\n\n一次性买断，不是订阅 —— 买过即永久可用；重装或换手机后点一下就能恢复，不会重复收费。\n\nRelic Cam 自身没有联网权限，购买由 Google Play 完成，你拍的照片依然不可能离开这台手机。</string>
+    <string name="pro_dialog_body">工程模式是给发烧友的专家面板：可以手工校准输入曝光、放大机曝光、乳剂与印相层参数，让每一卷按你的口味出片。\n\n一次性买断，不是订阅 —— 买过即永久可用；重装或换手机后点一下就能恢复，不会重复收费。\n\nRelic Cam 自身没有联网权限，购买由你安装本应用的应用市场完成，你拍的照片依然不可能离开这台手机。</string>
     <string name="pro_dialog_buy">购买解锁</string>
     <string name="pro_dialog_later">以后再说</string>
     <string name="pro_unlock_ok">已解锁工程模式，谢谢支持</string>

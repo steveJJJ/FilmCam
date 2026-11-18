@@ -204,6 +204,19 @@ class DevelopmentActivity : AppCompatActivity(), SensorEventListener {
                 // 重试：服务会 reset 状态重新跑整卷
                 DevelopController.developRollInBackground(this, currentRollId)
                 renderState()
+            } else if (DarkroomV2.isEnabled(this)) {
+                // v2：冲洗只出母片，完成后引导去编辑页；母片帧列表直接带入
+                val frames = runCatching { UndevelopedFilmStore.rollInfo(currentRollId).frames }
+                    .getOrDefault(emptyList())
+                if (frames.isEmpty()) {
+                    startActivity(Intent(this, GalleryActivity::class.java))
+                } else {
+                    startActivity(Intent(this, EditActivity::class.java).apply {
+                        putExtra(EditActivity.EXTRA_ROLL_ID, currentRollId)
+                        putExtra(EditActivity.EXTRA_INDICES, frames.toIntArray())
+                    })
+                }
+                finish()
             } else {
                 startActivity(Intent(this, GalleryActivity::class.java))
                 finish()
@@ -322,7 +335,8 @@ class DevelopmentActivity : AppCompatActivity(), SensorEventListener {
                 append(getString(R.string.dev_done_sub, done))
                 slowQualityHint()?.let { append(' ').append(it) }
             }
-            btnViewGallery.text = getString(R.string.dev_view_gallery)
+            btnViewGallery.text = if (DarkroomV2.isEnabled(this))
+                getString(R.string.dev_go_edit) else getString(R.string.dev_view_gallery)
             tvProgress.text = getString(R.string.dev_progress_done, done, total)
             return
         }

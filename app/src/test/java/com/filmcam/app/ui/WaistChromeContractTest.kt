@@ -145,9 +145,12 @@ class WaistChromeContractTest {
         assertTrue("RAW 方画幅没偶对齐", proc.contains("val square = kotlin.math.abs(aspect - 1f) < 0.01f"))
         val lock = read("java/app/spektralab/engine/FrameBorderLock.kt")
         assertTrue("120 纸背会被 135 齿孔带校色误伤", lock.contains("format == \"135\" || format == \"135_half\""))
-        val stamp = read("java/com/filmcam/app/develop/DateStampRenderer.kt")
-        assertTrue("6×6 日期戳没适配", stamp.contains("CONTENT_SQUARE_FRAMED"))
-        assertTrue("方画幅日期戳没按整图", stamp.contains("mediumFormat: Boolean = false"))
+        // 11-18：日期改由引擎印（`date_imprint_*`），6×6 靠 filmFormatMm=56 让
+        // 毫米制的字高/内缩在方画幅上自然变小，不再需要 App 侧的内容区矩形。
+        val core = read("java/com/filmcam/app/develop/EditRenderCore.kt")
+        assertTrue("6×6 日期没按 120 幅宽", core.contains("if (medium) 56f else 36f"))
+        val imp = read("java/app/spektralab/engine/DateImprint.kt")
+        assertTrue("日期参数没走引擎", imp.contains("date_imprint_active"))
     }
 
     @Test

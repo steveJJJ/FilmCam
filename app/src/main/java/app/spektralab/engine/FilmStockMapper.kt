@@ -794,6 +794,12 @@ object FilmStockMapper {
          * 否则方画幅会被当成 36mm 的片门去算。
          */
         filmFormatMm: Float = 36f,
+        /**
+         * 引擎原生日期印字。传 null = 不印（母片 / 日期关闭）。
+         * 🔴不要在 App 侧用 Canvas 补画：引擎是在成像链路里当「额外曝光」印的，
+         * 会一起吃镜头柔度/颗粒/印相曲线，手绘永远像贴纸。
+         */
+        dateImprint: DateImprint? = null,
     ): String {
         val effectivePrintStock = settings.paperOverride?.takeIf { it.isNotBlank() } ?: printStockId
         // scan_film 只对反转片成立：正片本身就是可直接观看的正像。
@@ -868,6 +874,11 @@ object FilmStockMapper {
         val frameEntries = extraEntries
             ?: settings.frameFormat.overscanFormat?.let { frameBorderEntries(filmStockId, 1, it) }
         frameEntries?.forEach { (k, v) ->
+            sb.append(",\"").append(k).append("\":").append(v)
+        }
+        // 日期印字（引擎原生，`date_imprint_*`）。放在片框之后：
+        // 片框决定画幅毫米数，日期落位按画幅算，两者互不冲突。
+        dateImprint?.jsonEntries()?.forEach { (k, v) ->
             sb.append(",\"").append(k).append("\":").append(v)
         }
         sb.append('}')
