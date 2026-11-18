@@ -544,8 +544,7 @@ class GalleryActivity : AppCompatActivity() {
             if (st.phase == com.filmcam.app.develop.DevelopmentState.PHASE_DONE) st.rollId else null
         val rolls = mutableListOf<RollInfo>()
         rolls.addAll(UndevelopedFilmStore.undevelopedRolls().filter { it.rollId != doneRollId })
-        // v2 暗房改造（开关默认关）：待编辑的母片卷也显示在这一栏，按钮变「编辑」。
-        // 开关关时 editableRolls 恒空（没有卷会进这个状态），行为与改造前一致。
+        // v2 暗房改造（11-18 起全量默认开）：待编辑的母片卷也显示在这一栏，按钮变「编辑」。
         if (com.filmcam.app.develop.DarkroomV2.isEnabled(this)) {
             rolls.addAll(UndevelopedFilmStore.editableRolls())
         }

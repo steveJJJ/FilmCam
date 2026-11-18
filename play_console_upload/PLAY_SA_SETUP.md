@@ -91,6 +91,10 @@ upload_venv\Scripts\python.exe upload_to_play.py
 脚本会：上传 AAB → 挂到 **内部测试（internal）草稿轨道** → 写入中英文商店文案 →
 上传图标 / 特色图 / 3 张截图 → 提交编辑（**不会自动发布**）。
 
+> 2026-11-18 vc90 发版改走**封闭测试轨道**：上传前先用密钥调
+> `edits().tracks().list()` 查 Play Console 里封闭测试轨道的实际名称（自定义轨道不是固定 `beta`），
+> 再以 `PLAY_TRACK=<轨道名>` 执行脚本，否则会挂到默认的 internal。
+
 ---
 
 ## 常见卡点
@@ -111,7 +115,7 @@ upload_venv\Scripts\python.exe upload_to_play.py
 **完全不需要它也能上架** —— 直接在 Play Console 网页手动上传就行，一次而已：
 
 1. Play Console → 你的应用 → **测试 → 内部测试 → 创建新版本**
-2. 上传 `G:\FilmCam\play_console_upload\RelicCam-v48-com.filmcam.app.aab`
+2. 上传 `G:\FilmCam\play_console_upload\RelicCam-v1.0.0-vc90.aab`
 3. 按 `PLAY_CONSOLE_CHECKLIST.md` 填商店信息、传素材、填 App content
 4. 送审
 

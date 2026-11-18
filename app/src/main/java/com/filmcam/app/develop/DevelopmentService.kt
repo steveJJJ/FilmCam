@@ -136,8 +136,8 @@ class DevelopmentService : Service() {
     // ---------- 主冲洗循环 ----------
 
     private fun runDevelopment(rollId: String) {
-        // v2 暗房改造：母片模式（默认关）。开时冲洗只出母片+预览，不直接入相册，
-        // 效果（片框/日期/白边）推迟到编辑页保存时再施加。开关关时下方全部逻辑逐字节不变。
+        // v2 暗房改造：母片模式（11-18 起全量默认开）。冲洗只出母片+预览，不直接入相册，
+        // 效果（片框/日期/白边）推迟到编辑页保存时再施加。老链路仅作兜底保留。
         val motherMode = DarkroomV2.isEnabled(applicationContext)
         try {
             // 1) 定位卷（status 会自动变 developing）

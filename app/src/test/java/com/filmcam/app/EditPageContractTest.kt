@@ -320,4 +320,29 @@ class EditPageContractTest {
         assertFalse("系统Switch已移除", xml.contains("swEditDate"))
         assertTrue("复用相框同款背景", xml.contains("@drawable/bg_edit_choice"))
     }
+
+    @Test
+    fun `暗房编辑v2全量默认开启 不再提供关闭入口`() {
+        // 2026-11-18 用户拍板：V38 全链路真机验证完毕，暗房编辑 v2 转正，
+        // 所有用户强制开，忽略历史 prefs 里手动关过的值。
+        val v2 = read("java/com/filmcam/app/develop/DarkroomV2.kt") ?: return
+        assertTrue("isEnabled 必须恒 true",
+            v2.contains("fun isEnabled(context: Context): Boolean = true"))
+        assertFalse("不得再读 SharedPreferences 决定开关", v2.contains("getBoolean(KEY_ENABLED"))
+        assertFalse("不得留 setEnabled 让用户关回去", v2.contains("fun setEnabled("))
+
+        val about = read("java/com/filmcam/app/AboutActivity.kt") ?: return
+        assertFalse("控制台不得再翻转暗房开关（否则面板显示关、冲洗却走母片）",
+            about.contains("DarkroomV2.setEnabled(this, on)"))
+        assertTrue("控制台行只做状态展示",
+            about.contains("tvDarkroomV2.text = getString(R.string.eng_darkroom_v2_on)"))
+
+        // 通知文案同步：中英文都不得再写「需真机验证 / needs device test」
+        val zh = read("res/values/strings_dev.xml") ?: return
+        val en = read("res/values-en/strings_dev.xml") ?: return
+        assertTrue("中文 hint 标注默认开启", zh.contains("默认开启：冲洗只出母片"))
+        assertTrue("英文 hint 标注 On by default", en.contains("On by default: develop to mother only"))
+        assertFalse("中文 hint 去掉需真机验证", zh.contains("需真机验证"))
+        assertFalse("英文 hint 去掉 needs device test", en.contains("needs device test"))
+    }
 }

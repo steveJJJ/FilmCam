@@ -97,7 +97,7 @@
     <string name="dev_go_edit">去暗房编辑</string>
 
     <string name="eng_darkroom_v2">暗房编辑流程 (v2)</string>
-    <string name="eng_darkroom_v2_hint">开：冲洗只出母片，编辑保存才入相册（需真机验证）</string>
+    <string name="eng_darkroom_v2_hint">默认开启：冲洗只出母片，编辑保存才入相册</string>
     <string name="eng_darkroom_v2_off">关</string>
     <string name="eng_darkroom_v2_on">开</string>
 

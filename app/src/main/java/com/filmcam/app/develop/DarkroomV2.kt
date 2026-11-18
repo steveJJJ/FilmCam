@@ -3,38 +3,17 @@ package com.filmcam.app.develop
 import android.content.Context
 
 /**
- * v2 暗房改造的功能开关（默认**关闭**）。
+ * v2 暗房改造的功能开关（2026-11-18 起**全量默认开启**）。
  *
  * 改造链路：冲洗只出母片（留私有目录）→ 暗房编辑选相框/日期 → 保存才入相册。
- * 这条链路涉及核心成像流程，必须真机逐项验证后才打开。所以：
- *  - 默认 false：装机行为与改造前**逐字节一致**（冲洗照旧直接入相册）；
- *  - 开关打开后：冲洗改走母片模式，卷状态 editable，编辑保存才出成片。
+ * 母片登记、片边重渲、引擎原生日期印字、6×6 片门、编辑导出全链路已在
+ * 11-14~11-18 真机逐项验证完毕（V38 定稿），用户拍板转正：所有用户强制开，
+ * 忽略历史 prefs 里手动关过的值（不再提供关闭入口，避免"面板显示关、冲洗却走母片"）。
  *
- * 开关放工程模式或调试入口，普通用户不暴露；老用户没这个键 → false。
+ * ⚠️ 这是核心成像链路：开启后冲洗不再直接写入相册，必须进暗房编辑页点保存才出成片。
  */
 object DarkroomV2 {
 
-    private const val PREFS = "filmcam"
-    private const val KEY_ENABLED = "filmcam_darkroom_v2"
-
-    @Volatile
-    private var cached: Boolean? = null
-
-    fun isEnabled(context: Context): Boolean {
-        cached?.let { return it }
-        val v = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getBoolean(KEY_ENABLED, false)
-        cached = v
-        return v
-    }
-
-    /** 工程模式切换用；清缓存保证本次进程立即生效。 */
-    fun setEnabled(context: Context, enabled: Boolean) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .edit().putBoolean(KEY_ENABLED, enabled).apply()
-        cached = enabled
-    }
-
-    /** 单测用：重置进程内缓存。 */
-    fun resetCacheForTest() { cached = null }
+    /** 全量强制开：不再读 SharedPreferences，老用户存过的 false 也不生效。 */
+    fun isEnabled(context: Context): Boolean = true
 }

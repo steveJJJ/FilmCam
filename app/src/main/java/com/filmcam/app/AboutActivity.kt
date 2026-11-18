@@ -608,9 +608,9 @@ class AboutActivity : AppCompatActivity() {
         val tvColor = bindRow(rowColor, R.string.eng_cc, R.string.eng_cc_hint)
         val tvJpeg = bindRow(rowJpeg, R.string.eng_jpeg_norm, R.string.eng_jpeg_norm_hint)
         val tvWaist = bindRow(rowWaist, R.string.eng_waist, R.string.eng_waist_hint)
-        val darkroomV2 = com.filmcam.app.develop.DarkroomV2.isEnabled(this)
+        // 11-18 起全量默认开：控制台这一行只做状态展示，不再提供关闭入口
         val tvDarkroomV2 = bindRow(rowDarkroomV2, R.string.eng_darkroom_v2, R.string.eng_darkroom_v2_hint)
-        tvDarkroomV2.text = getString(if (darkroomV2) R.string.eng_darkroom_v2_on else R.string.eng_darkroom_v2_off)
+        tvDarkroomV2.text = getString(R.string.eng_darkroom_v2_on)
 
         fun slowMode(): com.filmcam.app.camera.FilmExposure.Mode =
             com.filmcam.app.camera.FilmExposure.Mode.fromPrefs(
@@ -733,14 +733,12 @@ class AboutActivity : AppCompatActivity() {
             tick(20, 160)
             saveWaistEgg(com.filmcam.app.ui.FoldPosture.nextEgg(waistEgg()))
         }
-        // v2 暗房编辑流程开关：默认关，打开后需真机验证整条链路
+        // v2 暗房编辑流程：11-18 起全量默认开启（DarkroomV2.isEnabled 恒 true）。
+        // 这里只保留状态展示 + 说明，不再翻转 —— 否则会出现「面板显示关、冲洗却仍走母片」的矛盾。
         rowDarkroomV2.setOnClickListener {
             tick(20, 160)
-            val on = !com.filmcam.app.develop.DarkroomV2.isEnabled(this)
-            com.filmcam.app.develop.DarkroomV2.setEnabled(this, on)
-            tvDarkroomV2.text = getString(if (on) R.string.eng_darkroom_v2_on else R.string.eng_darkroom_v2_off)
             Toast.makeText(this,
-                if (on) "暗房编辑 v2 已开（冲洗只出母片）" else "暗房编辑 v2 已关（冲洗直接入相册）",
+                "暗房编辑 v2 已默认开启（冲洗只出母片，编辑保存才入相册）",
                 Toast.LENGTH_LONG).show()
         }
 

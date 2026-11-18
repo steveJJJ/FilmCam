@@ -97,7 +97,7 @@
     <string name="dev_go_edit">Edit in darkroom</string>
 
     <string name="eng_darkroom_v2">Darkroom editor flow (v2)</string>
-    <string name="eng_darkroom_v2_hint">On: develop to mother only, save to export (needs device test)</string>
+    <string name="eng_darkroom_v2_hint">On by default: develop to mother only, save to export</string>
     <string name="eng_darkroom_v2_off">Off</string>
     <string name="eng_darkroom_v2_on">On</string>
 
