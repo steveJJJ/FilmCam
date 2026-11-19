@@ -40,10 +40,12 @@ class T3LcdView @JvmOverloads constructor(
         val isoLabel: String,    // "A"(自动) / "100" / "400" ...
         val evSteps: Float,      // 曝光补偿档数（-3 ~ +3）
         val flashLabel: String,  // OFF / AUTO / FILL / NIGHT
-        val battery: Int         // 0~3 格
+        val battery: Int,        // 0~3 格
+        /** 快门速度（Pro 模式手动档，如 "125"）；空串 = 不显示。 */
+        val shutterLabel: String = ""
     )
 
-    private var state: State = State(0, 36, "P", "A", 0f, "OFF", 3)
+    private var state: State = State(0, 36, "P", "A", 0f, "OFF", 3, "")
 
     /** EL 背光：点亮后背光持续 BACKLIGHT_MS，再淡出 600ms */
     private var backlightUntil = 0L
@@ -272,35 +274,59 @@ class T3LcdView @JvmOverloads constructor(
         val eyeY = y1 + boltH + ch * 0.05f
         drawEye(canvas, left + boltH * 0.06f, eyeY, ch * 0.36f, ch * 0.20f, onColor, ghostColor)
 
-        // ---- 底行小字：ISO / EV / 模式 + 电池 ----
+        // ---- 底行小字：ISO → TV → EV 三组，从左到右统一间隔排开 ----
+        // 🔴 11-20 用户：曝光补偿要放到快门速度后面、排列好。之前放右上大计数下方
+        // 显得游离；塞回底行又必须防重叠 —— 三组统一 gap、半档点并入数字格不额外占宽，
+        // ISO 最多 4 位、EV 压到 sign+1 位，横竖屏实测都不越过右侧模式区。
         val smH = ch * 0.15f
         val smW = smH * 0.56f
+        val smGap = smH * 0.14f
+        val groupGap = ch * 0.055f
         val y3 = rect.bottom - padY - smH - ch * 0.03f
         var ix = left
         canvas.drawText("ISO", ix, y3 + smH, smallPaint)
-        ix += smallPaint.measureText("ISO") + ch * 0.04f
-        state.isoLabel.takeLast(3).padStart(3, ' ').forEach { c ->
+        ix += smallPaint.measureText("ISO") + ch * 0.025f
+        // 🔴 ISO 位数自适应：Pro 模式下有 1600 / 3200 这类四位值，
+        // 固定 takeLast(3) 会把 1600 显示成 "600"、3200 显示成 "200"（读数完全错）。
+        // 最少三格，值更长就多画一格。
+        val isoDigits = state.isoLabel.takeLast(4)
+        val isoSlots = maxOf(3, isoDigits.length)
+        isoDigits.padStart(isoSlots, ' ').forEach { c ->
             draw7(canvas, c, ix, y3, smW, smH, onColor)
-            ix += smW + smH * 0.14f
+            ix += smW + smGap
         }
+        // TV：取景窗四刻度的细化档 500 / 250 / 125 / 60 / 30 / 15 / 8
+        if (state.shutterLabel.isNotBlank()) {
+            ix += groupGap
+            canvas.drawText("TV", ix, y3 + smH, smallPaint)
+            ix += smallPaint.measureText("TV") + ch * 0.025f
+            // 快门速度按实际档位显示（500 / 250 / 125 / 60 / 30 / 15 / 8），
+            // 不再压成取景窗那 4 个刻度 —— 手动档位更细，液晶屏要如实反映。
+            val tvDigits = state.shutterLabel.takeLast(3)
+            tvDigits.padStart(3, ' ').forEach { c ->
+                draw7(canvas, c, ix, y3, smW, smH, onColor)
+                ix += smW + smGap
+            }
+        }
+        // EV：紧跟 TV 之后。sign + 整数 1 位；半档点画在整数格右下角，不额外占宽。
         if (state.evSteps != 0f) {
-            ix += ch * 0.06f
+            ix += groupGap
             canvas.drawText("EV", ix, y3 + smH, smallPaint)
-            ix += smallPaint.measureText("EV") + ch * 0.035f
+            ix += smallPaint.measureText("EV") + ch * 0.025f
             val sign = if (state.evSteps > 0) '+' else '-'
             draw7(canvas, sign, ix, y3, smW, smH, onColor)
-            ix += smW + smH * 0.14f
+            ix += smW + smGap
             val abs = kotlin.math.abs(state.evSteps)
-            val absI = abs.toInt()
+            val absI = abs.coerceAtMost(9f).toInt()
+            val digitX = ix
             if (absI > 0) draw7(canvas, (absI + '0'.code).toChar(), ix, y3, smW, smH, onColor)
-            // 半档：7 段管没有小数点段，在数字右下角点一颗，刻度感不变
             if (abs - absI >= 0.5f) {
                 val dot = Paint(segPaint).apply {
                     style = Paint.Style.FILL
                     color = onColor
                 }
                 canvas.drawCircle(
-                    ix + smW + smH * 0.04f, y3 + smH,
+                    digitX + smW + smH * 0.04f, y3 + smH,
                     max(1.2f, smH * 0.07f), dot
                 )
             }

@@ -817,6 +817,9 @@ class FlashPairActivity : AppCompatActivity(), FlashPairEngine.Listener {
             writeCharUuid = char.charUuid,
             writeNoResponse = char.writeNoResponse,
             triggerHex = hex,
+            // 同步偏移按灯型定：氙气灯（A2）出光快 ≈ -80ms，COB 持续灯起辉慢 ≈ -200ms。
+            // 用户可在档案文本里手改 offset 覆盖（导入时按行读取）。
+            syncOffsetMs = if (dev.name.contains("A2", ignoreCase = true)) -80 else -200,
             pairedAt = System.currentTimeMillis()
         )
         if (!store.save(profile)) {

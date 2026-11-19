@@ -23,6 +23,20 @@ class FlashController(
     private val context: Context
 ) : FlashDevice {
 
+    companion object {
+        /**
+         * 进程内当前活着的 FlashController（MainActivity onCreate 建，release 清）。
+         * 工程控制台（AboutActivity）靠它拿到外闪会话去控制 A2 造型灯 ——
+         * 主界面在返回栈里活着，这个引用就是有效的。
+         */
+        @Volatile
+        var active: FlashController? = null
+    }
+
+    init {
+        active = this
+    }
+
     override var mode: FlashMode = FlashMode.OFF
     override var onStatusChange: ((String) -> Unit)? = null
 
@@ -96,7 +110,42 @@ class FlashController(
         }
     }
 
+    /**
+     * 当前灯的同步偏移（ms；null = 用全局兜底）。
+     * 拍照链路据此把触发时机对齐到具体灯：氙气灯 -80 / COB -200。
+     */
+    fun currentSyncOffsetMs(): Int? = bleFlash?.syncOffsetMs
+
+    /** 当前灯一张照片要发几次触发帧（A2 = 3 段式：LED → 氙气预闪 → 氙气主闪）。 */
+    fun triggerStages(): Int = bleFlash?.triggerStages ?: 1
+
+    /** 当前灯是否需要「回电中」提示（氙气灯 true / COB false）。 */
+    fun needsRecycleHint(): Boolean = bleFlash?.needsRecycleHint ?: false
+
+    /**
+     * 当前外闪的造型灯控制通道（null / 未就绪 = 控制台按钮置灰）。
+     * A2 连上后返回 FEC7 命令通道封装（LED / 亮度 / 色温，CRC8-Maxim）。
+     */
+    fun lampControl(): FlashLampControl? =
+        bleFlash?.lampControl?.takeIf { it.ready }
+
+    /**
+     * 丢弃当前 BLE 会话并按最新档案重建。
+     *
+     * 11-18 真机 bug：配对向导存完 A2 档案后，旧的 bleFlash（存档前用
+     * FG-COB-FLASH 建的）仍活着，startScan 的「已有会话」幂等判断直接跳过，
+     * 于是拍照一直连错灯（日志里 FG-COB 空转重连 277 次）。存档成功后调本方法
+     * 立即切换；非 EXTERNAL 档只清引用，下次进档时自然重建。
+     */
+    fun rebuildSession() {
+        android.util.Log.i("FlashDiag", "rebuildSession：丢弃旧会话并按最新档案重建")
+        bleFlash?.release()
+        bleFlash = null
+        if (mode == FlashMode.EXTERNAL) startScan()
+    }
+
     override fun release() {
+        if (active === this) active = null
         onBuiltInFlash?.invoke(false)
         bleFlash?.release()
         // v59：release() 之后必须清空引用，否则 startScan() 的幂等判断会一直

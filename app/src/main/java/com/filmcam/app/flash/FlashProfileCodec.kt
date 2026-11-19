@@ -41,6 +41,9 @@ object FlashProfileCodec {
         append("offset=").append(p.syncOffsetMs).append('\n')
         append("capability=").append(p.capability.name).append('\n')
         append("paired=").append(p.pairedAt).append('\n')
+        // v2：造型灯命令通道（可选；空 = 纯触发灯）。CRC 方案隐含 CRC8-Maxim。
+        p.cmdServiceUuid?.let { append("cmdservice=").append(it).append('\n') }
+        p.cmdCharUuid?.let { append("cmdchar=").append(it).append('\n') }
     }
 
     /**
@@ -83,7 +86,11 @@ object FlashProfileCodec {
             capability = runCatching {
                 FlashCapability.valueOf(kv["capability"] ?: "DUMB")
             }.getOrDefault(FlashCapability.DUMB),
-            pairedAt = kv["paired"]?.toLongOrNull() ?: 0L
+            pairedAt = kv["paired"]?.toLongOrNull() ?: 0L,
+            cmdServiceUuid = kv["cmdservice"]?.takeIf { it.isNotEmpty() && isValidUuid(it) }
+                ?.let { FlashProfile.canonicalUuid(it) },
+            cmdCharUuid = kv["cmdchar"]?.takeIf { it.isNotEmpty() && isValidUuid(it) }
+                ?.let { FlashProfile.canonicalUuid(it) }
         )
     }
 

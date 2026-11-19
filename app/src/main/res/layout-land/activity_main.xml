@@ -94,15 +94,39 @@
             android:focusable="true"
             android:contentDescription="@string/main_cd_settings" />
 
-        <!-- 机身铭牌：CONTAX T3（与上方功能键同轴居中，尺寸与竖屏一致） -->
-        <ImageView
-            android:id="@+id/brandLogo"
+        <!-- 机身铭牌 + PRO 徽标：整块可点（单击进出 Pro），铭牌上左右滑调 ISO。
+             横屏时 CONTAX T3 右边没空间（右侧栏是竖排的），PRO 徽标改成排在 logo 下方。 -->
+        <LinearLayout
+            android:id="@+id/proBrandRow"
             android:layout_width="wrap_content"
-            android:layout_height="22dp"
-            android:adjustViewBounds="true"
+            android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
-            android:src="@drawable/ic_t3_logo"
-            android:contentDescription="CONTAX T3" />
+            android:orientation="vertical"
+            android:gravity="center_horizontal"
+            android:clickable="true"
+            android:focusable="true"
+            android:contentDescription="@string/main_pro_label">
+
+            <ImageView
+                android:id="@+id/brandLogo"
+                android:layout_width="wrap_content"
+                android:layout_height="22dp"
+                android:adjustViewBounds="true"
+                android:src="@drawable/ic_t3_logo"
+                android:contentDescription="CONTAX T3" />
+
+            <TextView
+                android:id="@+id/tvProTag"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="3dp"
+                android:text="PRO"
+                android:textColor="#9FE1CB"
+                android:textSize="10sp"
+                android:letterSpacing="0.18"
+                android:includeFontPadding="false"
+                android:visibility="gone" />
+        </LinearLayout>
     </LinearLayout>
 
     <!-- ===== 右侧栏：暗房 / 快门 / 胶卷（竖排，落在预览右侧黑边中部，拇指自然落位） ===== -->
@@ -180,24 +204,6 @@
         android:layout_height="wrap_content"
         android:text="@string/main_flash_off"
         android:visibility="gone" />
-
-    <TextView
-        android:id="@+id/tvProToggle"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="@string/main_pro_label"
-        android:visibility="gone" />
-
-    <LinearLayout
-        android:id="@+id/proControls"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:visibility="gone">
-        <TextView android:id="@+id/tvIso" android:layout_width="wrap_content" android:layout_height="wrap_content" />
-        <TextView android:id="@+id/tvShutter" android:layout_width="wrap_content" android:layout_height="wrap_content" />
-        <TextView android:id="@+id/tvExposure" android:layout_width="wrap_content" android:layout_height="wrap_content" />
-    </LinearLayout>
 
     <!-- 腰平取景（Contax 645 MF-2 取景罩语言）：A 半屏纯黑遮罩 + 取景罩顶沿 +
          屏框覆盖层 + 折叠前盖。

@@ -232,4 +232,71 @@ class ExternalFlashRegistryTest {
         val count = Regex("FotorGearFlash\\(").findAll(reg).count()
         assertEquals("注册表对具体驱动的引用只允许出现在工厂一处", 1, count)
     }
+
+    // ---- 11-18 A2 拍照引闪链路契约（氙气灯按灯 offset + 存档后会话重建）----
+
+    @Test
+    fun `驱动接口暴露按灯同步偏移 且自学习驱动返回档案值`() {
+        val iface = read("java/com/filmcam/app/flash/ExternalFlashDriver.kt") ?: return
+        assertTrue("驱动接口必须暴露 syncOffsetMs", iface.contains("val syncOffsetMs: Int?"))
+        assertTrue("默认必须 null（走全局兜底，不破坏内置灯）",
+            Regex("val syncOffsetMs: Int\\?\\s+get\\(\\) = null").containsMatchIn(iface))
+
+        val learned = read("java/com/filmcam/app/flash/LearnedProfileDriver.kt") ?: return
+        assertTrue("自学习驱动必须返回档案的生效 offset（含老档案自动纠正）",
+            Regex("override val syncOffsetMs[^\\n]*profile\\.effectiveSyncOffsetMs").containsMatchIn(learned))
+    }
+
+    @Test
+    fun `拍照按灯取 offset 热调文件仍可覆盖`() {
+        val cam = read("java/com/filmcam/app/camera/Camera2Controller.kt") ?: return
+        assertTrue("setExternalFlashSync 必须接收档案 offset 参数",
+            Regex("fun setExternalFlashSync\\(enabled: Boolean, profileOffsetMs: Int\\?").containsMatchIn(cam))
+        assertTrue("热调文件缺失时必须回落到按灯 offset",
+            cam.contains("val fallback = profileFlashOffsetMs?.toLong() ?: DEFAULT_FLASH_SYNC_OFFSET_MS"))
+        assertTrue("热调文件优先级注释必须在（保留 adb 扫参能力）",
+            cam.contains("热调文件") && cam.contains("档案 offset"))
+    }
+
+    @Test
+    fun `存档成功后必须重建 BLE 会话 不能只调 startScan`() {
+        val main = read("java/com/filmcam/app/MainActivity.kt") ?: return
+        assertTrue("配对返回后必须 rebuildSession（startScan 的幂等判断会跳过旧会话）",
+            main.contains("flash.rebuildSession()"))
+        assertTrue("重建后必须重新下发按灯 offset",
+            main.contains("applyExposure()") && main.contains("配对返回后建连失败"))
+        // 配对返回分支（"配对返回后建连失败" 这一行）必须是 rebuildSession 而非 startScan
+        val callbackSeg = main.substringBefore("配对返回后建连失败")
+            .substringAfterLast("if (ok && flash.mode == FlashMode.EXTERNAL)")
+        assertTrue("配对回调里必须是 rebuildSession（不是会被幂等跳过的 startScan）",
+            callbackSeg.contains("flash.rebuildSession()") && !callbackSeg.contains("flash.startScan()"))
+    }
+
+    @Test
+    fun `FlashController 提供会话重建入口 且释放旧 GATT`() {
+        val fc = read("java/com/filmcam/app/flash/FlashController.kt") ?: return
+        assertTrue("必须有 rebuildSession 入口", fc.contains("fun rebuildSession()"))
+        assertTrue("重建前必须释放旧驱动 GATT", fc.contains("bleFlash?.release()"))
+        assertTrue("重建必须清空旧引用", fc.contains("bleFlash = null"))
+        assertTrue("必须暴露当前灯 offset 给相机层", fc.contains("fun currentSyncOffsetMs(): Int?"))
+    }
+
+    @Test
+    fun `A2 档案 offset 标定为 80ms 氙气灯值`() {
+        val profile = java.io.File(System.getProperty("user.dir") ?: ".", "tmp/a2_packetlogger/Godox-A2-2319.profile.txt")
+        if (!profile.isFile) return
+        val s = profile.readText()
+        assertTrue("A2 档案 offset 必须是实测的 -80（氙气灯瞬时出光）", s.contains("offset=-80"))
+        assertTrue("触发帧必须是已验证的 1000,Test", s.contains("trigger=313030302C54657374"))
+    }
+
+    @Test
+    fun `配对向导按灯型设默认 offset 氙气灯80 COB200`() {
+        val pair = read("java/com/filmcam/app/flash/FlashPairActivity.kt") ?: return
+        assertTrue("存档时必须显式设 syncOffsetMs（不能光靠 FlashProfile 默认 -200）",
+            pair.contains("syncOffsetMs ="))
+        assertTrue("A2 氙气灯必须 -80（按名字特判）",
+            pair.contains("ignoreCase = true") && pair.contains("-80"))
+        assertTrue("COB/其它灯保留 -200", pair.contains("-200"))
+    }
 }

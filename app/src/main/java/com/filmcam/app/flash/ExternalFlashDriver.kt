@@ -17,6 +17,28 @@ package com.filmcam.app.flash
  */
 interface ExternalFlashDriver {
 
+    /**
+     * 本灯的闪光同步偏移（ms，相对曝光开始；负=提前点灯）。
+     * null = 用全局兜底（flash_sync_offset.txt / 默认 -200）。
+     * 氙气灯出光快（实测 A2 ≈ -80），COB 持续灯起辉慢（≈ -200），
+     * 所以按灯各自声明，不能全局一刀切。
+     */
+    val syncOffsetMs: Int? get() = null
+
+    /**
+     * 一张照片需要发几次触发帧（默认 1）。
+     * A2 这类三段式灯返回 3：LED → 氙气预闪 → 氙气主闪，只有第 3 发才是主闪。
+     */
+    val triggerStages: Int get() = 1
+
+    /**
+     * 造型灯控制通道（LED / 亮度 / 色温），见 [FlashLampControl]。
+     * null = 本灯没有命令通道（纯触发灯）；实现返回自身时注意 ready 语义。
+     */
+    val lampControl: FlashLampControl? get() = null
+    /** 拍摄后是否提示「回电中」（氙气灯 true，COB 常亮灯 false）。 */
+    val needsRecycleHint: Boolean get() = true
+
     /** 开始扫描 / 连接（实现自己维护重连）。 */
     fun startScan()
 

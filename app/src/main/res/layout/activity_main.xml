@@ -109,16 +109,40 @@
     </LinearLayout>
 
 
-    <!-- 机身正面铭牌：CONTAX T3 完整 logo（透明白底 PNG，置取景框下沿与底部按键之间） -->
-    <ImageView
-        android:id="@+id/brandLogo"
-        android:layout_width="wrap_content"
-        android:layout_height="22dp"
-        android:adjustViewBounds="true"
+    <!-- 机身正面铭牌 + PRO 徽标（2026-11-19）：整块可点，进出 Pro 模式。
+         PRO 只在 Pro 模式下显形、排在 logo 之后，不挪动 logo 本身的位置。 -->
+    <LinearLayout
+        android:id="@+id/proBrandRow"
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
         android:layout_gravity="bottom|center_horizontal"
-        android:layout_marginBottom="150dp"
-        android:src="@drawable/ic_t3_logo"
-        android:contentDescription="CONTAX T3" />
+        android:layout_marginBottom="130dp"
+        android:orientation="horizontal"
+        android:gravity="center"
+        android:clickable="true"
+        android:focusable="true"
+        android:contentDescription="@string/main_pro_label">
+
+        <ImageView
+            android:id="@+id/brandLogo"
+            android:layout_width="wrap_content"
+            android:layout_height="22dp"
+            android:adjustViewBounds="true"
+            android:src="@drawable/ic_t3_logo"
+            android:contentDescription="CONTAX T3" />
+
+        <TextView
+            android:id="@+id/tvProTag"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:text="PRO"
+            android:textColor="#9FE1CB"
+            android:textSize="10sp"
+            android:letterSpacing="0.18"
+            android:includeFontPadding="false"
+            android:visibility="gone" />
+    </LinearLayout>
 
     <!-- ===== 底部控制条：胶卷 / 快门 / 暗房（快门为最大触控目标，间距 8dp 网格） ===== -->
     <LinearLayout
@@ -128,18 +152,26 @@
         android:layout_gravity="bottom|center_horizontal"
         android:layout_marginBottom="48dp"
         android:orientation="horizontal"
-        android:gravity="center_vertical">
+        android:gravity="bottom">
 
-        <!-- 左：当前胶卷图标（点击换胶卷） -->
-        <ImageView
-            android:id="@+id/tvFilmName"
-            android:layout_width="56dp"
-            android:layout_height="56dp"
-            android:scaleType="centerCrop"
-            android:background="@drawable/bg_darkroom"
-            android:clickable="true"
-            android:focusable="true"
-            android:contentDescription="@string/main_cd_film_current" />
+        <!-- 左列：ISO 转盘（Pro 模式显形）+ 当前胶卷图标 -->
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:gravity="center_horizontal|bottom"
+            android:layout_marginBottom="8dp">
+
+            <ImageView
+                android:id="@+id/tvFilmName"
+                android:layout_width="56dp"
+                android:layout_height="56dp"
+                android:scaleType="centerCrop"
+                android:background="@drawable/bg_darkroom"
+                android:clickable="true"
+                android:focusable="true"
+                android:contentDescription="@string/main_cd_film_current" />
+        </LinearLayout>
 
         <!-- 中：快门（与两翼留 56dp，避免误触胶卷/暗房） -->
         <View
@@ -148,26 +180,34 @@
             android:layout_height="72dp"
             android:layout_marginStart="56dp"
             android:layout_marginEnd="56dp"
-            android:layout_gravity="center"
+            android:layout_gravity="bottom"
             android:background="@drawable/bg_shutter" />
 
         <!-- 右：暗房（未冲洗卷 + 已冲洗成片）——机身蚀刻字牌，纯文字 DARKROOM -->
-        <TextView
-            android:id="@+id/btnGallery"
-            android:layout_width="56dp"
-            android:layout_height="56dp"
-            android:tag="keepTextColor"
-            android:gravity="center"
-            android:background="@drawable/bg_darkroom"
-            android:clickable="true"
-            android:focusable="true"
-            android:text="DARKROOM"
-            android:fontFamily="sans-serif-medium"
-            android:textColor="#C9C5BC"
-            android:textSize="9sp"
-            android:letterSpacing="0.12"
-            android:includeFontPadding="false"
-            android:contentDescription="@string/main_darkroom" />
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:gravity="center_horizontal|bottom"
+            android:layout_marginBottom="8dp">
+
+            <TextView
+                android:id="@+id/btnGallery"
+                android:layout_width="56dp"
+                android:layout_height="56dp"
+                android:tag="keepTextColor"
+                android:gravity="center"
+                android:background="@drawable/bg_darkroom"
+                android:clickable="true"
+                android:focusable="true"
+                android:text="DARKROOM"
+                android:fontFamily="sans-serif-medium"
+                android:textColor="#C9C5BC"
+                android:textSize="9sp"
+                android:letterSpacing="0.12"
+                android:includeFontPadding="false"
+                android:contentDescription="@string/main_darkroom" />
+        </LinearLayout>
     </LinearLayout>
 
     <!-- 隐藏胶卷文字（保留 id，避免破坏逻辑） -->
@@ -195,24 +235,6 @@
         android:layout_height="wrap_content"
         android:text="@string/main_flash_off"
         android:visibility="gone" />
-
-    <TextView
-        android:id="@+id/tvProToggle"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="@string/main_pro_label"
-        android:visibility="gone" />
-
-    <LinearLayout
-        android:id="@+id/proControls"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:visibility="gone">
-        <TextView android:id="@+id/tvIso" android:layout_width="wrap_content" android:layout_height="wrap_content" />
-        <TextView android:id="@+id/tvShutter" android:layout_width="wrap_content" android:layout_height="wrap_content" />
-        <TextView android:id="@+id/tvExposure" android:layout_width="wrap_content" android:layout_height="wrap_content" />
-    </LinearLayout>
 
     <!-- 腰平取景（Contax 645 MF-2 取景罩语言）：A 半屏纯黑遮罩 + 取景罩顶沿 +
          屏框覆盖层 + 折叠前盖。镜头那一面只留纯黑（OLED 像素关闭，不给被摄者

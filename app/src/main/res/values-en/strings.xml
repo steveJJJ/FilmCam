@@ -205,6 +205,8 @@ Memory available: %10$d MB / %11$d MB total
     <string name="main_flash_off">Flash: Off</string>
     <string name="main_flash_internal">Flash: Built-in</string>
     <string name="main_flash_external">Flash: External</string>
+    <!-- Xenon recycle hint: the capacitor needs seconds to recharge; a shot taken too early is dimmer -->
+    <string name="main_flash_recharging">Recycling</string>
     <string name="main_external_status">External flash: %1$s</string>
     <string name="main_flash_pair_needed">No flash paired yet, start pairing</string>
     <string name="main_flash_pair_cancel">Pairing not finished, flash reverted to off</string>
@@ -476,6 +478,15 @@ Memory available: %10$d MB / %11$d MB total
     <string name="lcd_notice_flash_ev_fine">EXT flash 0.5 EV/step</string>
 
     <!-- ===== Waist-level finder (P0 skeleton): settings row + half-screen bar ===== -->
+    <string name="eng_a2_title">A2 modeling lamp (Godox A2)</string>
+    <string name="eng_a2_ready">Command channel ready (FEC7)</string>
+    <string name="eng_a2_not_ready">Not ready: connect the A2 in external-flash mode first</string>
+    <string name="eng_a2_led">Modeling lamp</string>
+    <string name="eng_a2_brightness">Modeling lamp (0–100, 0 = off)</string>
+    <string name="eng_a2_cct">Color temp (1–100, 100 = white)</string>
+    <string name="eng_a2_power">Flash power (M, 1/1 – 1/128)</string>
+    <string name="eng_a2_reset">Reset flash mode (tap when the lamp only fires LED)</string>
+    <string name="eng_a2_hint">Matches the write order of the official app: brightness = 0x06 (dragging to 0 exits modeling-lamp mode), color temp = 0x07 (0–32, white at top). 0x05 is the mode switch and 0x0c is a capture-side parameter — neither should be driven from the UI. Warning: leaving the lamp on degrades xenon burst shooting; return it to 0 before shooting.</string>
     <string name="eng_waist">Waist-level finder (foldable easter egg)</string>
     <string name="eng_waist_hint">Off = never; Auto = only when a foldable is half-open (invisible on flat phones); Simulate = split half-screen on flat phones, debug only</string>
     <string name="eng_waist_off">Off</string>

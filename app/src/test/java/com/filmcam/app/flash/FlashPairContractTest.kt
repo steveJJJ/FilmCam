@@ -120,8 +120,8 @@ class FlashPairContractTest {
             Regex("flashPairAutoFromExt = true[\\s\\S]{0,400}flashPairLauncher\\.launch").containsMatchIn(main)
         )
         assertTrue(
-            "向导返回 OK 后必须重建 BLE 会话（startScan 内部 syncLearned 新档案）",
-            Regex("resultCode == android\\.app\\.Activity\\.RESULT_OK[\\s\\S]{0,1200}flash\\.startScan\\(\\)")
+            "向导返回 OK 后必须丢弃旧会话按新档案重建（startScan 会被幂等跳过，必须用 rebuildSession）",
+            Regex("resultCode == android\\.app\\.Activity\\.RESULT_OK[\\s\\S]{0,1200}flash\\.rebuildSession\\(\\)")
                 .containsMatchIn(main)
         )
         assertTrue(

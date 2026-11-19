@@ -61,7 +61,9 @@ class ViewfinderFrameView @JvmOverloads constructor(
         val shutterSlow: Boolean = false,          // 慢门警告：快门慢到会抖，档位慢闪（T3 手册：当心手抖）
         val wbOn: Boolean = false,         // 白平衡面板是否在显示（横滑调 WB 期间）
         val wbIndex: Int = 0,              // 当前 WB 档位序号
-        val wbCount: Int = 7               // 总档位数（画档位小点时用）
+        val wbCount: Int = 7,              // 总档位数（画档位小点时用）
+        /** Pro 模式下显示的 ISO 读数（如 "ISO 400"），null = 不显示。 */
+        val isoText: String? = null
     )
 
     private val density = resources.displayMetrics.density
@@ -116,6 +118,51 @@ class ViewfinderFrameView @JvmOverloads constructor(
             field = value
         }
 
+    /**
+     * Pro 模式常亮：指示灯不再按 8 秒自动熄灯。
+     *
+     * 真机进 Pro 就是要一直看着参数（ISO / 快门），所以这里把自动熄灯关掉；
+     * 退出 Pro 会恢复原来的省电行为。
+     */
+    var alwaysOn = false
+        set(value) {
+            if (field == value) return
+            field = value
+            invalidate()
+            scheduleTick()
+        }
+
+    /**
+     * 快门刻度列的拖动回调（纵向）。
+     *
+     * @param dy 本次 MOVE 的纵向位移（像素，向下为正）。向上推 = 更快的快门。
+     */
+    var onShutterDrag: ((Float) -> Unit)? = null
+
+    /** 快门刻度列开始被按住（可以借此点亮指示灯）。 */
+    var onShutterDragStart: (() -> Unit)? = null
+
+    /** 快门刻度列拖动结束。 */
+    var onShutterDragEnd: (() -> Unit)? = null
+
+    /**
+     * ISO 手势带：取景窗右缘与快门键之间那条空隙（横屏才有意义）。
+     *
+     * 横屏时右侧栏是竖排的（暗房/快门/胶卷），铭牌在左边栏，手伸不到；
+     * 真正顺手的是**取景窗和快门键之间那条缝**——在那儿上下滑调 ISO。
+     * 设为 null 表示不启用（竖屏用铭牌那条左右滑）。
+     */
+    var isoGestureZone: RectF? = null
+
+    /** ISO 手势带拖动回调（纵向，向上为负）。 */
+    var onIsoDrag: ((Float) -> Unit)? = null
+
+    /** ISO 手势带开始被按住（重置「本次手势已调档」标志）。 */
+    var onIsoDragStart: (() -> Unit)? = null
+
+    /** ISO 手势带拖动结束。 */
+    var onIsoDragEnd: (() -> Unit)? = null
+
     private var indicators: Indicators? = null
     private var lastActivityAt = 0L
     private val handler = android.os.Handler(android.os.Looper.getMainLooper())
@@ -128,6 +175,8 @@ class ViewfinderFrameView @JvmOverloads constructor(
     private val INDICATOR_GAP = 9f * density
 
     private fun indicatorsAlpha(): Float {
+        // Pro 模式常亮：不再走自动熄灯
+        if (alwaysOn) return 1f
         val idle = SystemClock.uptimeMillis() - lastActivityAt
         return when {
             idle < AUTO_OFF_MS -> 1f
@@ -289,6 +338,22 @@ class ViewfinderFrameView @JvmOverloads constructor(
             canvas, cr - cw * 0.075f, ct, cb, st.shutterLit,
             st.shutterBlink, st.shutterSlow, alpha
         )
+
+        // ⑩ Pro 模式 ISO 读数：**画面水平居中**，纵向贴着取景窗最外框线（大角标顶边）
+        // 那一行的高度 —— 不再压在画面上方 21.5% 处挡视野（11-20 用户要求）。
+        // 真机 T3 的 ISO/快门读数就蚀刻在取景窗亮框的上沿，视线扫过框线即读到，
+        // 不侵入成像画面。角标横臂只占左右两端，正中这段是空的，文字不会压线。
+        st.isoText?.let { iso ->
+            val isoPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                textSize = iconSize * 1.25f
+                color = Color.argb((0xE6 * alpha).toInt(), 150, 255, 170)
+                typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
+                textAlign = Paint.Align.CENTER
+            }
+            // 基线落在最外框线内侧一点：文字顶边贴框线、整行在框线下方
+            val isoBaseline = gt + bInset + isoPaint.textSize * 0.92f
+            canvas.drawText(iso, cx, isoBaseline, isoPaint)
+        }
 
         // ⑨ 白平衡面板：改为在取景器这张「玻璃」上一并绘制，样式同 ⑤⑧，
         //    不再用屏幕中间那块中文浮层——中文字体与这层线性标记不是一套东西。
@@ -609,6 +674,132 @@ class ViewfinderFrameView @JvmOverloads constructor(
     /** 成片范围（片门矩形）—— 取景亮框画的就是这一块，与冲洗时的裁切一致。 */
     fun gateRect(): RectF {
         return gateRectFor(width.toFloat(), height.toFloat())
+    }
+
+    /**
+     * 快门刻度列的命中矩形。
+     *
+     * 只有落在这块里的手指才去调快门；这一小块之外的事件照旧穿透给取景器
+     * （点屏对焦 / 横滑白平衡 / 上下滑 EV 全部不受影响）。
+     * 几何与 [drawShutterScale] 保持同一套公式：右侧竖排 500/125/30/LT。
+     */
+    fun shutterScaleHitRect(): RectF {
+        val rect = contentRect()
+        if (rect.isEmpty) return RectF()
+        val h = rect.height()
+        val right = rect.right - rect.width() * 0.075f
+        val size = min(h * 0.036f, 13f * density)
+        val y0 = rect.top + h * 0.30f
+        val stepY = h * 0.12f
+        // 横向再放宽：刻度文字右对齐在 right，手指落点常偏左/偏右十几 dp，
+        // 命中区太窄会让滑动漏到 EV（11-20 用户）。放宽到 right-74dp ~ right+22dp。
+        return RectF(
+            right - 74f * density,
+            y0 - size * 3.2f,
+            right + 22f * density,
+            y0 + 3f * stepY + size * 2.8f
+        )
+    }
+
+    /**
+     * 点是否落在 Pro 模式下由本 View 独占的控制区（快门刻度列 / 横屏 ISO 竖带）。
+     *
+     * 🔴 11-20 用户：在快门刻度上滑动会误触曝光补偿。根因是 glSurfaceView 的 EV 手势
+     * 只要起手点落在内容矩形内就接管，而快门刻度列正在内容矩形右缘——点稍偏出
+     * [shutterScaleHitRect] 就穿透到 EV。让 glSurfaceView 在 DOWN 时用这个判定主动让路，
+     * 只要点在控制区附近（比命中区再放宽一圈）就不认 EV/WB 手势。
+     */
+    fun isProControlZone(x: Float, y: Float): Boolean {
+        // hitRect 本身已放宽，这里再留 4dp 覆盖判定边界抖动即可
+        val pad = 4f * density
+        val hit = shutterScaleHitRect()
+        // 🔴 右界取到内容矩形右缘（而不是 hit.right）：横屏 content.right 比刻度文字
+        // 右边界还靠右几十 px，那段缝若 unprotected，点在刻度右侧就会误触 EV（11-20 真机）。
+        // 内容区之外就是快门键/侧栏，交给它们自己处理，不影响。
+        val rightEdge = if (hit.isEmpty) hit.right else maxOf(hit.right + pad, contentRect().right)
+        if (!hit.isEmpty && hit.left - pad <= x && x <= rightEdge &&
+            hit.top - pad <= y && y <= hit.bottom + pad
+        ) return true
+        val zone = isoGestureZone
+        if (zone != null && zone.left - pad <= x && x <= zone.right + pad) return true
+        return false
+    }
+
+    /** 快门刻度列是否正被按住 */
+    private var shutterTouching = false
+    private var shutterTouchY = 0f
+
+    /** ISO 手势带是否正被按住 */
+    private var isoTouching = false
+    private var isoTouchY = 0f
+
+    /**
+     * 只接管两小块：**快门刻度列**与**ISO 手势带**（横屏那条竖缝），
+     * 其余区域一律返回 false 让事件穿透到取景器。
+     *
+     * 这样 Pro 模式下在刻度上推拉手指 = 调快门、在快门键旁边那条缝上推拉 = 调 ISO，
+     * 而画面其它位置的上下滑 EV / 横滑白平衡 / 点按对焦都还是原样，两套手势互不打架。
+     *
+     * 🔴 竖屏的 ISO 横带**不在这里**接管：竖屏直接把机身铭牌（CONTAX T3）
+     * 那一行加宽成整条横带，触摸交给 proBrandRow 自己的 onBrandTouch，
+     * 这样底缘一带的上下滑 EV 不会被吞掉。
+     */
+    override fun onTouchEvent(event: android.view.MotionEvent): Boolean {
+        if (waistSuppress) return false
+        when (event.actionMasked) {
+            android.view.MotionEvent.ACTION_DOWN -> {
+                if (shutterScaleHitRect().contains(event.x, event.y)) {
+                    shutterTouching = true
+                    shutterTouchY = event.y
+                    notifyActivity()
+                    onShutterDragStart?.invoke()
+                    return true
+                }
+                val zone = isoGestureZone
+                if (zone != null && zone.contains(event.x, event.y)) {
+                    isoTouching = true
+                    isoTouchY = event.y
+                    notifyActivity()
+                    onIsoDragStart?.invoke()
+                    return true
+                }
+                return false
+            }
+            android.view.MotionEvent.ACTION_MOVE -> {
+                if (shutterTouching) {
+                    val dy = event.y - shutterTouchY
+                    shutterTouchY = event.y
+                    notifyActivity()
+                    onShutterDrag?.invoke(dy)
+                    return true
+                }
+                if (isoTouching) {
+                    val dy = event.y - isoTouchY
+                    isoTouchY = event.y
+                    notifyActivity()
+                    onIsoDrag?.invoke(dy)
+                    return true
+                }
+                return false
+            }
+            android.view.MotionEvent.ACTION_UP,
+            android.view.MotionEvent.ACTION_CANCEL -> {
+                if (shutterTouching) {
+                    shutterTouching = false
+                    onShutterDragEnd?.invoke()
+                    performClick()
+                    return true
+                }
+                if (isoTouching) {
+                    isoTouching = false
+                    onIsoDragEnd?.invoke()
+                    performClick()
+                    return true
+                }
+                return false
+            }
+        }
+        return super.onTouchEvent(event)
     }
 
     companion object {

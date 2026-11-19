@@ -76,6 +76,8 @@ class MainActivity : AppCompatActivity() {
     private var advanceSoundPool: android.media.SoundPool? = null
     private var advanceSoundId = 0
     private var currentRoll: FilmRoll = FilmRollRepository.rolls[0]
+    /** 外置氙气灯回电提示时长（实测 2.6s 间隔仍偏弱，故给 4s）。 */
+    private val FLASH_RECHARGE_HINT_MS = 4000L
     /** 拍照保存单线程池：保证帧写入顺序，避免连拍时多个裸线程并发写 */
     private val saveExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
     /** 日期水印：11-13 起新装默认关；老用户已存过的档位照旧。 */
@@ -312,6 +314,11 @@ class MainActivity : AppCompatActivity() {
         var touchMoved = false
         var wbDragging = false          // 本次手势是否已进入横滑调白平衡
         var touchStartWbIndex = 0
+        // 本次手势是否从「机身铭牌那一行」起手（竖屏 ISO 横带）。
+        var gestureInIsoBand = false
+        var isoDragging = false         // 本次手势是否已进入横滑调 ISO
+        var isoDragAcc = 0f
+        var touchStartLocalX = 0f
         // 本次手势是否从「取景框」（预览内容矩形）里起手。
         // 顶栏铭牌 / 机顶 LCD / 底栏快门条 / letterbox 黑边上的上下滑不该动 EV，
         // 横滑也不该换白平衡 —— 之前手势挂在全屏 glSurfaceView 上，全屏都能拨档。
@@ -377,6 +384,14 @@ class MainActivity : AppCompatActivity() {
                     // tapDetector 自己还有 contentRect 判定，隔着顶栏也不会对焦。
                     gestureInContent = binding.viewfinderFrame.contentRect()
                         .contains(event.x, event.y)
+                    // 🔴 11-20 用户：快门刻度/横屏 ISO 竖带上滑动误触 EV。
+                    // 这些控制区在内容矩形右缘，点稍偏出命中区就穿透到这里被当成上下滑。
+                    // Pro 模式下起手点落在控制区附近就让路给 viewfinderFrame，不认 EV/WB。
+                    if (gestureInContent && proMode &&
+                        binding.viewfinderFrame.isProControlZone(event.x, event.y)
+                    ) {
+                        gestureInContent = false
+                    }
                     if (!gestureInContent) return@setOnTouchListener true
                     touchActive = true
                     lastDownTime = event.downTime
@@ -417,9 +432,12 @@ class MainActivity : AppCompatActivity() {
                     }
 
                     val delta = (touchStartY - event.rawY) / 100f
+                    // 🔴 11-20 定稿：只有快门刻度那一列（ViewfinderFrameView 命中区 +
+                    // isProControlZone 让路）单独控制快门；取景窗其它区域的上下滑仍是
+                    // 曝光补偿 / 闪光补偿。不要再把手势扩散到整个取景窗——那会把 EV 抹掉。
                     if (flash.mode == FlashMode.EXTERNAL) {
-                        // EXT 档：同一个拨盘每 100px 走半档（0.5 EV），补齐整数档之间的空档
-                        val next = (touchStartFlashEv + delta.toInt() * 0.5f).coerceIn(-3f, 3f)
+                        // EXT 档：同一个拨盘每 100px 走一档（0.3 EV）
+                        val next = quantizeFlashEv(touchStartFlashEv + delta.toInt() * 0.3f)
                         if (next != flashCompEv) {
                             flashCompEv = next
                             applyFlashCompUi(persist = false)  // 抬手时统一 saveSettings
@@ -527,21 +545,37 @@ class MainActivity : AppCompatActivity() {
         val oldTop = binding.topBar
         val oldBar = binding.bottomBar
         val oldLogo = root.findViewById<android.view.View>(R.id.brandLogo)
+        // 🔴 竖屏时铭牌（proBrandRow）是 root 的直接子，换横屏不会被 topBar/bottomBar 带走，
+        // 会留在屏幕上 —— 它的 gravity 是 bottom|center_horizontal，横屏下就跑到
+        // **取景窗正中间**，看着像预览里浮着一个 CONTAX T3（11-19 真机）。
+        // 所以要跟其它 chrome 一起摘掉。
+        val oldBrandRow = root.findViewById<android.view.View>(R.id.proBrandRow)
 
         val fresh = layoutInflater.inflate(R.layout.activity_main, null) as android.widget.FrameLayout
         val newTop = fresh.findViewById<android.view.View>(R.id.topBar)
         val newBar = fresh.findViewById<android.view.View>(R.id.bottomBar)
         val newLogo = fresh.findViewById<android.view.View>(R.id.brandLogo)
+        // 铭牌：竖屏时它是 root 的直接子（要单独搬），横屏时它在 topBar 内（随 topBar 走）。
+        // 少了这一步，「竖屏→横屏→竖屏」之后竖屏铭牌就永远回不来了。
+        val newBrandRow = fresh.findViewById<android.view.View>(R.id.proBrandRow)
 
         // 旧 chrome 先摘掉：横屏铭牌是 topBar 的子项，会随 topBar 一起走
         if (oldLogo.parent === root) root.removeView(oldLogo)
         root.removeView(oldTop)
         root.removeView(oldBar)
+        // 竖屏铭牌是 root 的直接子，只能单独摘（横屏时它在 oldTop 里，parent 不是 root）
+        if (oldBrandRow != null && oldBrandRow.parent === root) {
+            root.removeView(oldBrandRow)
+        }
 
         // 新 chrome 也要从临时 root 摘下来，才能挂进真正显示的 root
         val moving = mutableListOf<android.view.View>()
         fresh.removeView(newTop); moving += newTop
         if (newLogo.parent === fresh) { fresh.removeView(newLogo); moving += newLogo }
+        // 竖屏铭牌是 fresh 的直接子，搬进来；横屏时它在 topBar 内，不搬
+        if (newBrandRow != null && newBrandRow.parent === fresh) {
+            fresh.removeView(newBrandRow); moving += newBrandRow
+        }
         fresh.removeView(newBar); moving += newBar
 
         // 插在取景框之后、隐藏控件 / 过卷遮罩之前，保证遮罩仍在最上层
@@ -550,6 +584,14 @@ class MainActivity : AppCompatActivity() {
 
         binding = ActivityMainBinding.bind(root)
         wireChrome()
+        // 🔴 换完 chrome 必须把 Pro 的可见状态重新压回去：新 chrome 的 PRO 徽标
+        // 按布局默认是 GONE，而 proMode 字段还留着 true —— 不同步的话旋转后
+        // 徽标消失、模式却还在（11-19 真机复现）。
+        syncProModeUi()
+        if (proMode) {
+            // 手动档也要重新推一次：换 chrome 期间相机可能重放过 AE
+            runCatching { applyProSettings() }
+        }
         // 真机验证用：topBar 宽度 -1(match_parent)=竖版 / -2(wrap_content)=横版。
         // 若是 Resources 配置没跟上导致选错 layout，反馈邮件里一眼能看出来。
         runCatching {
@@ -615,10 +657,35 @@ class MainActivity : AppCompatActivity() {
         binding.filmInfoText.hapticClick { showFilmRollPicker() }
         binding.btnEvPlus.hapticClick { stepEv(1) }
         binding.btnEvMinus.hapticClick { stepEv(-1) }
-        binding.tvProToggle.hapticClick { toggleProMode() }
-        binding.tvIso.hapticClick { cycleIso() }
-        binding.tvShutter.hapticClick { cycleShutter() }
-        binding.tvExposure.hapticClick { cycleEv() }
+        // Pro 模式入口：整块机身铭牌可点，进出 Pro；铭牌右侧浮出 PRO 徽标。
+        // 铭牌本来就是界面里最像「机身按钮」的一块，点它比另加浮层按钮更自然。
+        // Pro 模式入口：机身铭牌可点。**单击进出 Pro，铭牌上左右滑调 ISO**；
+        // 快门则在取景窗右侧那列快门数字上推拉（见 ViewfinderFrameView 的快门刻度命中区）。
+        binding.proBrandRow.setOnTouchListener { _, event -> onBrandTouch(event) }
+        // 铭牌与底栏抢同一条底部带，兜底提到最层，否则触摸被兄弟 View 吃掉（11-19 真机）。
+        binding.proBrandRow.bringToFront()
+        // 快门刻度列的推拉 → 调快门。刻度区之外的触摸照旧穿透给取景器（对焦/白平衡/EV）。
+        binding.viewfinderFrame.onShutterDrag = { dy -> onShutterDrag(dy) }
+        binding.viewfinderFrame.onShutterDragStart = {
+            shutterDragAcc = 0f
+            shutterStepped = false       // 新手势：允许再调一档
+            binding.viewfinderFrame.notifyActivity()
+        }
+        binding.viewfinderFrame.onShutterDragEnd = { }
+        // 横屏 ISO 手势带：取景窗右缘与快门键之间那条缝，上下推拉调 ISO。
+        binding.viewfinderFrame.onIsoDrag = { dy -> onIsoDrag(dy) }
+        binding.viewfinderFrame.onIsoDragStart = {
+            isoDragAcc = 0f
+            isoStepped = false           // 新手势：允许再调一档
+        }
+        binding.viewfinderFrame.onIsoDragEnd = { }
+        // 几何要等**真正布局完**（快门键左边界、预览内容矩形）才知道。
+        // 🔴 不能用 post：post 只保证"下一帧"，那时可能还没 measure/layout，
+        // btnShutter.left 还是 26，算出来只有 1px 宽的窄缝，手指永远碰不到（11-19 真机）。
+        // 用全局布局回调：所有子 View 都摆好之后才来，这时几何才是真的。
+        binding.viewfinderFrame.viewTreeObserver.addOnGlobalLayoutListener {
+            updateIsoGestureZone()
+        }
     }
 
     /**
@@ -997,9 +1064,8 @@ class MainActivity : AppCompatActivity() {
         val prefs = getSharedPreferences("filmcam", MODE_PRIVATE)
         dateStampEnabled = prefs.getBoolean("dateStamp", DefaultSettings.DATE_STAMP_ENABLED)
         exposureComp = prefs.getInt("ev", 0)
-        // 半档网格规整：老 prefs 若被外部写进 0.37 之类，回到最近的 0.5
-        flashCompEv = (Math.round(prefs.getFloat("flashEv", 0f) / 0.5f) * 0.5f)
-            .coerceIn(-3f, 3f)
+        // 0.3EV 网格规整：老 prefs 里可能是 0.5 档的旧值，落回最近的 0.3
+        flashCompEv = quantizeFlashEv(prefs.getFloat("flashEv", 0f))
         // 腰平彩蛋总闸：工程模式三态（off / auto / simulate），默认自动
         waistEgg = prefs.getString("waistEgg", "auto") ?: "auto"
         waistGateStyle = when (prefs.getString("waistGateStyle", "auto")) {
@@ -1544,7 +1610,7 @@ class MainActivity : AppCompatActivity() {
         isCapturing = true
         captureSeq++              // 作废上一张残留的过卷回调
         captureStartMs = SystemClock.elapsedRealtime()
-        binding.developingOverlay.visibility = android.view.View.VISIBLE
+        setDevelopingOverlayVisible(true)
         binding.ivDeveloping.setIcon(currentRoll.iconResId)
         binding.ivDeveloping.visibility = android.view.View.VISIBLE
         binding.tvDevelopingText.text = "REWIND FILM..."
@@ -1561,7 +1627,7 @@ class MainActivity : AppCompatActivity() {
             addListener(object : android.animation.Animator.AnimatorListener {
                 override fun onAnimationEnd(a: android.animation.Animator) {
                     binding.ivDeveloping.stopSpinning()
-                    binding.developingOverlay.visibility = android.view.View.GONE
+                    setDevelopingOverlayVisible(false)
                     isCapturing = false
                     onEnd()
                 }
@@ -1810,7 +1876,9 @@ class MainActivity : AppCompatActivity() {
     /** 机顶 EV 键：到顶回卷。EXT 档下同一颗键改拨 0.5 EV/档的闪光灯细档。 */
     private fun cycleEvValue() {
         if (flash.mode == FlashMode.EXTERNAL) {
-            flashCompEv = if (flashCompEv >= 3f) -3f else flashCompEv + 0.5f
+            // EXT 档按 0.3EV 走（用户 11-19 定），到顶回卷到 -3
+            flashCompEv = if (flashCompEv >= 2.85f) -3f
+            else quantizeFlashEv(flashCompEv + 0.3f)
             applyFlashCompUi()
         } else {
             setEv(if (exposureComp >= 3) -3 else exposureComp + 1)
@@ -1820,7 +1888,7 @@ class MainActivity : AppCompatActivity() {
     /** EV± 按钮与上下滑手势的统一分流：steps>0 加档，<0 减档。 */
     private fun stepEv(steps: Int, persist: Boolean = true) {
         if (flash.mode == FlashMode.EXTERNAL) {
-            val next = (flashCompEv + steps * 0.5f).coerceIn(-3f, 3f)
+            val next = quantizeFlashEv(flashCompEv + steps * 0.3f)
             if (next == flashCompEv) return
             flashCompEv = next
             applyFlashCompUi(persist)
@@ -1835,11 +1903,22 @@ class MainActivity : AppCompatActivity() {
     /** 细档补偿落盘 + 下发相机 + 刷新全部读数（与 setEv 的同步纪律一致）。 */
     private fun applyFlashCompUi(persist: Boolean = true) {
         binding.tvEvValue.text = formatEv(flashCompEv)
+        // 闪光补偿落到 TTL **目标亮度** 上（不是曝光增益，增益会被闭环抵消）
+        cameraController?.externalTtlTargetEv = flashCompEv
         applyExposure()
         updateLcd()
         binding.viewfinderFrame.notifyActivity()
         if (persist) saveSettings()
     }
+
+    /**
+     * 把闪光补偿对齐到 **0.3EV** 网格（2026-11-19 用户定的步进）。
+     *
+     * 浮点累加会漂（0.3*3 = 0.8999999），所以所有改值的地方都过这一道收口，
+     * 保证落盘值和界面读数永远是同一个数。
+     */
+    private fun quantizeFlashEv(v: Float): Float =
+        (Math.round(v / 0.3f) * 0.3f).coerceIn(-3f, 3f)
 
     /** 读数格式：整数不带小数、半档显示 .5、正数带 +、0 显示 0。 */
     private fun formatEv(v: Float): String {
@@ -1880,7 +1959,15 @@ class MainActivity : AppCompatActivity() {
             cameraController?.setManualExposure(null)
             cameraController?.setExposureComp(exposureComp)
             cameraController?.setExternalFlashComp(flashCompEv)
-            cameraController?.setExternalFlashSync(flash.mode == FlashMode.EXTERNAL)
+            // 按灯取同步偏移：氙气灯(A2 -80) 与 COB 灯(-200) 起辉不同；
+            // 热调文件 flash_sync_offset.txt 仍可覆盖它（adb 扫参用）。
+            cameraController?.setExternalFlashSync(
+                flash.mode == FlashMode.EXTERNAL,
+                flash.currentSyncOffsetMs(),
+            )
+            // A2 是三段式（LED → 氙气预闪 → 氙气主闪）：一张照片发 3 次触发，
+            // 第 3 发才是主闪。其他灯给 1，行为完全不变。
+            cameraController?.setExternalFlashStages(flash.triggerStages())
         } catch (_: Exception) {}
     }
 
@@ -1919,7 +2006,12 @@ class MainActivity : AppCompatActivity() {
     /** 更新 LCD 显示屏（张数 / ISO / 曝光 / 闪光灯状态） */
     private fun updateLcd() {
         try {
-            val iso = isoValues[isoValue]?.toString() ?: "A"
+            // Pro 模式下手动 ISO 才是真正生效值；外置闪光档 ISO 由 TTL 反算，如实显示 A
+            val iso = if (proMode && !isExternalFlash) {
+                isoSteps[isoIdx]?.toString() ?: "A"
+            } else {
+                isoValues[isoValue]?.toString() ?: "A"
+            }
             val count = "${currentShotCount()}/$FILM_MAX"
             val ev = if (flash.mode == FlashMode.EXTERNAL) formatEv(flashCompEv)
             else if (exposureComp > 0) "+$exposureComp" else "$exposureComp"
@@ -1938,7 +2030,12 @@ class MainActivity : AppCompatActivity() {
                     evSteps = if (flash.mode == FlashMode.EXTERNAL) flashCompEv
                     else exposureComp.toFloat(),
                     flashLabel = flashLabel,
-                    battery = batteryIconLevel()
+                    battery = batteryIconLevel(),
+                    // 快门：Pro 模式且非外置闪光时显示手动档；
+                    // 外置闪光被同步模型锁死在 100ms 窗口，不显示免得误读成 1/100
+                    shutterLabel = if (proMode && !isExternalFlash)
+                        (if (shutterSteps[shutterIdx] != null) shutterLabels[shutterIdx] else "")
+                    else ""
                 )
             )
         } catch (_: Exception) {}
@@ -1980,16 +2077,41 @@ class MainActivity : AppCompatActivity() {
             3, 6 -> ViewfinderFrameView.LedMode.BLINK_FAST
             else -> ViewfinderFrameView.LedMode.OFF
         }
-        val lit = shutterTagsFor(lastExposureSec)
-        val blink = lastExposureSec > 0f && lastExposureSec <= 1f / 1200f
+        // Pro 模式手动快门：取景器右侧 500/125/30/LT 刻度必须跟着手动档走，
+        // 否则「转盘转了、刻度不动」，用户会以为没生效
+        // 🔴 单位：shutterSteps 里是**纳秒**，必须除 1e9 才是「秒」。
+        // 之前写成 1e9/ns（算出来是 1/秒 的倒数，1/125 秒会变成 125），
+        // shutterTagsFor 于是永远落在 LT 档，刻度一个都不亮（11-19 真机复现）。
+        val shownSec = if (proMode && !isExternalFlash) {
+            shutterSteps[shutterIdx]?.let { it / 1_000_000_000f } ?: lastExposureSec
+        } else {
+            lastExposureSec
+        }
+        // Pro 模式：按**手动档**映射到取景窗那列刻度（500/125/30/LT）。
+        // 手动档有 7 档（1/8~1/500），刻度只有 4 个，所以速度落在两档之间时
+        // 两档都亮（真机语义）。液晶屏另按实际速度显示，两边不冲突。
+        val lit = if (proMode && !isExternalFlash) {
+            proShutterLit.getOrElse(shutterIdx) { setOf("125") }
+        } else {
+            shutterTagsFor(shownSec)
+        }
+        val blink = shownSec > 0f && shownSec <= 1f / 1200f
         // 慢门警告（T3 手册里快门档位闪烁 = 当心手抖）：按胶卷算出来的快门已经慢到会抖
-        val slowSec = filmShutterPreviewSec()
-        val slowWarn = slowShutterMode != FilmExposure.Mode.OFF &&
-            slowSec != null && slowSec >= 1f / 45f
+        // 🔴 Pro 模式下必须以**手动快门**为准：手动选了 1/125 还拿胶卷的慢门档闪"当心手抖"，
+        // 那是吓唬人，而且刻度每 350ms 一明一灭，根本看不明白当前在哪一档（11-19 真机）。
+        val slowWarn = if (proMode && !isExternalFlash) {
+            shownSec >= 1f / 45f
+        } else {
+            val slowSec = filmShutterPreviewSec()
+            slowShutterMode != FilmExposure.Mode.OFF &&
+                slowSec != null && slowSec >= 1f / 45f
+        }
         // WB 状态必须进 key：否则横滑换档时因为其它字段没变，被去重直接跳过不重画
         val currentEv = if (flash.mode == FlashMode.EXTERNAL) flashCompEv else exposureComp.toFloat()
+        // shownSec 也要进 key：Pro 手动档与 AE 档可能落在同一组刻度标签上，
+        // 只看 lit 会误判成「没变化」而不重画（11-19 真机：转盘拧了刻度不亮）。
         val key = "${focus.ordinal}|$currentEv|${lit.joinToString(",")}|$blink|$slowWarn|" +
-            "${flash.mode}|$wbVisible|$wbIndex"
+            "${flash.mode}|$wbVisible|$wbIndex|$shownSec"
         if (key == lastIndicatorKey) return
         lastIndicatorKey = key
         binding.viewfinderFrame.setIndicators(
@@ -2005,7 +2127,12 @@ class MainActivity : AppCompatActivity() {
                 // 白平衡标记：非 AUTO 时常驻（设置完就一直是这一片），横滑时也会亮出来
                 wbOn = wbVisible || wbIndex != 0,
                 wbIndex = wbIndex,
-                wbCount = wbPresets.size
+                wbCount = wbPresets.size,
+                // Pro 模式：取景窗内直接显示当前 ISO，手指在铭牌上左右滑时眼睛不用离开取景器
+                isoText = if (proMode && !isExternalFlash) {
+                    val v = isoLabels[isoIdx]
+                    if (v == "A") "ISO AUTO" else "ISO $v"
+                } else null
             )
         )
     }
@@ -2048,15 +2175,20 @@ class MainActivity : AppCompatActivity() {
     }
 
     /** 把曝光时间映射为 T3 取景器的 500/125/30/LT 档组合（相邻两档同亮=中间值） */
+    /**
+     * 快门刻度点亮哪几档。
+     *
+     * 真机 T3 的取景器右侧只有四档：**500 / 125 / 30 / LT**，每一档是一个区间：
+     * 1/500~1/250 算 500 档、1/125~1/60 算 125 档、1/30~1/15 算 30 档、更慢算 LT。
+     * Pro 模式下的手动档与这四档一一对应（[shutterSteps]），所以推拉刻度时
+     * 点亮的数字和液晶屏上的 TV 值永远是同一档。
+     */
     private fun shutterTagsFor(sec: Float): Set<String> {
         if (sec <= 0f) return emptySet()
         return when {
-            sec <= 1f / 700f -> setOf("500")
-            sec <= 1f / 240f -> setOf("500", "125")
+            sec <= 1f / 250f -> setOf("500")
             sec <= 1f / 60f -> setOf("125")
-            sec <= 1f / 24f -> setOf("125", "30")
-            sec <= 1f / 8f -> setOf("30")
-            sec <= 4f -> setOf("30", "LT")
+            sec <= 1f / 15f -> setOf("30")
             else -> setOf("LT")
         }
     }
@@ -2094,8 +2226,14 @@ class MainActivity : AppCompatActivity() {
         }
         flashPairAutoFromExt = false
         if (ok && flash.mode == FlashMode.EXTERNAL) {
-            runCatching { flash.startScan() }
+            // 🔴11-18 真机 bug：原来这里调 startScan()，但 startScan 的「已有会话」
+            // 幂等判断会直接跳过 —— 存档 A2 后仍连着存档前建的 FG-COB 旧会话，
+            // 拍照触发帧写错灯（日志里 FG-COB 空转重连 277 次）。必须显式丢弃旧
+            // 会话按最新档案重建，新灯才真正生效。
+            runCatching { flash.rebuildSession() }
                 .onFailure { android.util.Log.w("FlashDiag", "配对返回后建连失败", it) }
+            // offset 随当前灯切换（氙气灯 -80 / COB -200），立即同步给相机时序层
+            applyExposure()
             // 配对成功回到取景器：机顶 LCD 明确报一次 PAIRED，别让用户怀疑没存上
             showLcdNotice(getString(R.string.flash_pair_lcd_paired))
         }
@@ -2167,62 +2305,314 @@ class MainActivity : AppCompatActivity() {
         saveSettings()
     }
 
-    // ===== 闪光灯模式：预设曝光补偿档位 =====
+    // ===== Pro 模式（2026-11-19 按用户方案重做）=====
+    // 入口：点机身铭牌「CONTAX T3」，铭牌右侧浮出 PRO 徽标。
+    // 🔴 第二版按用户意见**去掉了两枚滚花转盘**（太丑，横屏也塞不下）：
+    //   - 快门：手指在**取景窗右侧那列快门数字**（500/125/30/LT）上推拉；
+    //   - ISO：手指在**取景窗下方的铭牌那条**左右滑。
+    // 进 Pro 后取景窗指示灯常亮（alwaysOn），ISO 与快门在取景窗内直接读数，
+    // 机顶液晶屏同步显示 ISO / TV。
+    //
+    // 🔴 外置闪光档下这两处都锁着（同步模型接管曝光，氙气只闪约 1ms、光圈固定 f/1.7，
+    // 同步模型把曝光固定成 100ms 窗口、ISO 由 TTL 反算；氙气只闪约 1ms、光圈固定 f/1.7，
+    // 这台机器在闪光曝光上没有任何可拧的机械量。给一个「拧了画面不变」的旋钮，
+    // 比灰着更糟。闪光亮度的唯一手动杠杆是机顶 EV 键（±3EV，落到 TTL 目标偏移上）。
     private var proMode = false
-    // 闪光灯模式预设：label → (ISO, 快门纳秒)
-    // LED 闪光灯过曝时，用低 ISO + 稍快快门压暗
-    private val flashModes = listOf(
-        Triple("FL-AUTO", null, null),                              // 自动模式
-        Triple("FL-WEAK", 100, 4_000_000L),                        // ISO 100, 1/250s
-        Triple("FL-MED", 100, 2_000_000L),                         // ISO 100, 1/500s
-        Triple("FL-STRONG", 50, 1_000_000L)                       // ISO 50, 1/1000s
+
+    // 🔴 快门档位：T3 全 7 档（1/8 ~ 1/500），比取景窗上那 4 个刻度细。
+    // 取景窗刻度只有 500 / 125 / 30 / LT 四档，**不代表可选档位只有 4 个**：
+    // 手动档给的是 7 档，液晶屏如实显示当前速度（125 / 250 / 60 …），
+    // 取景窗那列刻度则按"当前速度落在哪两档之间"点亮（11-19 用户要求档位分细点）。
+    // 顺序：index 越小 = 越快（1/500 最快）。
+    private val shutterSteps = listOf<Long?>(
+        2_000_000L,       // 1/500
+        4_000_000L,       // 1/250
+        8_000_000L,       // 1/125
+        16_666_667L,      // 1/60
+        33_333_333L,      // 1/30
+        66_666_667L,      // 1/15
+        125_000_000L,     // 1/8
     )
-    private var flashModeIndex = 0
+    private val shutterLabels = listOf("500", "250", "125", "60", "30", "15", "8")
+    /** 每个手动档在取景窗那列刻度上该点亮哪几个（真机语义：速度落在两档之间就两档都亮） */
+    private val proShutterLit = listOf(
+        setOf("500"),           // 1/500
+        setOf("500", "125"),    // 1/250
+        setOf("125"),           // 1/125
+        setOf("125", "30"),     // 1/60
+        setOf("30"),            // 1/30
+        setOf("30", "LT"),      // 1/15
+        setOf("30", "LT"),      // 1/8
+    )
+    private val isoSteps = listOf<Int?>(null, 100, 200, 400, 800, 1600, 3200)
+    private val isoLabels = listOf("A", "100", "200", "400", "800", "1600", "3200")
+    private var isoIdx = 3        // 默认 ISO 400
+    private var shutterIdx = 2    // 默认 1/125（取景窗上正好点亮 125）
+
+    private val isExternalFlash: Boolean get() = flash.mode == FlashMode.EXTERNAL
+
+    /**
+     * Pro 模式下的手动档（11-19 用户拍板：**不要转盘**）。
+     *
+     * 转盘那版太丑，横屏还塞不下（右侧栏是竖排的）。改成两处直接上手：
+     *  - **快门**：手指在取景窗右侧那列快门数字（500/125/30/LT）上推拉；
+     *  - **ISO**：手指在取景窗下方 CONTAX T3 铭牌那条左右滑。
+     *
+     * 进 Pro 后取景窗指示灯**常亮**（`alwaysOn`），两个数值实时可见，机顶液晶屏同步。
+     *
+     * 🔴 外置闪光档下这两处都锁着：同步模型把曝光固定成 100ms 窗口、ISO 由 TTL 反算，
+     * 氙气只闪约 1ms、光圈固定 f/1.7，这台机器在闪光曝光上没有任何可拧的机械量。
+     * 给一个「拧了画面不变」的控件比锁着更糟。
+     */
+    private var shutterDragAcc = 0f
+    // 🔴 一次手势（按下→抬起）只调一档：达到阈值调一次后即置位，本次余下 MOVE 不再动。
+    // 11-20 用户：「一次滑动改变一次参数，这样能精细调整」——原先按距离连续累加，
+    // 手一滑就跳好几档，数值根本收不住。
+    private var shutterStepped = false
+    private var brandDownX = 0f
+    private var brandDownY = 0f
+    private var brandDragging = false
+    private var brandIsoAcc = 0f
+    private var brandIsoStepped = false
+
+    /** 一次手势调一档所需的滑动距离：拉长到 72dp，滑一小段不跳档（11-20 用户）。 */
+    private val knobStepPx: Float get() = 72f * resources.displayMetrics.density
+
+    /**
+     * 快门刻度列拖动：上推 = 更快的快门（索引变小）。
+     * 一次手势只走一档，方向由本次手势累计位移的符号决定。
+     */
+    private fun onShutterDrag(dy: Float) {
+        if (!proMode) return
+        if (isExternalFlash) {
+            // 锁着：给一记短震表示「这个拨盘现在不动」
+            if (kotlin.math.abs(dy) > 6f) vibrate(12, 70)
+            return
+        }
+        if (shutterStepped) return
+        shutterDragAcc += dy
+        val step = knobStepPx
+        // index 越小 = 越快；上推（dy 为负）往前一档，下拉往后一档。
+        if (shutterDragAcc <= -step) {
+            shutterStepped = true
+            stepShutter(-1)
+        } else if (shutterDragAcc >= step) {
+            shutterStepped = true
+            stepShutter(+1)
+        }
+    }
+
+    /**
+     * 快门**不循环**：推到 500（最快）或 1/8（最慢）就停住。
+     *
+     * 🔴 11-19 用户明确：快门要按取景窗显示的逻辑走 —— 往上是 1/500，
+     * 往下是 1/30，撞到两端就停，不许绕回另一头（绕回会让"再往上推"变成变慢，
+     * 手上完全没有方向感）。
+     */
+    private fun stepShutter(delta: Int) {
+        val next = (shutterIdx + delta).coerceIn(0, shutterSteps.size - 1)
+        if (next == shutterIdx) return
+        shutterIdx = next
+        applyProSettings()
+        vibrate(10, 90)
+    }
+
+    /** ISO：右滑 = 变大，撞到两端同样停住（不循环）。 */
+    private fun stepIso(delta: Int) {
+        if (!proMode) return
+        if (isExternalFlash) {
+            if (delta != 0) vibrate(12, 70)
+            return
+        }
+        val next = (isoIdx + delta).coerceIn(0, isoSteps.size - 1)
+        if (next == isoIdx) return
+        isoIdx = next
+        applyProSettings()
+        vibrate(10, 90)
+    }
+
+    private var isoDragAcc = 0f
+    private var isoStepped = false
+
+    /**
+     * 横屏 ISO 手势带：上滑 = ISO 变大。
+     *
+     * 🔴 11-20 用户：一次手势只调一档（精细），滑动距离拉长到 72dp ——
+     * 原先按距离连续累加，一滑就跳好几档。方向由本次手势累计位移符号决定。
+     */
+    private fun onIsoDrag(dy: Float) {
+        if (!proMode) return
+        if (isExternalFlash) {
+            if (kotlin.math.abs(dy) > 6f) vibrate(12, 70)
+            return
+        }
+        if (isoStepped) return
+        isoDragAcc += dy
+        val step = knobStepPx
+        if (isoDragAcc <= -step) {
+            isoStepped = true
+            stepIso(+1)
+        } else if (isoDragAcc >= step) {
+            isoStepped = true
+            stepIso(-1)
+        }
+    }
+
+    /**
+     * 横屏：把「取景窗右缘 ↔ 快门键」那条缝设成 ISO 手势带。
+     *
+     * 横屏右侧栏是竖排的（暗房 / 快门 / 胶卷），铭牌在左边栏根本够不着；
+     * 取景窗和快门键之间正好是一条空带，在那儿上下推拉最顺手（11-19 用户指定）。
+     * 竖屏不用这条 —— 竖屏在铭牌那一行左右滑。
+     */
+    private fun updateIsoGestureZone() {
+        val frame = binding.viewfinderFrame
+        val density = resources.displayMetrics.density
+        if (!chromeLandscape) {
+            // 竖屏 ISO 走铭牌那一整条横带（onBrandTouch），不需要取景窗里的竖缝
+            if (frame.isoGestureZone != null) frame.isoGestureZone = null
+            return
+        }
+        val rect = frame.contentRect()
+        // 布局还没完成时（预览矩形为空）就等下一次布局回调
+        if (rect.isEmpty || frame.width == 0) return
+        val pad = 6f * density
+        val left = rect.right + pad
+        // 🔴 btnShutter.left 是**相对父容器 bottomBar** 的坐标（横屏栏有 10dp paddingStart，
+        // 所以读出来是 26），不是屏幕坐标 —— 直接拿来算会得到 1px 宽的窄缝。
+        // 要加上下栏自身的 left 才是屏幕位置。
+        val bar = binding.bottomBar
+        val shutterScreenLeft = (bar.left + binding.btnShutter.left).toFloat()
+        val right = (left + 42f * density)
+            .coerceAtMost(shutterScreenLeft - pad)
+            .coerceAtLeast(left + 1f)
+        val zone = android.graphics.RectF(left, 0f, right, frame.height.toFloat())
+        if (frame.isoGestureZone != zone) frame.isoGestureZone = zone
+    }
+
+    /**
+     * 铭牌（CONTAX T3）上的手势：**单击 = 进出 Pro**，左右滑 = 调 ISO（仅竖屏）。
+     *
+     * 🔴 横屏时铭牌在左边栏，ISO 走「取景窗 ↔ 快门键」那条竖缝（上下推拉），
+     * 铭牌上左右滑**不**调 ISO（11-19 用户明确：横屏不要在 logo 处调）。
+     *
+     * 滑动优先于单击：位移超过阈值就认定为调 ISO，不再切换 Pro 模式。
+     *
+     * 🔴 这里用 `event.x/event.y` 而不是 `rawX/rawY`：部分 ROM（这台 S25U 实测）
+     * 注入/合成的触摸事件里 rawX 会是 0，于是 dx 恒为负，滑动方向整个反过来，
+     * 表现为「怎么滑都调不动 / 越滑越小」。相对坐标跟 View 自身对齐，最稳。
+     */
+    private fun onBrandTouch(event: android.view.MotionEvent): Boolean {
+        val density = resources.displayMetrics.density
+        when (event.actionMasked) {
+            android.view.MotionEvent.ACTION_DOWN -> {
+                brandDownX = event.x
+                brandDownY = event.y
+                brandDragging = false
+                brandIsoAcc = 0f
+                brandIsoStepped = false
+                return true
+            }
+            android.view.MotionEvent.ACTION_MOVE -> {
+                val dx = event.x - brandDownX
+                val dy = event.y - brandDownY
+                if (!brandDragging &&
+                    kotlin.math.abs(dx) > 18f * density &&
+                    kotlin.math.abs(dx) > kotlin.math.abs(dy) * 1.2f
+                ) {
+                    brandDragging = true
+                    vibrate(18, 130)   // 进入滑档给一记轻触，确认「抓住了」
+                }
+                // 🔴 11-20 用户：一次手势只调一档，滑动距离拉长（72dp）。
+                // 左滑/右滑方向由本次手势累计位移定，达到阈值调一档即锁定，
+                // 本次余下的 MOVE 不再累加 —— 想调第二档就抬手再滑一次。
+                if (brandDragging && !chromeLandscape && !brandIsoStepped) {
+                    brandIsoAcc += dx
+                    val step = knobStepPx
+                    if (brandIsoAcc >= step) {
+                        brandIsoStepped = true
+                        stepIso(+1)
+                    } else if (brandIsoAcc <= -step) {
+                        brandIsoStepped = true
+                        stepIso(-1)
+                    }
+                }
+                return true
+            }
+            android.view.MotionEvent.ACTION_UP -> {
+                if (!brandDragging) {
+                    vibrate(24, 185)
+                    toggleProMode()
+                }
+                return true
+            }
+            android.view.MotionEvent.ACTION_CANCEL -> return true
+        }
+        return false
+    }
 
     private fun toggleProMode() {
         proMode = !proMode
-        binding.tvProToggle.text =
-            if (proMode) getString(R.string.main_external_on) else getString(R.string.main_external_off)
-        binding.tvProToggle.setTextColor(if (proMode) 0xFF00E5FF.toInt() else 0xFFFFFFFF.toInt())
-        binding.proControls.visibility = if (proMode) android.view.View.VISIBLE else android.view.View.GONE
-        if (!proMode) {
-            flashModeIndex = 0
-            updateFlashModeLabels()
+        syncProModeUi()
+        if (proMode) {
+            applyProSettings()
+        } else {
+            isoIdx = 3
+            shutterIdx = 2
+            cameraController?.externalTtlEnabled = false
             applyAutoExposure()
         }
+        updateLcd()
+        // 进出 Pro 都要让取景器刻度重画一次：进 Pro 走手动档、出 Pro 回到 AE 档
+        runCatching { updateViewfinderIndicators(lastAfState, lastExposureSec, lastAeIso) }
     }
 
-    private fun cycleIso() { cycleFlashComp() }
-    private fun cycleShutter() { cycleFlashComp() }
-    private fun cycleEv() { cycleFlashComp() }
-    private fun cycleFlashComp() {
-        flashModeIndex = (flashModeIndex + 1) % flashModes.size
-        updateFlashModeLabels()
-        applyProSettings()
-    }
-
-    private fun updateFlashModeLabels() {
-        val (label, iso, exposureNs) = flashModes[flashModeIndex]
-        binding.tvIso.text =
-            if (iso != null) getString(R.string.main_iso_value, iso) else getString(R.string.main_iso_auto)
-        binding.tvShutter.text = when (exposureNs) {
-            null -> getString(R.string.main_shutter_auto)
-            8_000_000L -> "1/125"
-            4_000_000L -> "1/250"
-            2_000_000L -> "1/500"
-            else -> "1/${1_000_000_000L / exposureNs}"
-        }
-        binding.tvExposure.text = label
+    /**
+     * 把 Pro 模式的**可见状态**压到当前 chrome 上（徽标 + 取景器常亮）。
+     *
+     * 🔴 11-19 真机 bug：横竖屏旋转后 PRO 徽标不见了，但模式其实还在（手动档仍生效）。
+     * 根因：旋转走 [swapChromeForOrientation]，那里重新 inflate 了一套 chrome，
+     * 新 chrome 里的 `tvProTag` 按布局默认值是 GONE；而 `proMode` 是 Activity 的字段，
+     * 旋转不会重建 Activity，所以它还留着 true —— 两边对不上，徽标就没了。
+     * 修法：换完 chrome 后立刻重新同步一次可见状态。
+     */
+    private fun syncProModeUi() {
+        binding.tvProTag.visibility =
+            if (proMode) android.view.View.VISIBLE else android.view.View.GONE
+        // 过卷 / 自拍倒数 / 回卷期间遮罩盖住预览，铭牌也要一起收掉。
+        // 旋转重建后新铭牌默认 VISIBLE，若不重新压回去会浮在黑幕上（11-20 用户实测）。
+        binding.proBrandRow.visibility =
+            if (binding.developingOverlay.visibility == android.view.View.VISIBLE)
+                android.view.View.INVISIBLE else android.view.View.VISIBLE
+        // Pro 模式常亮：指示灯不再 8 秒自动熄灭，参数一直看得见
+        binding.viewfinderFrame.alwaysOn = proMode
     }
 
     private fun applyProSettings() {
         try {
-            val (_, iso, exposureNs) = flashModes[flashModeIndex]
-            cameraController?.setManualIso(iso)
-            cameraController?.setManualExposure(exposureNs)
-            Toast.makeText(this, flashModes[flashModeIndex].first, Toast.LENGTH_SHORT).show()
+            val c = cameraController ?: return
+            if (isExternalFlash) {
+                // 外置闪光：曝光由同步模型接管，转盘锁着；这里只保证 TTL 与手动值一致
+                c.setManualIso(isoSteps[isoIdx])
+                c.setManualExposure(shutterSteps[shutterIdx])
+                c.externalTtlEnabled = true
+            } else {
+                // 任一轴 AUTO ⇒ 整体交回 AE，杜绝「半锁」
+                // （AE 一旦被关掉，另一轴留空会取相机默认，常常是极短曝光）
+                c.setManualIso(isoSteps[isoIdx])
+                c.setManualExposure(shutterSteps[shutterIdx])
+                c.externalTtlEnabled = false
+            }
+            updateLcd()
+            // 手动档一改，取景器右侧的快门刻度必须立刻跟上；
+            // 等相机下一次元数据回调会有延迟，而且 AE 被接管后回调可能干脆不来。
+            runCatching { updateViewfinderIndicators(lastAfState, lastExposureSec, lastAeIso) }
         } catch (e: Exception) {
-            Toast.makeText(this, getString(R.string.main_toast_settings_failed, e.message), Toast.LENGTH_SHORT).show()
+            Toast.makeText(
+                this,
+                getString(R.string.main_toast_settings_failed, e.message),
+                Toast.LENGTH_SHORT
+            ).show()
         }
     }
 
@@ -2360,6 +2750,13 @@ class MainActivity : AppCompatActivity() {
 
     private fun startCamera(surfaceTexture: SurfaceTexture) {
         cameraController = Camera2Controller(this)
+        // 外置闪光相机侧 TTL 的测光结果：LCD 上给一行短反馈（测光 ISO → 正式 ISO）。
+        // 真正的曝光修正已经由控制器写回 manualIso，这里只是让人知道它做了什么。
+        cameraController?.onExternalTtlResult = { meterIso, finalIso, _, _ ->
+            runOnUiThread {
+                binding.lcdDisplay.showMessage("TTL $meterIso→$finalIso", 1800L)
+            }
+        }
         // RAW 负片开关在这里补挂：onResume 传开关时控制器还不存在（时序是
         // onResume → surface 就绪 → startCamera），冷启动开的开关传了个空
         android.util.Log.i("FilmCam", "startCamera: rawNegativeEnabled=$rawNegativeEnabled")
@@ -2401,6 +2798,17 @@ class MainActivity : AppCompatActivity() {
         }
         // 全分辨率拍照回调：后台把原帧 JPEG 存入未冲洗胶卷（零处理，不做 LUT/日期戳/EXIF——那些在冲洗侧做）
         cameraController?.onPhotoCaptured = { bytes, rotation, rawDng ->
+            // 外置氙气灯：刚放过一发，电容需要数秒才能充满，期间的成片会明显偏弱。
+            // 实测（11-19，A2）：间隔 2.6s 的第二张比首张暗 29%，间隔 1.9s 的第三张
+            // 与之持平 —— 所以提示给 4s（3s 不够）。只提示、不拦快门，保住机械手感。
+            if (flash.mode == FlashMode.EXTERNAL && flash.needsRecycleHint()) {
+                runOnUiThread {
+                    binding.lcdDisplay.showMessage(
+                        getString(R.string.main_flash_recharging),
+                        FLASH_RECHARGE_HINT_MS
+                    )
+                }
+            }
             saveExecutor.execute {
                 try {
                     // 字节直传：相机 ISP 输出的 JPEG 原样入卷，不解码、不旋转、不全尺寸重编码。
@@ -2538,7 +2946,7 @@ class MainActivity : AppCompatActivity() {
         if (isCapturing) return
         isCapturing = true
         captureSeq++              // 作废上一张残留的过卷回调
-        binding.developingOverlay.visibility = android.view.View.VISIBLE
+        setDevelopingOverlayVisible(true)
         binding.ivDeveloping.visibility = android.view.View.GONE
         binding.tvDevelopingText.visibility = android.view.View.VISIBLE
         binding.tvDevelopingText.text = "SELF TIMER 3"
@@ -2552,7 +2960,7 @@ class MainActivity : AppCompatActivity() {
                     binding.tvDevelopingText.text = "SELF TIMER $count"
                     handler.postDelayed(this, 1000)
                 } else {
-                    binding.developingOverlay.visibility = android.view.View.GONE
+                    setDevelopingOverlayVisible(false)
                     isCapturing = false
                     doCapture()
                 }
@@ -2736,13 +3144,29 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
+     * 过卷 / 自拍倒数 / 回卷的黑色遮罩统一显隐。
+     *
+     * 🔴 11-20 用户实测：竖屏按快门后过卷时 CONTAX T3 铭牌还浮在黑幕上。
+     * 根因不是遮罩没盖住，而是 wireChrome() 给 proBrandRow 调了 bringToFront()
+     * （原本是为了铭牌触摸不被底栏抢走），导致它 z 序在遮罩之上。
+     * 遮罩显示时把铭牌一并隐藏，收尾再恢复；用 INVISIBLE 保留占位，
+     * 不改变取景窗几何 / 底栏布局。
+     */
+    private fun setDevelopingOverlayVisible(show: Boolean) {
+        binding.developingOverlay.visibility =
+            if (show) android.view.View.VISIBLE else android.view.View.GONE
+        binding.proBrandRow.visibility =
+            if (show) android.view.View.INVISIBLE else android.view.View.VISIBLE
+    }
+
+    /**
      * 自动过卷动画：拍照后模拟 T3 自动过卷（胶卷条滚动动画 + 过卷声 + 微弱震动），照片在后台处理。
      * @param seq 本次拍摄序号（序号不对说明这张已经翻篇，整个过卷作废）
      * @param advanceAtMs 马达进场的时刻，相对本次拍摄起点
      */
     private fun showDevelopingAnimation(seq: Int, advanceAtMs: Long) {
         if (captureSeq != seq) return   // 慢门会把这段延迟到曝光结束，期间这一张可能已经翻篇
-        binding.developingOverlay.visibility = android.view.View.VISIBLE
+        setDevelopingOverlayVisible(true)
 
         // 显示当前胶卷条，模拟胶片被马达拖过片门
         binding.ivDeveloping.setIcon(currentRoll.iconResId)
@@ -2806,7 +3230,7 @@ class MainActivity : AppCompatActivity() {
     private fun finishCapture(seq: Int) {
         if (captureSeq != seq) return
         stopDevelopingAnimation()
-        binding.developingOverlay.visibility = android.view.View.GONE
+        setDevelopingOverlayVisible(false)
         isCapturing = false
     }
 

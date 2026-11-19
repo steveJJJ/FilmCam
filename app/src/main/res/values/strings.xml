@@ -213,6 +213,8 @@ App 版本：%1$s (%2$d)
     <string name="main_flash_off">闪: 关</string>
     <string name="main_flash_internal">闪: 内置</string>
     <string name="main_flash_external">闪: 外置</string>
+    <!-- 氙气灯回电提示：闪光后电容需要数秒充满，期间再拍会偏弱 -->
+    <string name="main_flash_recharging">回电中</string>
     <string name="main_external_status">外置闪光: %1$s</string>
     <string name="main_flash_pair_needed">尚未配对外置灯，开始配对</string>
     <string name="main_flash_pair_cancel">未完成配对，闪光灯已切回关闭</string>
@@ -489,6 +491,15 @@ App 版本：%1$s (%2$d)
     <string name="lcd_notice_flash_ev_fine">外闪补偿 0.5 EV/档</string>
 
     <!-- ===== 腰平取景（P0 骨架）：设置行 + 半屏控件条 ===== -->
+    <string name="eng_a2_title">A2 造型灯（Godox A2）</string>
+    <string name="eng_a2_ready">命令通道已就绪（FEC7）</string>
+    <string name="eng_a2_not_ready">未就绪：外置闪光档连上 A2 后可用</string>
+    <string name="eng_a2_led">造型灯</string>
+    <string name="eng_a2_brightness">造型灯亮度（0–100，0 = 关）</string>
+    <string name="eng_a2_cct">色温（1–100，100 = 白光）</string>
+    <string name="eng_a2_power">输出功率（M 档 1/1 – 1/128）</string>
+    <string name="eng_a2_reset">复位闪光模式（灯只闪 LED 时点这里）</string>
+    <string name="eng_a2_hint">与官方 App 同一套时序：亮度 = 0x06（拖到 0 自动退出造型灯模式）、色温 = 0x07（0–32，白光在顶）。0x05 是模式开关、0x0c 是拍摄侧参数，都不该由用户直接调。⚠️ 造型灯常亮会影响氙气连拍，拍照前拖到 0。</string>
     <string name="eng_waist">腰平取景（折叠屏彩蛋）</string>
     <string name="eng_waist_hint">关＝永不触发；自动＝只有折叠屏折到半开才出现（直板机看不到）；模拟＝直板机也按半屏切分，仅调试用</string>
     <string name="eng_waist_off">关</string>
