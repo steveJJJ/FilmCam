@@ -17,6 +17,8 @@ import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import com.filmcam.app.ui.attachEdgeHaptics
+import com.filmcam.app.ui.Motion
+import com.filmcam.app.ui.animatePanelIn
 import com.filmcam.app.update.UpdateChecker
 import kotlin.math.roundToInt
 
@@ -982,6 +984,8 @@ class AboutActivity : AppCompatActivity() {
         win?.setLayout(panelW, android.view.ViewGroup.LayoutParams.WRAP_CONTENT)
         consoleRef = dialog
         dialog.show()
+        // 机身面板入场：只动内容根的 alpha/位移，不碰 layoutParams 与窗口尺寸契约
+        consoleRoot.animatePanelIn()
     }
 
     /**

@@ -167,6 +167,54 @@ class ViewfinderFrameView @JvmOverloads constructor(
     private var lastActivityAt = 0L
     private val handler = android.os.Handler(android.os.Looper.getMainLooper())
 
+    /** ISO 文本滚字（11-21）：值变化时记起滚时刻，绘制时做短促 alpha + 上移淡入。 */
+    private var isoRollAt = 0L
+    private var prevIsoText: String? = null
+    private val isoRollBaseMs: Long = if (Motion.reduced(context)) 48L else Motion.ROLL
+
+    /**
+     * 快门叶片闭合的取景窗压暗（11-21）：0~1，纯 View 层盖在预览内容区上，
+     * 不动 View 树、不碰成像。由 MainActivity 在 doCapture 同帧驱动。
+     */
+    private var shutterVeil = 0f
+    private var veilStart = 0L
+    private var veilTarget = 0f
+    private var veilFrom = 0f
+    private var veilDur = Motion.PRESS_UP
+
+    /** 触发一次叶片闭合：closeMs 压暗到 target，openMs 再放开。 */
+    fun shutterVeilPulse(target: Float = 0.55f, closeMs: Long = 60L, openMs: Long = 180L) {
+        if (Motion.reduced(context)) return   // reduced-motion 下不做压暗
+        veilFrom = shutterVeil
+        veilTarget = target
+        veilDur = Motion.duration(context, closeMs)
+        veilStart = SystemClock.uptimeMillis()
+        shutterVeil = veilFrom
+        // 首帧立刻画：原来只靠 scheduleTick 的 100ms 延迟，会在 60ms 的压暗阶段
+        // 一帧都没画就进入放开阶段，结果两段互相抵消、完全看不到动画（11-21 实测）。
+        invalidate()
+        scheduleTick(16L)
+        handler.postDelayed({
+            // 🔴 必须先结算当前值再换向：shutterVeil 只有在 onDraw 里才会更新，
+            // 若在首次绘制前直接拿它当起点，veilFrom 仍是 0，放开段就变成 0→0，
+            // 整个快门动画消失。这是「点快门没动画」的根因。
+            veilFrom = updateVeil()
+            veilTarget = 0f
+            veilDur = Motion.duration(context, openMs)
+            veilStart = SystemClock.uptimeMillis()
+            invalidate()
+            scheduleTick(16L)
+        }, veilDur + 8L)
+    }
+
+    private fun updateVeil(): Float {
+        if (veilStart <= 0L) return shutterVeil
+        val raw = ((SystemClock.uptimeMillis() - veilStart).toFloat() / veilDur).coerceIn(0f, 1f)
+        val eased = if (veilTarget >= veilFrom) raw * raw else 1f - (1f - raw) * (1f - raw)
+        shutterVeil = veilFrom + (veilTarget - veilFrom) * eased
+        return shutterVeil
+    }
+
     /** 8 秒无操作后自动熄灭，随后 1.2 秒淡出（与真机省电行为一致） */
     private val AUTO_OFF_MS = 8_000L
     private val FADE_MS = 1_200L
@@ -200,6 +248,10 @@ class ViewfinderFrameView @JvmOverloads constructor(
      * 只有真实用户操作（点按/按键/拍照）才调用 notifyActivity() 续期。
      */
     fun setIndicators(state: Indicators) {
+        if (state.isoText != prevIsoText && !state.isoText.isNullOrBlank()) {
+            isoRollAt = SystemClock.uptimeMillis()
+        }
+        prevIsoText = state.isoText
         indicators = state
         invalidate()
         if (lastActivityAt == 0L) lastActivityAt = SystemClock.uptimeMillis()
@@ -209,13 +261,18 @@ class ViewfinderFrameView @JvmOverloads constructor(
     private val tick = object : Runnable {
         override fun run() {
             invalidate()
-            if (indicatorsAlpha() > 0f) handler.postDelayed(this, 100)
+            // 滚字/叶片窗口内提高到 ~60fps，其余维持 100ms 省电（与真机一致）
+            val animating = SystemClock.uptimeMillis() < isoRollAt + isoRollBaseMs ||
+                SystemClock.uptimeMillis() < veilStart + veilDur + 40L
+            if (animating || indicatorsAlpha() > 0f) {
+                handler.postDelayed(this, if (animating) 16L else 100L)
+            }
         }
     }
 
-    private fun scheduleTick() {
+    private fun scheduleTick(delayMs: Long = 100L) {
         handler.removeCallbacks(tick)
-        handler.postDelayed(tick, 100)
+        handler.postDelayed(tick, delayMs)
     }
 
     override fun onDetachedFromWindow() {
@@ -250,6 +307,15 @@ class ViewfinderFrameView @JvmOverloads constructor(
         val gb = gate.bottom
         val gw = gr - gl
         val gh = gb - gt
+
+        // ---- ⓪ 快门叶片压暗（11-21）：只盖预览内容矩形，亮框/刻度/ISO 之后画在它上面 ----
+        val veil = updateVeil()
+        if (veil > 0.001f) {
+            canvas.save()
+            canvas.clipRect(cl, ct, cr, cb)
+            canvas.drawColor(Color.argb((veil * 200f).toInt(), 0, 0, 0))
+            canvas.restore()
+        }
 
         // ---- ① 四角大亮框角标：画在片门范围内、再往里收一点 ----
         // 不能贴着片门边缘画：贴着边缘时角标横臂会和画面边界重合，看起来像屏幕 UI 的裁切框，
@@ -344,15 +410,19 @@ class ViewfinderFrameView @JvmOverloads constructor(
         // 真机 T3 的 ISO/快门读数就蚀刻在取景窗亮框的上沿，视线扫过框线即读到，
         // 不侵入成像画面。角标横臂只占左右两端，正中这段是空的，文字不会压线。
         st.isoText?.let { iso ->
+            // 值变化时短促上滚淡入（alpha + 6dp 上移），位置不变、不挡视野
+            val roll = Motion.rollProgress(SystemClock.uptimeMillis(), isoRollAt, isoRollBaseMs)
+            val isoAlpha = alpha * (0.35f + 0.65f * roll)
+            val isoDy = (1f - roll) * 6f * density
             val isoPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 textSize = iconSize * 1.25f
-                color = Color.argb((0xE6 * alpha).toInt(), 150, 255, 170)
+                color = Color.argb((0xE6 * isoAlpha).toInt(), 150, 255, 170)
                 typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
                 textAlign = Paint.Align.CENTER
             }
             // 基线落在最外框线内侧一点：文字顶边贴框线、整行在框线下方
             val isoBaseline = gt + bInset + isoPaint.textSize * 0.92f
-            canvas.drawText(iso, cx, isoBaseline, isoPaint)
+            canvas.drawText(iso, cx, isoBaseline + isoDy, isoPaint)
         }
 
         // ⑨ 白平衡面板：改为在取景器这张「玻璃」上一并绘制，样式同 ⑤⑧，
@@ -600,13 +670,48 @@ class ViewfinderFrameView @JvmOverloads constructor(
         labels.forEachIndexed { i, label ->
             val isLit = label in lit
             val on = isLit && (!(blink || slow) || blinking)
-            paint.color = when {
-                !isLit -> Color.argb((48 * alpha).toInt(), 255, 255, 255)
-                on -> Color.argb((235 * alpha).toInt(), 150, 255, 170)
-                else -> Color.argb((70 * alpha).toInt(), 255, 255, 255)
-            }
+            // 11-21 点亮过渡：只对「这一格是否属于当前档」做渐变（档位切换不硬跳色）；
+            // 闪烁 on/off 仍是硬 0/1 —— 突变本身就是"报警"语义，不能糊成渐变。
+            val amount = scaleLitAmount(i, isLit)
+            val unlit = Color.argb((48 * alpha).toInt(), 255, 255, 255)
+            val litOn = Color.argb((235 * alpha).toInt(), 150, 255, 170)
+            val litDim = Color.argb((70 * alpha).toInt(), 255, 255, 255)
+            val target = if (on) litOn else litDim
+            paint.color = lerpColor(unlit, target, amount)
             canvas.drawText(label, right, y0 + i * stepY, paint)
         }
+    }
+
+    /** 每格当前点亮强度 0..1，TICK 120ms 平滑逼近目标（只跟档位走，不含闪烁）。 */
+    private val scaleLit = floatArrayOf(0f, 0f, 0f, 0f)
+    private val scaleLitTarget = booleanArrayOf(false, false, false, false)
+    private val scaleLitAt = longArrayOf(0L, 0L, 0L, 0L)
+    private val scaleLitFrom = floatArrayOf(0f, 0f, 0f, 0f)
+    private val scaleBlendDur = if (Motion.reduced(context)) 48L else Motion.TICK
+
+    private fun scaleLitAmount(index: Int, isLit: Boolean): Float {
+        val now = SystemClock.uptimeMillis()
+        // 目标变化：锁定当前值为起点、重置计时
+        if (isLit != scaleLitTarget[index]) {
+            scaleLitTarget[index] = isLit
+            scaleLitFrom[index] = scaleLit[index]
+            scaleLitAt[index] = now
+        }
+        val raw = ((now - scaleLitAt[index]).toFloat() / scaleBlendDur).coerceIn(0f, 1f)
+        val eased = raw * raw * (3f - 2f * raw)
+        val from = scaleLitFrom[index]
+        val to = if (isLit) 1f else 0f
+        scaleLit[index] = from + (to - from) * eased
+        if (raw < 1f) scheduleTick()   // 过渡未完，续帧
+        return scaleLit[index]
+    }
+
+    private fun lerpColor(a: Int, b: Int, t: Float): Int {
+        val ta = (Color.alpha(a) + (Color.alpha(b) - Color.alpha(a)) * t).toInt().coerceIn(0, 255)
+        val tr = (Color.red(a) + (Color.red(b) - Color.red(a)) * t).toInt().coerceIn(0, 255)
+        val tg = (Color.green(a) + (Color.green(b) - Color.green(a)) * t).toInt().coerceIn(0, 255)
+        val tb = (Color.blue(a) + (Color.blue(b) - Color.blue(a)) * t).toInt().coerceIn(0, 255)
+        return Color.argb(ta, tr, tg, tb)
     }
 
     /**

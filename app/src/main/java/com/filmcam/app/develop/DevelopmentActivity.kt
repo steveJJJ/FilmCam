@@ -34,6 +34,7 @@ import com.filmcam.app.GalleryActivity
 import com.filmcam.app.R
 import com.filmcam.app.film.RollInfo
 import com.filmcam.app.film.UndevelopedFilmStore
+import com.filmcam.app.ui.animateSceneReveal
 import kotlin.math.abs
 import kotlin.math.sqrt
 
@@ -162,6 +163,11 @@ class DevelopmentActivity : AppCompatActivity(), SensorEventListener {
             finish()
             return
         }
+
+        // P2-2：暗房入口轻量 reveal（400ms 淡入 + 16dp 上移）。
+        // 不做「底片滑入+翻牌」的实体卡片：显影页自己已有模糊→清晰与液面波动，
+        // 再叠一层卡片会糊成一团，也拖慢用户看到水盘的时间。reduced-motion 只留 alpha。
+        dRoot?.animateSceneReveal()
 
         // 2) 定位卷信息（用于标题/张数）
         rollInfo = UndevelopedFilmStore.undevelopedRolls().firstOrNull { it.rollId == rollId }

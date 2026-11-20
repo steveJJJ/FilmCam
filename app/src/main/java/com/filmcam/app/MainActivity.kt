@@ -33,6 +33,10 @@ import com.filmcam.app.flash.FlashController
 import com.filmcam.app.flash.FlashMode
 import com.filmcam.app.ui.AdvanceRitual
 import com.filmcam.app.ui.attachEdgeHaptics
+import com.filmcam.app.ui.Motion
+import com.filmcam.app.ui.attachPressFeedback
+import com.filmcam.app.ui.animatePanelIn
+import com.filmcam.app.ui.fadeInChrome
 import com.filmcam.app.ui.T3LcdView
 import com.filmcam.app.ui.ViewfinderFrameView
 import com.google.android.material.bottomsheet.BottomSheetDialog
@@ -581,6 +585,9 @@ class MainActivity : AppCompatActivity() {
         // 插在取景框之后、隐藏控件 / 过卷遮罩之前，保证遮罩仍在最上层
         var index = root.indexOfChild(frame) + 1
         moving.forEach { root.addView(it, index++) }
+        // P2-1：新 chrome 干净淡入（120ms），消掉旋转时的硬切。旧 chrome 必须同步摘掉，
+        // 否则 binding / 触摸分发会指向旧布局，破坏旋转契约；reduced-motion 下直接可见。
+        moving.forEach { it.fadeInChrome() }
 
         binding = ActivityMainBinding.bind(root)
         wireChrome()
@@ -612,8 +619,11 @@ class MainActivity : AppCompatActivity() {
         // ⚠️ 换朝向会重新 inflate bottomBar / tvFilmName，必须在这里幂等重设。
         com.filmcam.app.ui.FilmIconBadge.apply(binding.tvFilmName)
         binding.btnShutter.hapticClick(ms = 32, amp = 235) { triggerShutter() }
+        binding.btnShutter.attachPressFeedback(0.94f)   // 机械按压：按下沉、抬手弹（11-21）
         binding.tvFilmName.hapticClick { showFilmRollPicker() }
+        binding.tvFilmName.attachPressFeedback(0.96f)
         binding.tvFlashStatus.hapticClick { cycleFlashMode() }
+        binding.tvFlashStatus.attachPressFeedback(0.96f)
         // vc86：长按「闪」字进外闪自学习配对向导（单击仍切档，交互不变）。
         // 手动入口：取消不退档；保存了档案则返回时立即重建 BLE 会话。
         binding.tvFlashStatus.setOnLongClickListener {
@@ -628,11 +638,15 @@ class MainActivity : AppCompatActivity() {
         binding.btnGallery.hapticClick {
             startActivity(android.content.Intent(this, GalleryActivity::class.java))
         }
+        binding.btnGallery.attachPressFeedback(0.92f)   // 暗房字牌（11-21 用户反馈漏挂）
         binding.settingsKey.hapticClick { showSettings() }
+        binding.settingsKey.attachPressFeedback(0.92f)
         // 腰平控件是 root 的常驻 child，不随换朝向重建；setOnClickListener 覆盖即幂等
         binding.waistShutter.hapticClick { triggerShutter() }
+        binding.waistShutter.attachPressFeedback(0.94f)
         // 退出通道①：折叠前盖 CLOSE
         binding.waistClose.hapticClick { setWaistLevel(false) }
+        binding.waistClose.attachPressFeedback(0.94f)
         // 画幅档循环：AUTO → 1:1（6×6）→ 3:2（135）→ AUTO
         binding.waistRotate.hapticClick {
             setWaistGateStyle(
@@ -646,6 +660,7 @@ class MainActivity : AppCompatActivity() {
                 }
             )
         }
+        binding.waistRotate.attachPressFeedback(0.92f)
         // 退出通道③：长按摄像头那半屏（黑屏），手不用摸回底部
         binding.waistMask.setOnLongClickListener {
             com.filmcam.app.ui.Haptics.vibrate(this, 18)
@@ -653,10 +668,15 @@ class MainActivity : AppCompatActivity() {
             true
         }
         binding.flashKey.hapticClick { cycleFlashMode() }
+        binding.flashKey.attachPressFeedback(0.92f)
         binding.evKey.hapticClick { cycleEvValue() }
+        binding.evKey.attachPressFeedback(0.92f)
         binding.filmInfoText.hapticClick { showFilmRollPicker() }
+        binding.filmInfoText.attachPressFeedback(0.96f)
         binding.btnEvPlus.hapticClick { stepEv(1) }
+        binding.btnEvPlus.attachPressFeedback(0.92f)
         binding.btnEvMinus.hapticClick { stepEv(-1) }
+        binding.btnEvMinus.attachPressFeedback(0.92f)
         // Pro 模式入口：整块机身铭牌可点，进出 Pro；铭牌右侧浮出 PRO 徽标。
         // 铭牌本来就是界面里最像「机身按钮」的一块，点它比另加浮层按钮更自然。
         // Pro 模式入口：机身铭牌可点。**单击进出 Pro，铭牌上左右滑调 ISO**；
@@ -1431,10 +1451,13 @@ class MainActivity : AppCompatActivity() {
             startActivity(android.content.Intent(this, AboutActivity::class.java))
         }
         tvClose.hapticClick { dialog.dismiss() }
+        tvClose.attachPressFeedback(0.96f)   // 面板关闭字牌（11-21 补齐）
 
         dialog.show()
         // 兜底：个别 ROM 在 addView 阶段可能改写 attrs.width；值相同不产生可见跳变
         dialog.window?.setLayout(w, android.view.ViewGroup.LayoutParams.WRAP_CONTENT)
+        // 机身面板入场：只动内容根 alpha/位移，不碰窗口尺寸/内层 ScrollView 限高契约
+        view.animatePanelIn()
         // 首帧后按实际 layout 结果再校正一次「下面还有行」（measure 期判定可能偏早）
         view.post { updateMoreHint() }
     }
@@ -3063,13 +3086,14 @@ class MainActivity : AppCompatActivity() {
         captureRitualMs = timeline.ritualMs
 
         playShutterFeedback()  // 开帘：快门声音 + 振动
+        // 11-21 叶片闭合视觉：开帘同帧把取景窗压暗一下再放开（纯 View，不改成像/时序）。
+        // 只做这一下（慢门闭帘不再补，避免重现 v15 用户反感的"双反馈"）。
+        binding.viewfinderFrame.shutterVeilPulse()
         // 外置灯的 BLE 触发不再放在这里：灯会在 t+0 闪完，而 HAL 要 ~240ms
         // 后才真正开曝光，闪光根本进不了画面。改由 Camera2Controller 的
         // onExposureStarted 在传感器开始积分那一刻发指令（见 startCamera）。
-        binding.btnShutter.animate().scaleX(0.85f).scaleY(0.85f).setDuration(80)
-            .withEndAction {
-                binding.btnShutter.animate().scaleX(1f).scaleY(1f).duration = 80
-            }
+        // 11-21：快门的按压缩放已移到 btnShutter 的 OnTouchListener（attachPressFeedback），
+        // 按下即沉、抬手弹回，覆盖「按下→成像」的空窗；这里不再重复触发缩放（会打架）。
 
         if (slowNs > 0L) {
             // v15（11-18）：慢门原本在闭帘时再补一记快门声 + 一记振动（两声、抖一下），
@@ -3077,8 +3101,9 @@ class MainActivity : AppCompatActivity() {
             // 闭帘不再补声/补振 —— 曝光/过卷时序不变，只是少一次重复反馈。
             postAt(seq, closeAt + 40) { showDevelopingAnimation(seq, advanceAt) }
         } else {
-            // 常规：快门 + 过卷一体声，过卷动画立即同步启动
-            showDevelopingAnimation(seq, advanceAt)
+            // 常规：快门 + 过卷一体声。黑幕延后 260ms 让叶片压暗完整演完（60+180=240ms，11-21），
+            // 马达声/齿轮触感/收尾的绝对时刻不变（showDevelopingAnimation 内仍按 advanceAtMs）。
+            showDevelopingAnimation(seq, advanceAt, overlayDelayMs = 260L)
         }
 
         // 闪光灯按键触发，立即拍照
@@ -3164,18 +3189,35 @@ class MainActivity : AppCompatActivity() {
      * @param seq 本次拍摄序号（序号不对说明这张已经翻篇，整个过卷作废）
      * @param advanceAtMs 马达进场的时刻，相对本次拍摄起点
      */
-    private fun showDevelopingAnimation(seq: Int, advanceAtMs: Long) {
+    private fun showDevelopingAnimation(
+        seq: Int, advanceAtMs: Long, overlayDelayMs: Long = 0L
+    ) {
         if (captureSeq != seq) return   // 慢门会把这段延迟到曝光结束，期间这一张可能已经翻篇
-        setDevelopingOverlayVisible(true)
 
-        // 显示当前胶卷条，模拟胶片被马达拖过片门
-        binding.ivDeveloping.setIcon(currentRoll.iconResId)
-        binding.ivDeveloping.visibility = android.view.View.VISIBLE
-        binding.tvDevelopingText.text = "FILM ADVANCING..."
-        binding.tvDevelopingText.visibility = android.view.View.VISIBLE
+        // 11-21 叶片闭合视觉：常规档黑幕延后 VEIL_LEAD_MS 显示，让取景窗压暗先演完；
+        // 只延迟黑幕这一层视觉，马达声/齿轮触感/收尾全部仍按 advanceAtMs 的绝对时刻走。
+        if (overlayDelayMs > 0L) {
+            postAt(seq, overlayDelayMs) {
+                if (captureSeq != seq) return@postAt
+                setDevelopingOverlayVisible(true)
+                binding.ivDeveloping.setIcon(currentRoll.iconResId)
+                binding.ivDeveloping.visibility = android.view.View.VISIBLE
+                binding.tvDevelopingText.text = "FILM ADVANCING..."
+                binding.tvDevelopingText.visibility = android.view.View.VISIBLE
+                startDevelopingAnimation()
+            }
+        } else {
+            setDevelopingOverlayVisible(true)
 
-        // 过卷等待动画：胶卷条匀速滚动，持续到过卷走完（胶片相机拍完需等冲洗，动画连贯不跳变）
-        startDevelopingAnimation()
+            // 显示当前胶卷条，模拟胶片被马达拖过片门
+            binding.ivDeveloping.setIcon(currentRoll.iconResId)
+            binding.ivDeveloping.visibility = android.view.View.VISIBLE
+            binding.tvDevelopingText.text = "FILM ADVANCING..."
+            binding.tvDevelopingText.visibility = android.view.View.VISIBLE
+
+            // 过卷等待动画：胶卷条匀速滚动，持续到过卷走完（胶片相机拍完需等冲洗，动画连贯不跳变）
+            startDevelopingAnimation()
+        }
 
         // 过卷声音：真实 T3 的顺序是「叶片先喀一声曝光」→ 停顿一下 →「马达拖动齿轮过卷」，
         // 两段声音之间有明显间隔。快门素材本身只有 82ms，但人耳需要约 300ms 的静默

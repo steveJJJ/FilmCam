@@ -47,6 +47,13 @@ class T3LcdView @JvmOverloads constructor(
 
     private var state: State = State(0, 36, "P", "A", 0f, "OFF", 3, "")
 
+    /** 七段管滚字（11-21）：记录旧值与起滚时刻，只滚变化的那一位。 */
+    private var prevIsoDigits = ""
+    private var prevTvDigits = ""
+    private var isoRollAt = 0L
+    private var tvRollAt = 0L
+    private val rollBaseMs: Long = if (Motion.reduced(context)) 48L else Motion.ROLL
+
     /** EL 背光：点亮后背光持续 BACKLIGHT_MS，再淡出 600ms */
     private var backlightUntil = 0L
     private val BACKLIGHT_FADE = 600L
@@ -56,8 +63,9 @@ class T3LcdView @JvmOverloads constructor(
     private val tick = Runnable {
         invalidate()
         val now = SystemClock.uptimeMillis()
-        // 背光淡出、或机身提示未到期时继续走帧（提示需要闪烁）
-        if (now < backlightUntil + BACKLIGHT_FADE || now < messageUntil) scheduleTick()
+        // 背光淡出、机身提示未到期、或滚字未完成时继续走帧
+        val rolling = now < isoRollAt + rollBaseMs || now < tvRollAt + rollBaseMs
+        if (now < backlightUntil + BACKLIGHT_FADE || now < messageUntil || rolling) scheduleTick()
     }
 
     private fun scheduleTick() {
@@ -90,8 +98,17 @@ class T3LcdView @JvmOverloads constructor(
     }
 
     fun setState(s: State) {
+        // 滚字：按可见的 padded 字符串逐格比较，变了才起滚（AUTO↔数字、位数变化也覆盖）
+        val newIso = s.isoLabel.takeLast(4).padStart(maxOf(3, s.isoLabel.takeLast(4).length), ' ')
+        val newTv = s.shutterLabel.takeLast(3).padStart(3, ' ')
+        val nowMs = SystemClock.uptimeMillis()
+        if (newIso != prevIsoDigits && prevIsoDigits.isNotEmpty()) isoRollAt = nowMs
+        if (newTv != prevTvDigits && prevTvDigits.isNotEmpty()) tvRollAt = nowMs
+        prevIsoDigits = newIso
+        prevTvDigits = newTv
         state = s
         invalidate()
+        if (isoRollAt > 0L || tvRollAt > 0L) scheduleTick()
     }
 
     /** 点亮背光（过卷、按键等动作时调用，复刻机身 EL 背光行为） */
@@ -291,8 +308,18 @@ class T3LcdView @JvmOverloads constructor(
         // 最少三格，值更长就多画一格。
         val isoDigits = state.isoLabel.takeLast(4)
         val isoSlots = maxOf(3, isoDigits.length)
-        isoDigits.padStart(isoSlots, ' ').forEach { c ->
-            draw7(canvas, c, ix, y3, smW, smH, onColor)
+        val isoPadded = isoDigits.padStart(isoSlots, ' ')
+        val isoProg = Motion.rollProgress(SystemClock.uptimeMillis(), isoRollAt, rollBaseMs)
+        isoPadded.forEachIndexed { i, c ->
+            // 旧值同位置字符：不同才滚这一格（自下而上滚入），裁在本格内不串位
+            val changed = i < prevIsoDigits.length && prevIsoDigits[i] != c && isoProg < 1f
+            val dy = if (changed) smH * (1f - isoProg) else 0f
+            if (changed) {
+                canvas.save()
+                canvas.clipRect(ix - smGap, y3 - smH * 0.2f, ix + smW + smGap, y3 + smH)
+            }
+            draw7(canvas, c, ix, y3 + dy, smW, smH, onColor)
+            if (changed) canvas.restore()
             ix += smW + smGap
         }
         // TV：取景窗四刻度的细化档 500 / 250 / 125 / 60 / 30 / 15 / 8
@@ -302,9 +329,17 @@ class T3LcdView @JvmOverloads constructor(
             ix += smallPaint.measureText("TV") + ch * 0.025f
             // 快门速度按实际档位显示（500 / 250 / 125 / 60 / 30 / 15 / 8），
             // 不再压成取景窗那 4 个刻度 —— 手动档位更细，液晶屏要如实反映。
-            val tvDigits = state.shutterLabel.takeLast(3)
-            tvDigits.padStart(3, ' ').forEach { c ->
-                draw7(canvas, c, ix, y3, smW, smH, onColor)
+            val tvDigits = state.shutterLabel.takeLast(3).padStart(3, ' ')
+            val tvProg = Motion.rollProgress(SystemClock.uptimeMillis(), tvRollAt, rollBaseMs)
+            tvDigits.forEachIndexed { i, c ->
+                val changed = i < prevTvDigits.length && prevTvDigits[i] != c && tvProg < 1f
+                val dy = if (changed) smH * (1f - tvProg) else 0f
+                if (changed) {
+                    canvas.save()
+                    canvas.clipRect(ix - smGap, y3 - smH * 0.2f, ix + smW + smGap, y3 + smH)
+                }
+                draw7(canvas, c, ix, y3 + dy, smW, smH, onColor)
+                if (changed) canvas.restore()
                 ix += smW + smGap
             }
         }
