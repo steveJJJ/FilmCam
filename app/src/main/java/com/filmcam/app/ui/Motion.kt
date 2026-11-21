@@ -137,6 +137,28 @@ fun View.animatePanelOut(onEnd: () -> Unit) {
 }
 
 /**
+ * 面板退场后再 dismiss（P0 弹窗退场，11-21）。
+ *
+ * 不能挂到 Dialog.setOnDismissListener：那是 dismiss 之后才回调，播动画时窗口已经没了。
+ * 也不能一刀切给所有 dismiss 加：设置面板的「语言/外闪/关于」会立刻 startActivity，
+ * 工程师控制台的子面板跳转是「关本层→开子层」，这两种硬切才利落，加 180ms 反而拖沓。
+ * 只在**主动关闭**（关闭字牌 / 关闭按钮）调用本函数。
+ *
+ * 动画只动内容根 alpha/translationY，不碰窗口尺寸 / 内层 ScrollView 限高契约。
+ * reduced-motion 下 duration 缩到 30%、且去掉位移（animatePanelOut 内部已处理）。
+ */
+fun android.app.Dialog.dismissPanel(content: android.view.View) {
+    if (!isShowing) return
+    content.animatePanelOut { if (isShowing) dismiss() }
+    // 兜底：View detach 时 endAction 可能不执行，用 postDelayed 保证 dialog 一定关掉，
+    // 否则会出现「内容淡没了但窗口还在、点外面才关」的幽灵弹窗。
+    // 正常路径 endAction 先 dismiss，这里 isShowing 已是 false，不会重复。
+    content.postDelayed({
+        if (isShowing) dismiss()
+    }, Motion.duration(content.context, Motion.PANEL_OUT) + 40L)
+}
+
+/**
  * 旋转换 chrome：新机身只做干净淡入，不动位移。
  *
  * 铭牌/机顶键的位置是布局契约（真机调过很多轮），不能像面板那样带上 translationY；

@@ -37,6 +37,7 @@ import com.filmcam.app.ui.Motion
 import com.filmcam.app.ui.attachPressFeedback
 import com.filmcam.app.ui.animatePanelIn
 import com.filmcam.app.ui.fadeInChrome
+import com.filmcam.app.ui.dismissPanel
 import com.filmcam.app.ui.T3LcdView
 import com.filmcam.app.ui.ViewfinderFrameView
 import com.google.android.material.bottomsheet.BottomSheetDialog
@@ -1450,7 +1451,9 @@ class MainActivity : AppCompatActivity() {
             dialog.dismiss()
             startActivity(android.content.Intent(this, AboutActivity::class.java))
         }
-        tvClose.hapticClick { dialog.dismiss() }
+        // 只有「主动关闭字牌」走退场动画；下面三行跳转型关闭（语言重建 / 外闪向导 /
+        // 关于页）必须立刻 dismiss —— 它们紧接着 startActivity，180ms 动画会被切屏打断。
+        tvClose.hapticClick { dialog.dismissPanel(view) }
         tvClose.attachPressFeedback(0.96f)   // 面板关闭字牌（11-21 补齐）
 
         dialog.show()

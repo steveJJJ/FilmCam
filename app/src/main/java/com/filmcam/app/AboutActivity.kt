@@ -19,6 +19,7 @@ import androidx.appcompat.app.AppCompatActivity
 import com.filmcam.app.ui.attachEdgeHaptics
 import com.filmcam.app.ui.Motion
 import com.filmcam.app.ui.animatePanelIn
+import com.filmcam.app.ui.dismissPanel
 import com.filmcam.app.update.UpdateChecker
 import kotlin.math.roundToInt
 
@@ -977,7 +978,7 @@ class AboutActivity : AppCompatActivity() {
         val dialog = androidx.appcompat.app.AlertDialog.Builder(this, com.filmcam.app.ui.BodyTheme.dialogTheme)
             .setTitle(R.string.hidden_title)
             .setView(consoleRoot)
-            .setPositiveButton(R.string.set_close) { d, _ -> d.dismiss() }
+            .setPositiveButton(R.string.set_close, null)   // 先建按钮，监听器 create() 后挂
             .create()
         val win = dialog.window
         win?.decorView            // 先 installDecor()，此后 setLayout 不再被重置
@@ -986,6 +987,10 @@ class AboutActivity : AppCompatActivity() {
         dialog.show()
         // 机身面板入场：只动内容根的 alpha/位移，不碰 layoutParams 与窗口尺寸契约
         consoleRoot.animatePanelIn()
+        // 只有「关闭按钮」走退场动画；子面板跳转（慢门/冲洗参数/柔度/色彩/JPEG）
+        // 走 consoleRef?.dismiss() 保持硬切 —— 那几处紧接着开新面板，加 180ms 会拖沓。
+        dialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE)
+            .setOnClickListener { dialog.dismissPanel(consoleRoot) }
     }
 
     /**
