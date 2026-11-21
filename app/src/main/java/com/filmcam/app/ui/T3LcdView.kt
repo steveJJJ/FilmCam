@@ -54,10 +54,10 @@ class T3LcdView @JvmOverloads constructor(
     private var tvRollAt = 0L
     private val rollBaseMs: Long = if (Motion.reduced(context)) 48L else Motion.ROLL
 
-    /** EL 背光：点亮后背光持续 BACKLIGHT_MS，再淡出 600ms */
+    /** EL 背光：点亮后持续 BACKLIGHT_MS，再淡出 BACKLIGHT_FADE（11-21 用户反馈 4s 太久，压到 1.8s） */
     private var backlightUntil = 0L
-    private val BACKLIGHT_FADE = 600L
-    private val BACKLIGHT_MS = 4000L
+    private val BACKLIGHT_FADE = 350L
+    private val BACKLIGHT_MS = 1800L
 
     private val handler = android.os.Handler(android.os.Looper.getMainLooper())
     private val tick = Runnable {

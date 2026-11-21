@@ -92,8 +92,10 @@ class ScrollDetents(
     private val context: Context,
     private val stepPx: Int,
     private val gapMs: Long = 55,
-    private val ms: Long = 8,
-    private val amp: Int = 95,
+    // 11-21：面板限高后可滚距离短、档位少，原来 8ms/95amp 几乎摸不到。
+    // 每记 tick 加重到 12ms/135amp（仍轻于限位震 22ms/150），档距与节流不变。
+    private val ms: Long = 12,
+    private val amp: Int = 135,
 ) {
     private var lastBucket = 0
     private var lastAtMs = 0L
@@ -125,20 +127,52 @@ class ScrollDetents(
  * （设置面板用它点亮底沿的渐隐与刻线）。关于页不传这两个参数，行为与 v78 一致。
  */
 fun ScrollView.attachEdgeHaptics(
-    ms: Long = 16,
-    amp: Int = 130,
+    ms: Long = 22,
+    amp: Int = 150,
     detents: ScrollDetents? = null,
     onScroll: ((canScrollDown: Boolean) -> Unit)? = null
 ) {
     var atTop = !canScrollVertically(-1)
     var atBottom = !canScrollVertically(1)
     detents?.reset(scrollY)
+
+    // 11-21 到头回弹：只在传了 detents 的面板（设置面板）启用，关于页无参调用不受影响。
+    // 不碰 ScrollView 的 overScrollMode（契约要求 never —— 三星拉伸回弹会让铭牌发光），
+    // 只给父容器一个 5dp 的短促弹性位移再归位，和限位震同一帧，像转盘拨到头的顿挫。
+    val bounceTarget = if (detents != null) parent as? android.view.View else null
+    var bounceAnim: android.animation.ValueAnimator? = null
+    fun bounce(direction: Int) {
+        if (bounceTarget == null) return
+        bounceAnim?.cancel()
+        val d = bounceTarget
+        val dp = 5f * resources.displayMetrics.density
+        // 从 0 顶到 ±5dp（120ms accelerate），再弹回 0（160ms decelerate）
+        val out = android.animation.ValueAnimator.ofFloat(0f, direction * dp).apply {
+            duration = 120
+            interpolator = android.view.animation.DecelerateInterpolator()
+        }
+        val back = android.animation.ValueAnimator.ofFloat(direction * dp, 0f).apply {
+            duration = 160
+            interpolator = android.view.animation.DecelerateInterpolator()
+        }
+        out.addUpdateListener { d.translationY = it.animatedValue as Float }
+        back.addUpdateListener { d.translationY = it.animatedValue as Float }
+        out.addListener(object : android.animation.AnimatorListenerAdapter() {
+            override fun onAnimationEnd(animation: android.animation.Animator) { back.start() }
+        })
+        back.addListener(object : android.animation.AnimatorListenerAdapter() {
+            override fun onAnimationEnd(animation: android.animation.Animator) { d.translationY = 0f }
+        })
+        bounceAnim = back
+        out.start()
+    }
+
     setOnScrollChangeListener { _, _, _, _, _ ->
         detents?.onScroll(scrollY)
         val topNow = !canScrollVertically(-1)
         val bottomNow = !canScrollVertically(1)
-        if (topNow && !atTop) Haptics.vibrate(context, ms, amp)
-        if (bottomNow && !atBottom) Haptics.vibrate(context, ms, amp)
+        if (topNow && !atTop) { Haptics.vibrate(context, ms, amp); bounce(1) }
+        if (bottomNow && !atBottom) { Haptics.vibrate(context, ms, amp); bounce(-1) }
         atTop = topNow
         atBottom = bottomNow
         onScroll?.invoke(!bottomNow)
