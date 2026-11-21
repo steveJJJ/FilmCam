@@ -14,6 +14,7 @@ import androidx.viewpager2.widget.ViewPager2
 import com.filmcam.app.develop.ExifReader
 import com.filmcam.app.film.CaptureExifFormat
 import com.filmcam.app.ui.Haptics
+import com.filmcam.app.ui.Motion
 import com.filmcam.app.ui.hapticClick
 
 /**
@@ -112,13 +113,19 @@ class PhotoViewerActivity : AppCompatActivity() {
         if (!::panelInfo.isInitialized) return
         Haptics.vibrate(this, 18, 150)   // 翻面板：与机身按钮同级的确认感
         panelVisible = !panelVisible
+        // 11-21：面板进出统一到 Motion token（PANEL_IN 250ms / PANEL_OUT 180ms），
+        // 退场比入场短；reduced-motion 下时长按系统缩放折算。
         if (panelVisible) {
             renderPanel(viewPager.currentItem)
             panelInfo.visibility = View.VISIBLE
             panelInfo.alpha = 0f
-            panelInfo.animate().alpha(1f).setDuration(180).start()
+            panelInfo.animate().alpha(1f)
+                .setDuration(Motion.duration(this, Motion.PANEL_IN))
+                .setInterpolator(Motion.decelerate).start()
         } else {
-            panelInfo.animate().alpha(0f).setDuration(150)
+            panelInfo.animate().alpha(0f)
+                .setDuration(Motion.duration(this, Motion.PANEL_OUT))
+                .setInterpolator(Motion.accelerate)
                 .withEndAction { panelInfo.visibility = View.GONE }
                 .start()
         }

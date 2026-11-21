@@ -196,6 +196,32 @@ fun android.app.Dialog.attachOutsideDismiss(content: android.view.View) {
 }
 
 /**
+ * 设置面板的读数切档：文字变化时短促上滚淡入（11-21）。
+ *
+ * 与 LCD / 取景窗的七段滚字同一口径（ROLL token、decelerate、不过冲），
+ * 但这是普通 TextView，做整段 alpha+位移而不是逐格 clip。
+ * 只在文字**真的变了**才滚 —— refreshValues 每次会重写所有行，没变的行不该动。
+ */
+fun android.widget.TextView.setTextWithRoll(text: CharSequence?) {
+    if (text == null || text.toString() == this.text.toString()) {
+        if (text != null) setText(text)
+        return
+    }
+    val ctx = context
+    setText(text)
+    // 首次填充发生在 dialog.show() 之前，view 还没 attach —— 那时滚字会白跑，
+    // 且契约要求首帧零跳变。只有面板已经显示后的切档才滚。
+    if (!isAttachedToWindow || Motion.reduced(ctx)) return
+    alpha = 0.35f
+    translationY = 5f * resources.displayMetrics.density
+    animate().cancel()
+    animate().alpha(1f).translationY(0f)
+        .setDuration(Motion.duration(ctx, Motion.ROLL))
+        .setInterpolator(Motion.decelerate)
+        .start()
+}
+
+/**
  * 列表行的机械按压反馈（11-21）：按下时暖白高亮，抬起 140ms 淡出。
  *
  * 不用 attachPressFeedback 的缩放 —— 长条行缩放会挤压整块铭牌；

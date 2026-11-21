@@ -40,6 +40,7 @@ import com.filmcam.app.ui.fadeInChrome
 import com.filmcam.app.ui.dismissPanel
 import com.filmcam.app.ui.attachOutsideDismiss
 import com.filmcam.app.ui.attachRowPress
+import com.filmcam.app.ui.setTextWithRoll
 import com.filmcam.app.ui.T3LcdView
 import com.filmcam.app.ui.ViewfinderFrameView
 import com.google.android.material.bottomsheet.BottomSheetDialog
@@ -1316,24 +1317,24 @@ class MainActivity : AppCompatActivity() {
         }
 
         fun refreshValues() {
-            value(R.id.rowSetBody).text = theme.name(this@MainActivity)
-            value(R.id.rowSetHaptic).text = hapticLevelName()
-            value(R.id.rowSetWb).text = wbName()
-            value(R.id.rowSetLanguage).text = languageName()
-            value(R.id.rowSetQuality).text = qualityName()
-            value(R.id.rowSetColor).text = colorStrengthName()
-            value(R.id.rowSetRaw).text = rawSettingName()
+            value(R.id.rowSetBody).setTextWithRoll(theme.name(this@MainActivity))
+            value(R.id.rowSetHaptic).setTextWithRoll(hapticLevelName())
+            value(R.id.rowSetWb).setTextWithRoll(wbName())
+            value(R.id.rowSetLanguage).setTextWithRoll(languageName())
+            value(R.id.rowSetQuality).setTextWithRoll(qualityName())
+            value(R.id.rowSetColor).setTextWithRoll(colorStrengthName())
+            value(R.id.rowSetRaw).setTextWithRoll(rawSettingName())
             // v86：外闪灯管理行的读数 = 已配对档案状态（灯名 / 台数 / 未配对），
             // 和面板其它行一样「不点进去就能读到当前值」。
-            value(R.id.rowSetFlash).text = runCatching {
+            value(R.id.rowSetFlash).setTextWithRoll(runCatching {
                 val profiles = com.filmcam.app.flash.FlashProfileStore(this).list()
                 when {
                     profiles.isEmpty() -> getString(R.string.set_flash_none)
                     profiles.size == 1 -> profiles[0].displayName.take(14)
                     else -> getString(R.string.set_flash_multi, profiles.size)
                 }
-            }.getOrDefault(getString(R.string.set_flash_none))
-            value(R.id.rowSetAbout).text = versionLabel()
+            }.getOrDefault(getString(R.string.set_flash_none)))
+            value(R.id.rowSetAbout).setTextWithRoll(versionLabel())
             paintPanel()
         }
 
