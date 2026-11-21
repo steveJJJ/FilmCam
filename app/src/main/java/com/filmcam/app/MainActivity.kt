@@ -38,6 +38,8 @@ import com.filmcam.app.ui.attachPressFeedback
 import com.filmcam.app.ui.animatePanelIn
 import com.filmcam.app.ui.fadeInChrome
 import com.filmcam.app.ui.dismissPanel
+import com.filmcam.app.ui.attachOutsideDismiss
+import com.filmcam.app.ui.attachRowPress
 import com.filmcam.app.ui.T3LcdView
 import com.filmcam.app.ui.ViewfinderFrameView
 import com.google.android.material.bottomsheet.BottomSheetDialog
@@ -619,6 +621,13 @@ class MainActivity : AppCompatActivity() {
         // vc77：把方形胶卷图裁成与 DARKROOM 同款 14dp 圆角方牌（横竖统一）。
         // ⚠️ 换朝向会重新 inflate bottomBar / tvFilmName，必须在这里幂等重设。
         com.filmcam.app.ui.FilmIconBadge.apply(binding.tvFilmName)
+        // 11-21：液晶屏本身可点——真机按一下 EL 窗也会亮起 self-test 背光，
+        // 亮 4s 后自动淡出（T3LcdView.pulseBacklight 内部已有 600ms 淡出）。
+        binding.lcdDisplay.isClickable = true
+        binding.lcdDisplay.setOnClickListener {
+            com.filmcam.app.ui.Haptics.vibrate(this, 14, 130)
+            binding.lcdDisplay.pulseBacklight()
+        }
         binding.btnShutter.hapticClick(ms = 32, amp = 235) { triggerShutter() }
         binding.btnShutter.attachPressFeedback(0.94f)   // 机械按压：按下沉、抬手弹（11-21）
         binding.tvFilmName.hapticClick { showFilmRollPicker() }
@@ -1232,6 +1241,7 @@ class MainActivity : AppCompatActivity() {
         rows.forEachIndexed { i, id ->
             row(id).findViewById<android.widget.TextView>(R.id.tvSetLabel).text = labels[i]
             row(id).findViewById<android.widget.TextView>(R.id.tvSetHint).text = hints[i]
+            row(id).attachRowPress()   // 11-21：行的机械按压高亮（此前只有 haptic，无视觉选中感）
         }
         // v87 限高滚动：底沿渐隐与刻线窗。都常驻 XML，只在这里取引用，
         // 运行时 addView 出来的控件会漏掉主题重映射（历史上踩过一次）。
@@ -1461,6 +1471,9 @@ class MainActivity : AppCompatActivity() {
         dialog.window?.setLayout(w, android.view.ViewGroup.LayoutParams.WRAP_CONTENT)
         // 机身面板入场：只动内容根 alpha/位移，不碰窗口尺寸/内层 ScrollView 限高契约
         view.animatePanelIn()
+        // 11-21：点外部 / 返回键也走退场动画（此前只有关闭字牌有，用户能明显感到不一致）。
+        // 必须在 show() 之后挂：decorView 与内容坐标都要窗口 attach 后才有效。
+        dialog.attachOutsideDismiss(view)
         // 首帧后按实际 layout 结果再校正一次「下面还有行」（measure 期判定可能偏早）
         view.post { updateMoreHint() }
     }
@@ -3031,7 +3044,14 @@ class MainActivity : AppCompatActivity() {
      * @param ms 震动时长；@param amp 强度（1-255，越大越实）
      */
     private fun android.view.View.hapticClick(ms: Long = 24, amp: Int = 175, action: () -> Unit) {
-        setOnClickListener { vibrate(ms, amp); action() }
+        // 11-21：机身按键＝机械动作，EL 背光跟着亮一次（4s 后 600ms 淡出）。
+        // 放在 hapticClick 里一次覆盖所有机顶/底部键，不必逐个挂；
+        // 快门/换卷另有 showMessage 自己 pulse，这里是普通功能键的那一记。
+        setOnClickListener {
+            vibrate(ms, amp)
+            runCatching { binding.lcdDisplay.pulseBacklight() }
+            action()
+        }
     }
 
     /**

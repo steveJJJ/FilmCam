@@ -159,6 +159,81 @@ fun android.app.Dialog.dismissPanel(content: android.view.View) {
 }
 
 /**
+ * 让「点弹窗外部 / 按返回键」也走退场动画（11-21 用户反馈：只有关闭字牌有动画）。
+ *
+ * 不能挂 setOnCancelListener：Dialog.cancel() 会先回调再立刻 dismiss，来不及播动画。
+ * 也不能复用 setOnDismissListener：那个单槽被 MainActivity.guardDialog 占着（触摸守卫）。
+ * 所以这里把系统取消**关掉**（canceledOnTouchOutside=false + 吞掉返回键），
+ * 改成自己识别「点在内容矩形外」和返回键，统一交给 [dismissPanel]。
+ *
+ * ⚠️ 只应在「普通关闭也走退场」的弹窗上调用；跳转型弹窗（点了立刻 startActivity）
+ * 保持系统默认硬切，否则会被切屏打断。
+ */
+fun android.app.Dialog.attachOutsideDismiss(content: android.view.View) {
+    setCanceledOnTouchOutside(false)
+    window?.decorView?.setOnTouchListener { v, event ->
+        if (event.actionMasked == android.view.MotionEvent.ACTION_UP) {
+            val loc = IntArray(2)
+            content.getLocationOnScreen(loc)
+            val inContent = event.rawX >= loc[0] && event.rawX <= loc[0] + content.width &&
+                event.rawY >= loc[1] && event.rawY <= loc[1] + content.height
+            if (!inContent && isShowing) {
+                dismissPanel(content)
+                return@setOnTouchListener true
+            }
+        }
+        false
+    }
+    setOnKeyListener { _, keyCode, event ->
+        if (isShowing && event.action == android.view.KeyEvent.ACTION_UP &&
+            (keyCode == android.view.KeyEvent.KEYCODE_BACK ||
+                keyCode == android.view.KeyEvent.KEYCODE_ESCAPE)
+        ) {
+            dismissPanel(content)
+            true
+        } else false
+    }
+}
+
+/**
+ * 列表行的机械按压反馈（11-21）：按下时暖白高亮，抬起 140ms 淡出。
+ *
+ * 不用 attachPressFeedback 的缩放 —— 长条行缩放会挤压整块铭牌；
+ * 也不覆盖 background（设置行背景是 selectableItemBackground / 主题重映射过的），
+ * 用 foreground 叠一层可动画的暖白，抬手自动收，不与 ripple 冲突。
+ */
+fun View.attachRowPress() {
+    val ctx = context
+    val density = resources.displayMetrics.density
+    val hl = android.graphics.drawable.GradientDrawable().apply {
+        setColor(0x1AF2EDE2.toInt())
+        cornerRadius = 3f * density
+    }
+    hl.alpha = 0
+    foreground = hl
+    // Drawable 没有 ViewPropertyAnimator，用 ValueAnimator 直接驱动 alpha 属性。
+    var anim: android.animation.ValueAnimator? = null
+    fun fadeTo(target: Int, baseMs: Long, interp: TimeInterpolator) {
+        anim?.cancel()
+        anim = android.animation.ValueAnimator.ofInt(hl.alpha, target).apply {
+            duration = Motion.duration(ctx, baseMs)
+            interpolator = interp
+            addUpdateListener { hl.alpha = it.animatedValue as Int }
+            start()
+        }
+    }
+    setOnTouchListener { v, event ->
+        when (event.actionMasked) {
+            android.view.MotionEvent.ACTION_DOWN ->
+                fadeTo(255, Motion.PRESS_DOWN, Motion.accelerate)
+            android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL ->
+                fadeTo(0, Motion.PRESS_UP, Motion.decelerate)
+        }
+        false
+    }
+}
+
+/**
  * 旋转换 chrome：新机身只做干净淡入，不动位移。
  *
  * 铭牌/机顶键的位置是布局契约（真机调过很多轮），不能像面板那样带上 translationY；
