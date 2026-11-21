@@ -17,7 +17,8 @@ import androidx.viewpager2.widget.ViewPager2
 import com.filmcam.app.develop.ExifReader
 import com.filmcam.app.film.CaptureExifFormat
 import com.filmcam.app.ui.Haptics
-import com.filmcam.app.ui.Motion
+import com.filmcam.app.ui.animatePanelIn
+import com.filmcam.app.ui.animatePanelOut
 import com.filmcam.app.ui.hapticClick
 
 /**
@@ -164,21 +165,16 @@ class PhotoViewerActivity : AppCompatActivity() {
         if (!::panelInfo.isInitialized) return
         Haptics.vibrate(this, 18, 150)   // 翻面板：与机身按钮同级的确认感
         panelVisible = !panelVisible
-        // 11-21：面板进出统一到 Motion token（PANEL_IN 250ms / PANEL_OUT 180ms），
-        // 退场比入场短；reduced-motion 下时长按系统缩放折算。
+        // vc103：改为复用全 App 统一的面板动效（Motion.animatePanelIn/Out）——
+        // 淡入 + 12dp 上浮入场、8dp 下沉淡出退场，与设置面板/关于页完全一致。
+        // 原实现只有纯 alpha，黑底上几乎看不出变化（用户反馈「没有动效」）；
+        // reduced-motion 下统一函数会自动去掉位移、只留 alpha。
         if (panelVisible) {
             renderPanel(viewPager.currentItem)
             panelInfo.visibility = View.VISIBLE
-            panelInfo.alpha = 0f
-            panelInfo.animate().alpha(1f)
-                .setDuration(Motion.duration(this, Motion.PANEL_IN))
-                .setInterpolator(Motion.decelerate).start()
+            panelInfo.animatePanelIn()
         } else {
-            panelInfo.animate().alpha(0f)
-                .setDuration(Motion.duration(this, Motion.PANEL_OUT))
-                .setInterpolator(Motion.accelerate)
-                .withEndAction { panelInfo.visibility = View.GONE }
-                .start()
+            panelInfo.animatePanelOut { }
         }
     }
 
@@ -265,11 +261,10 @@ class PhotoViewerActivity : AppCompatActivity() {
         tvShooting.text = shootParts.joinToString(" · ")
 
         // 实拍参数：模拟机身铭牌之外的传感器真值，直接读标准 EXIF 字段。
-        // 外闪过曝复盘要看的就是这一行（ISO / 快门 / 用了哪盏灯）。
+        // vc103：面板只保留一个 ISO（上方 tvShooting 的胶卷模拟感光度），
+        // 这里不再重复写「实拍 ISO」；快门 / 外闪灯名 / 下方诊断行照旧保留，
+        // 外闪过曝复盘能力不丢。EXIF 落盘的 sensorIso 字段不受影响。
         val captureParts = mutableListOf<String>()
-        if (info.sensorIso.isNotBlank()) {
-            captureParts += getString(R.string.pf_capture_iso, info.sensorIso)
-        }
         if (info.exposureTime.isNotBlank()) {
             captureParts += getString(R.string.pf_capture_shutter, CaptureExifFormat.shutterLabel(info.exposureTime))
         }

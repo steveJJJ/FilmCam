@@ -88,6 +88,27 @@ class UiImprovementsContractTest {
     }
 
     @Test
+    fun `EXIF 面板只显示一个 ISO 且外闪诊断行不丢`() {
+        val kt = read("java/com/filmcam/app/PhotoViewerActivity.kt") ?: return
+        // 唯一 ISO 来自 tvShooting 的胶卷模拟感光度
+        assertTrue("拍摄参数行仍写胶卷 ISO", kt.contains("shootParts += \"ISO "))
+        // 面板不得再写第二处「实拍 ISO」（vc103 用户拍板：两个 ISO 只留一个）
+        assertFalse("不得再写 pf_capture_iso", kt.contains("R.string.pf_capture_iso"))
+        // 快门 / 外闪灯名 / 诊断两行全部保留，外闪复盘能力不丢
+        assertTrue("实拍快门保留", kt.contains("R.string.pf_capture_shutter"))
+        assertTrue("外闪灯名保留", kt.contains("R.string.pf_capture_ext_flash"))
+        assertTrue("外闪诊断行保留", kt.contains("R.string.pf_capture_channel"))
+        val layout = read("res/layout/activity_photo_viewer.xml") ?: return
+        assertTrue("tvCapture 行保留", layout.contains("android:id=\"@+id/tvCapture\""))
+        assertTrue("tvCaptureDetail 行保留", layout.contains("android:id=\"@+id/tvCaptureDetail\""))
+        // EXIF 写入侧的传感器真值不受影响
+        val writer = read("java/com/filmcam/app/develop/ContaxExif.kt")
+        if (writer != null) {
+            assertTrue("sensorIso 仍落盘", writer.contains("TAG_ISO_SPEED"))
+        }
+    }
+
+    @Test
     fun `权限拒绝铭牌在两处回调都接线且宽度契约不退化`() {
         val helper = read("java/com/filmcam/app/ui/PermissionNameplate.kt") ?: return
         assertTrue(helper.contains("enum class Kind"))

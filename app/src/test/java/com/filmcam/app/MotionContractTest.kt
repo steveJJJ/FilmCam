@@ -69,12 +69,19 @@ class MotionContractTest {
     }
 
     @Test
-    fun `PhotoViewer 面板进出统一 Motion token`() {
+    fun `PhotoViewer 面板进出复用全 App 统一动效函数`() {
         val p = read("java/com/filmcam/app/PhotoViewerActivity.kt") ?: return
-        assertTrue("入场用 PANEL_IN", p.contains("Motion.PANEL_IN"))
-        assertTrue("退场用 PANEL_OUT", p.contains("Motion.PANEL_OUT"))
-        assertTrue("入场 decelerate", p.contains("setInterpolator(Motion.decelerate)"))
-        assertTrue("退场 accelerate", p.contains("setInterpolator(Motion.accelerate)"))
+        // vc103：不再手写纯 alpha（黑底上看不出动效），改为复用 Motion 的统一扩展，
+        // token / 位移 / reduced-motion 全部由单一实现收口。
+        assertTrue("入场复用 animatePanelIn", p.contains("panelInfo.animatePanelIn()"))
+        assertTrue("退场复用 animatePanelOut", p.contains("panelInfo.animatePanelOut"))
+        assertTrue("不得回退成手写 alpha 动画", !p.contains("panelInfo.animate().alpha("))
+        val m = read("java/com/filmcam/app/ui/Motion.kt") ?: return
+        assertTrue("统一入场=淡入+上浮", m.contains("fun View.animatePanelIn()") &&
+            m.contains("alpha(1f)") && m.contains("translationY(0f)"))
+        assertTrue("统一退场=淡出+下沉", m.contains("fun View.animatePanelOut") &&
+            m.contains("alpha(0f)") && m.contains("translationY(8f"))
+        assertTrue("统一动效遵循 reduced-motion", m.contains("Motion.reduced(ctx)"))
     }
 
     @Test
