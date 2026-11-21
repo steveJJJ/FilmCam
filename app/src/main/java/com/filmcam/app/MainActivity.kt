@@ -1141,7 +1141,7 @@ class MainActivity : AppCompatActivity() {
                 .onFailure { android.util.Log.w("FlashDiag", "恢复建连失败", it) }
         }
         val rollIndex = prefs.getInt("rollIndex", 0).coerceIn(0, FilmRollRepository.rolls.size - 1)
-        // 上次选中的若是反转片（本版不支持），回退到第一支可用胶卷，避免带着禁用卷启动
+        // 启动恢复时若该卷已下架（available=false），回退到第一支可用胶卷，避免带着禁用卷启动
         val restored = FilmRollRepository.rolls[rollIndex].takeIf { it.available }
             ?: FilmRollRepository.rolls.first()
         selectFilmRoll(restored, fromUser = false)
@@ -1742,10 +1742,35 @@ class MainActivity : AppCompatActivity() {
     private fun showFilmRollPicker() {
         com.filmcam.app.ui.FilmRollPicker.show(
             activity = this,
+            currentName = currentRoll.name,
+            canPick = { roll -> filmRejectReason(roll) == null },
             onPick = { roll -> selectFilmRoll(roll) },
+            onReject = { roll ->
+                val reason = filmRejectReason(roll) ?: return@show
+                showLcdNotice(reason)
+                // 被拦要有「顶住了」的手感：双震，强度接近满档
+                vibrate(95, 235)
+                binding.viewfinderFrame.postDelayed({ vibrate(95, 235) }, 140)
+            },
             onVibrate = { ms, amp -> vibrate(ms, amp) },
             guard = { d -> d.guardDialog() },
         )
+    }
+
+    /**
+     * 换卷拦截的单一口径：null = 可以换，非 null = 拒绝原因文案。
+     * 唯一真实约束＝当前卷还有未冲洗帧时禁止换卷（真机拍完必须回卷才能开盖）。
+     * 🔴反转片可选、可拍摄（引擎 scan_film 直扫正片），不在这里拦截。
+     * 弹层的 canPick / onReject 与 selectFilmRoll 都走这里，避免两处判断漂移。
+     */
+    @Suppress("UNUSED_PARAMETER")
+    private fun filmRejectReason(roll: com.filmcam.app.filter.FilmRoll): String? {
+        val active = UndevelopedFilmStore.currentRoll()
+        val pending = active?.let { UndevelopedFilmStore.shotCount(it.rollId) } ?: 0
+        if (active != null && pending > 0) {
+            return getString(R.string.lcd_notice_develop_before_reload)
+        }
+        return null
     }
 
     // ===== 机身提示 =====
@@ -1840,19 +1865,10 @@ class MainActivity : AppCompatActivity() {
     /** 选中胶卷：切换 LUT + 更新图标。fromUser=false 用于启动时恢复设置（不做拦截）。 */
     private fun selectFilmRoll(roll: FilmRoll, fromUser: Boolean = true) {
         if (fromUser) {
-            // 反转片拦截：与原项目一致，本版只支持负片印相纸
-            if (!roll.available) {
-                showLcdNotice(getString(R.string.lcd_notice_slide_no_print))
-                vibrate(70, 200)
-                return
-            }
-            // 换卷拦截：当前卷有未冲洗帧时禁止换胶卷（对应真机拍完必须回卷才能开盖）
-            val active = UndevelopedFilmStore.currentRoll()
-            val pending = active?.let { UndevelopedFilmStore.shotCount(it.rollId) } ?: 0
-            if (active != null && pending > 0) {
-                showLcdNotice(getString(R.string.lcd_notice_develop_before_reload))
-                // 被拦下来要有「机身顶住了」的手感：两连震，比单纯给提示更直接。
-                // 强度给到接近满档——早先用系统默认强度在真机上偏软，顶不住的感觉出不来。
+            // 拦截口径与弹层 canPick / onReject 共用 filmRejectReason（单一来源）
+            val reason = filmRejectReason(roll)
+            if (reason != null) {
+                showLcdNotice(reason)
                 vibrate(95, 235)
                 binding.viewfinderFrame.postDelayed({ vibrate(95, 235) }, 140)
                 return
@@ -1864,7 +1880,24 @@ class MainActivity : AppCompatActivity() {
         saveSettings()
         // 选中一支新胶卷：给一记轻触确认，替换 LUT 的同时手上要有响应。
         // 时长比按键略长，像「卷芯卡到位」的一记闷响。
-        if (fromUser) vibrate(50, 190)
+        if (fromUser) {
+            vibrate(50, 190)
+            // P1 换卷翻牌：底部胶卷图标短促下沉回弹 + 亮度一闪，像卷芯咔哒到位。
+            // 纯 View 层动画，不动相机/LUT 时序；和 haptic 同帧。
+            binding.tvFilmName.animate().cancel()
+            binding.tvFilmName.animate()
+                .scaleX(0.88f).scaleY(0.88f)
+                .setDuration(Motion.duration(this, Motion.PRESS_DOWN))
+                .setInterpolator(Motion.accelerate)
+                .withEndAction {
+                    binding.tvFilmName.animate()
+                        .scaleX(1f).scaleY(1f)
+                        .setDuration(Motion.duration(this, Motion.PRESS_UP))
+                        .setInterpolator(Motion.decelerate)
+                        .start()
+                }
+                .start()
+        }
     }
 
     // ===== T3 机身 UI 交互 =====

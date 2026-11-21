@@ -29,7 +29,10 @@ object FilmRollPicker {
      */
     fun show(
         activity: AppCompatActivity,
+        currentName: String?,
+        canPick: (FilmRoll) -> Boolean,
         onPick: (FilmRoll) -> Unit,
+        onReject: (FilmRoll) -> Unit,
         onVibrate: (Long, Int) -> Unit,
         guard: (Dialog) -> Unit,
     ) {
@@ -45,11 +48,17 @@ object FilmRollPicker {
         rv.layoutParams?.height = (activity.resources.displayMetrics.heightPixels * 0.72f).toInt()
         dialog.behavior.skipCollapsed = true   // 直接全展开，避免半开状态看不到底部
         rv.layoutManager = LinearLayoutManager(activity)
-        val adapter = FilmRollAdapter(FilmRollRepository.rolls) { roll ->
-            onVibrate(22, 175)        // 选中一支胶卷也有一记触感，和滑动/长按拖拽保持一致
-            onPick(roll)
-            dialog.dismiss()
-        }
+        val adapter = FilmRollAdapter(
+            rolls = FilmRollRepository.rolls,
+            currentName = currentName,
+            onPickAnimationEnd = { roll ->
+                onVibrate(22, 175)    // 选中一记触感，和滑动/长按拖拽保持一致
+                onPick(roll)
+                dialog.dismiss()
+            },
+            onRejectAnimationEnd = { roll -> onReject(roll) },
+            canPick = canPick,
+        )
         rv.adapter = adapter
 
         // 长按拖拽排序：把常用的胶卷拖到列表顶部，方便下次切换。

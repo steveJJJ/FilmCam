@@ -145,6 +145,10 @@ class GalleryActivity : AppCompatActivity() {
     private fun askFilmAndImport(uris: List<Uri>) {
         com.filmcam.app.ui.FilmRollPicker.show(
             this,
+            // 导入场景没有「当前装机卷」概念，不显示装机中铭牌
+            currentName = null,
+            // 导入只按胶卷型号选，所有卷（含反转片）都可选：正片走引擎 scan_film 直扫
+            canPick = { true },
             onPick = { roll ->
                 val id = runCatching { FilmStockMapper.filmStockIdFor(roll.name) }.getOrNull()
                 if (id == null) {
@@ -155,6 +159,7 @@ class GalleryActivity : AppCompatActivity() {
                     importAsRoll(uris, id)
                 }
             },
+            onReject = { /* 导入场景无拦截；保留接线供将来限制卷提示 */ },
             onVibrate = { ms, amp -> com.filmcam.app.ui.Haptics.vibrate(this, ms, amp) },
             guard = { /* 画廊非取景器，无需吞掉关闭事件 */ },
         )

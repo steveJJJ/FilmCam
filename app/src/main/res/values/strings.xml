@@ -383,8 +383,8 @@ App 版本：%1$s (%2$d)
     <string name="hidden_crash_clear">清空</string>
     <string name="hidden_crash_cleared">崩溃日志已清空</string>
 
-    <!-- 胶卷列表：反转片不支持印相 -->
-    <string name="film_slide_no_print">反转片（幻灯）不能印到相纸上——本版暂只支持负片</string>
+    <!-- 11-21 换卷列表：当前装机卷的琥珀刻字 -->
+    <string name="film_current_badge">装机中</string>
     <!-- 外闪自学习配对向导（vc86 第三层） -->
     <string name="flash_pair_title">外闪配对</string>
     <string name="flash_pair_subtitle">自学习配对 · FLASH PAIRING</string>

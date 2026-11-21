@@ -27,9 +27,11 @@ data class FilmRoll(
     /** 英文适用场景；缺省回落中文。 */
     val sceneEn: String = scene,
     /**
-     * 是否可选。反转片（type=positive）在 SpektraLab-Android 原项目中是明确拒绝的：
-     * 选中即提示「反转片（幻灯）不能印到相纸上——本版暂只支持负片」并回退。
-     * 这里保持一致：列表仍展示（让用户知道引擎有这支），但置灰且不可选中。
+     * 是否可选。默认全卷可选 —— 反转片（type=positive）是引擎一等支持的胶卷：
+     * FilmStockMapper.isPositive → scan_film 直扫正片、NO_PRINT 不用相纸，
+     * DevParamsDialog 对正片把相纸行置灰。🔴反转片必须可选、可拍摄，不得置灰或拦截
+     * （11-21 用户明确纠正「这个不是bug，我需要反转片可以拍摄」）。
+     * 本字段仅作个别卷临时下架的保留位，当前列表中没有任何卷为 false。
      */
     val available: Boolean = true
 ) {

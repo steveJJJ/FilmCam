@@ -370,8 +370,8 @@ Memory available: %10$d MB / %11$d MB total
     <string name="hidden_crash_clear">Clear</string>
     <string name="hidden_crash_cleared">Crash log cleared</string>
 
-    <!-- Film roll list: slide film cannot be printed -->
-    <string name="film_slide_no_print">Slide film cannot be printed — this version only supports negatives</string>
+    <!-- 11-21 film roll list: badge for the loaded roll -->
+    <string name="film_current_badge">LOADED</string>
     <!-- External flash self-learning pairing wizard (vc86 layer 3) -->
     <string name="flash_pair_title">Flash Pairing</string>
     <string name="flash_pair_subtitle">SELF-LEARNING PAIRING</string>
