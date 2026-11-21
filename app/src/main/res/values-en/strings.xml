@@ -132,8 +132,8 @@ Memory available: %10$d MB / %11$d MB total
         <item>Like changing a colour filter; stays until you change it. Swiping the waist-level finder shows a nominal colour temperature (≈K, not measured)</item>
         <item>Follow system / 简体中文 / English</item>
         <item>Full = original resolution, slower; Standard ≈ 12 MP, ~3x faster</item>
-        <item>Undo the extra colour added by the phone ISP: Standard / Soft / Original. JPG and imports only; RAW is untouched. Fine-tune 0-100% in the engineer console</item>
-        <item>Save a RAW negative (DNG) with each shot; developing bypasses the phone ISP for truer detail and grain. Falls back to JPEG on unsupported devices; same switch as the engineer console</item>
+        <item>Undo the extra colour added by the phone ISP: Standard / Soft / Original. JPG and imports only; RAW is untouched. Fine-tune 0-100% in the engineering console</item>
+        <item>Save a RAW negative (DNG) with each shot; developing bypasses the phone ISP for truer detail and grain. Falls back to JPEG on unsupported devices; same switch as the engineering console</item>
         <item>View, copy or delete paired external flashes; import a shared profile or teach the app a new light</item>
         <item>Nameplate and licenses</item>
     </string-array>
@@ -327,10 +327,10 @@ Memory available: %10$d MB / %11$d MB total
     <string name="about_source_request">Request source: %1$s</string>
     <string name="about_source_subject">RELIC CAM source request</string>
     <string name="about_gpl_full">GNU GPL-3.0 full text</string>
-    <string name="hidden_title">Engineer mode</string>
-    <string name="eng_mode_title">Engineer mode</string>
-    <string name="eng_mode_on_toast">Engineer mode on — one tap on the version number opens it</string>
-    <string name="eng_mode_off_toast">Engineer mode off — tap the version number 10 times to unlock again</string>
+    <string name="hidden_title">Engineering Mode</string>
+    <string name="eng_mode_title">Engineering Mode</string>
+    <string name="eng_mode_on_toast">Engineering Mode on — one tap on the version number opens it</string>
+    <string name="eng_mode_off_toast">Engineering Mode off — tap the version number 10 times to unlock again</string>
     <string name="eng_slow_hint">Shoot at film shutter speed in low light — the shake is the point</string>
     <string name="eng_slow_mode">Mode</string>
     <string name="eng_lens_blur">Lens softness</string>

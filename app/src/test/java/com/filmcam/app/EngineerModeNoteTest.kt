@@ -100,6 +100,31 @@ class EngineerModeNoteTest {
     }
 
     @Test
+    fun `用户可见文案统一为工程模式不再写工程师`() {
+        fun valueOf(source: String, key: String): String {
+            val needle = "<string name=\"" + key + "\">"
+            val at = source.indexOf(needle)
+            if (at < 0) return ""
+            return source.substring(at + needle.length)
+                .substringBefore("</string>")
+        }
+        val zh = read("res/values/strings.xml") ?: return
+        val en = read("res/values-en/strings.xml") ?: return
+        listOf("hidden_title", "eng_mode_title", "eng_mode_on_toast", "eng_mode_off_toast").forEach { key ->
+            val zhVal = valueOf(zh, key)
+            val enVal = valueOf(en, key)
+            assertTrue("中文 $key 不得写「工程师模式」: $zhVal", !zhVal.contains("工程师"))
+            assertTrue("中文 $key 要写「工程模式」: $zhVal", zhVal.contains("工程模式"))
+            assertTrue("英文 $key 不得写 Engineer mode: $enVal",
+                !enVal.contains("Engineer mode") && !enVal.contains("Engineer Mode"))
+            assertTrue("英文 $key 要写 Engineering Mode: $enVal", enVal.contains("Engineering Mode"))
+        }
+        // 关于页帮正文案里的两处控制台叫法也统一
+        assertTrue("中文帮正文案不得再写工程师控制台", !zh.contains("工程师控制台"))
+        assertTrue("英文帮正文案不得再写 engineer console", !en.contains("engineer console"))
+    }
+
+    @Test
     fun `工程师模式控制台入口与行 hint 绑定没有被撤掉`() {
         val about = read("java/com/filmcam/app/AboutActivity.kt") ?: return
         assertTrue("控制台入口必须在", about.contains("showEngineerConsole()"))

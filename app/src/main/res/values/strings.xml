@@ -140,8 +140,8 @@ App 版本：%1$s (%2$d)
         <item>相当于换一片校色滤镜，拍完也保持不变；腰平取景窗横滑时显示该档标称色温（≈K，非实测）</item>
         <item>跟随系统 / 简体中文 / English</item>
         <item>完整＝原始分辨率，慢；标准≈1200 万像素，快约 3 倍</item>
-        <item>退掉手机 ISP 多加的那层色彩：标准 / 淡 / 原始，仅 JPG 与导入照片，RAW 不变；工程师控制台可细调 0–100%</item>
-        <item>拍摄时同时保存 RAW 底片（DNG），冲洗绕过手机 ISP，细节与颗粒更接近真实底片；本机不支持时自动回落 JPEG，工程师控制台同款开关</item>
+        <item>退掉手机 ISP 多加的那层色彩：标准 / 淡 / 原始，仅 JPG 与导入照片，RAW 不变；工程控制台可细调 0–100%</item>
+        <item>拍摄时同时保存 RAW 底片（DNG），冲洗绕过手机 ISP，细节与颗粒更接近真实底片；本机不支持时自动回落 JPEG，工程控制台同款开关</item>
         <item>查看、复制或删除已配对的外置闪光灯；导入别人的档案，或自学习配一盏新灯</item>
         <item>机身铭牌与许可证</item>
     </string-array>
@@ -340,10 +340,10 @@ App 版本：%1$s (%2$d)
     <string name="about_source_request">索取源码：%1$s</string>
     <string name="about_source_subject">RELIC CAM 源码索取</string>
     <string name="about_gpl_full">GNU GPL-3.0 全文</string>
-    <string name="hidden_title">工程师模式</string>
-    <string name="eng_mode_title">工程师模式</string>
-    <string name="eng_mode_on_toast">工程师模式已开启：关于页点一下版本号即可进入</string>
-    <string name="eng_mode_off_toast">工程师模式已关闭，需在关于页连点版本号 10 次重新开启</string>
+    <string name="hidden_title">工程模式</string>
+    <string name="eng_mode_title">工程模式</string>
+    <string name="eng_mode_on_toast">工程模式已开启：关于页点一下版本号即可进入</string>
+    <string name="eng_mode_off_toast">工程模式已关闭，需在关于页连点版本号 10 次重新开启</string>
     <string name="eng_slow_hint">暗光按胶卷快门速度拍，抖那一下才是胶片</string>
     <string name="eng_slow_mode">档位</string>
     <string name="eng_lens_blur">镜头柔度</string>
