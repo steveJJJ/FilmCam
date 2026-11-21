@@ -20,7 +20,7 @@ android {
         applicationId = "com.filmcam.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 103
+        versionCode = 104
         versionName = "1.0.0"
     }
 

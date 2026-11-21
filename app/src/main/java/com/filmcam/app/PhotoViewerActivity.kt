@@ -1,13 +1,11 @@
 package com.filmcam.app
 
 import android.content.Intent
-import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
 import android.view.View
-import android.widget.ImageView
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.fragment.app.Fragment
@@ -17,6 +15,7 @@ import androidx.viewpager2.widget.ViewPager2
 import com.filmcam.app.develop.ExifReader
 import com.filmcam.app.film.CaptureExifFormat
 import com.filmcam.app.ui.Haptics
+import com.filmcam.app.ui.ZoomableImageView
 import com.filmcam.app.ui.animatePanelIn
 import com.filmcam.app.ui.animatePanelOut
 import com.filmcam.app.ui.hapticClick
@@ -51,6 +50,9 @@ class PhotoViewerActivity : AppCompatActivity() {
         val position = intent.getIntExtra(EXTRA_POSITION, 0)
 
         viewPager = findViewById(R.id.viewPager)
+        // ViewPager2 只要可交互，就会在 DOWN 后 CANCEL 子 View 的触摸，
+        // 翻页权统一交给 ZoomableImageView：1x 时它用 onSwipePage 回调驱动 setCurrentItem。
+        viewPager.isUserInputEnabled = false
         panelInfo = findViewById(R.id.panelInfo)
 
         viewPager.adapter = PhotoPagerAdapter(this, uris)
@@ -158,6 +160,24 @@ class PhotoViewerActivity : AppCompatActivity() {
         } catch (e: Exception) {
             false
         }
+    }
+
+    /**
+     * 缩放状态回传（来自 ZoomableImageView）。
+     * 1x（scale<=1.01f）和放大态都不把触摸权交还 ViewPager2 —— 一旦交还，
+     * 它会在 DOWN 后立刻 CANCEL 子 View，手势全废。翻页统一走 [onSwipePage]。
+     */
+    fun onZoomChanged(scale: Float) {
+        if (!::viewPager.isInitialized) return
+        viewPager.isUserInputEnabled = false
+    }
+
+    /** 1x 横向滑动翻页：direction=-1 上一张 / +1 下一张。 */
+    fun onSwipePage(direction: Int) {
+        if (!::viewPager.isInitialized || !::uris.isInitialized) return
+        val next = viewPager.currentItem + direction
+        if (next !in uris.indices) return
+        viewPager.setCurrentItem(next, true)
     }
 
     /** 由 Fragment 在图片被点击时回调，切换面板可见性。 */
@@ -344,6 +364,7 @@ class PhotoViewerActivity : AppCompatActivity() {
 
     class PhotoFragment : Fragment() {
         private var uri: String? = null
+        private var zoomView: ZoomableImageView? = null
 
         override fun onCreate(savedInstanceState: Bundle?) {
             super.onCreate(savedInstanceState)
@@ -355,34 +376,27 @@ class PhotoViewerActivity : AppCompatActivity() {
             container: android.view.ViewGroup?,
             savedInstanceState: Bundle?
         ): android.view.View {
-            val iv = ImageView(requireContext()).apply {
+            val zv = ZoomableImageView(requireContext()).apply {
                 layoutParams = android.view.ViewGroup.LayoutParams(
                     android.view.ViewGroup.LayoutParams.MATCH_PARENT,
                     android.view.ViewGroup.LayoutParams.MATCH_PARENT
                 )
-                scaleType = ImageView.ScaleType.FIT_CENTER
+                // 放大时 View 内部不回调 onTap（单指平移/捏合不误触面板）；1x 单击照旧切面板
+                onTap = { (activity as? PhotoViewerActivity)?.onPhotoTapped() }
+                onScaleChanged = { s -> (activity as? PhotoViewerActivity)?.onZoomChanged(s) }
+                // 1x 横向滑动 → 宿主 setCurrentItem（ViewPager2 自身不再拦截触摸）
+                onSwipePage = { dir -> (activity as? PhotoViewerActivity)?.onSwipePage(dir) }
             }
-            uri?.let {
-                try {
-                    val input = requireContext().contentResolver.openInputStream(Uri.parse(it))
-                    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                    BitmapFactory.decodeStream(input, null, bounds)
-                    input?.close()
-                    val sampleSize = (bounds.outWidth / 1080).coerceAtLeast(1)
-                    val opts = BitmapFactory.Options().apply { inSampleSize = sampleSize }
-                    val bmp = requireContext().contentResolver.openInputStream(Uri.parse(it))?.use { stream ->
-                        BitmapFactory.decodeStream(stream, null, opts)
-                    }
-                    iv.setImageBitmap(bmp)
-                } catch (e: Exception) { }
-            }
-            // 点击照片 → 切换信息面板。
-            // ViewPager2 内部 RecyclerView 会拦截触摸，但单击（无水平滑动）不会被拦截。
-            // setOnClickListener 在 ViewPager2 中可以正常收到单击事件。
-            iv.setOnClickListener {
-                (activity as? PhotoViewerActivity)?.onPhotoTapped()
-            }
-            return iv
+            zoomView = zv
+            uri?.let { zv.setImageUri(Uri.parse(it), this@PhotoFragment) }
+            return zv
+        }
+
+        override fun onDestroyView() {
+            // 释放 RegionDecoder / fd / bitmap，并把翻页权交还宿主
+            zoomView?.release()
+            zoomView = null
+            super.onDestroyView()
         }
 
         companion object {
