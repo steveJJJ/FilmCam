@@ -114,4 +114,25 @@ class ZoomContractTest {
             Regex("(?<![A-Za-z])ImageView\\(").containsMatchIn(a))
         assertTrue("销毁视图必须释放解码器并交还翻页权", a.contains("zoomView?.release()"))
     }
+
+    @Test
+    fun `看图页从缩略图位置放大入场且切页有即时震感`() {
+        val g = read("java/com/filmcam/app/GalleryActivity.kt") ?: return
+        assertTrue("网格点击必须从被点缩略图位置放大入场（替代系统右滑）",
+            g.contains("ActivityOptionsCompat.makeScaleUpAnimation("))
+        assertTrue("放大起点必须取被点的 iv 矩形",
+            g.contains("iv, 0, 0, iv.width, iv.height"))
+        assertTrue("必须以 opts bundle 启动看图页（否则转场不生效）",
+            g.contains("startActivity(intent, opts.toBundle())"))
+
+        val a = read("java/com/filmcam/app/PhotoViewerActivity.kt") ?: return
+        assertTrue("手指判向瞬间就要给确认震（不能只等 onPageSelected）",
+            a.contains("Haptics.vibrate(this@PhotoViewerActivity, 18, 150)"))
+        assertTrue("onPageSelected 必须保留轻 tick 收尾（契约锁点）",
+            a.contains("Haptics.vibrate(this@PhotoViewerActivity, 8, 90)"))
+        assertTrue("翻到头要有到头轻震",
+            a.contains("Haptics.vibrate(this@PhotoViewerActivity, 10, 90)"))
+        assertFalse("不得再用原来全工程最弱的 12/110 切页震",
+            a.contains("Haptics.vibrate(this@PhotoViewerActivity, 12, 110)"))
+    }
 }

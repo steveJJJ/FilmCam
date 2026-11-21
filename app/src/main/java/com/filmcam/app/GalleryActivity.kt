@@ -17,6 +17,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.PickVisualMediaRequest
+import androidx.core.app.ActivityOptionsCompat
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
@@ -754,7 +755,11 @@ class GalleryActivity : AppCompatActivity() {
                         putStringArrayListExtra(PhotoViewerActivity.EXTRA_URIS, ArrayList(items.map { it.toString() }))
                         putExtra(PhotoViewerActivity.EXTRA_POSITION, pos)
                     }
-                    startActivity(intent)
+                    // 从被点的缩略图位置放大铺开（替代系统默认右滑入场）。
+                    // iv 就是网格里被点的那张正方形缩略图，起点矩形即它的可见范围。
+                    val opts = ActivityOptionsCompat.makeScaleUpAnimation(
+                        iv, 0, 0, iv.width, iv.height)
+                    startActivity(intent, opts.toBundle())
                 }
             }
             return holder

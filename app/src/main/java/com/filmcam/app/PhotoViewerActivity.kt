@@ -75,7 +75,9 @@ class PhotoViewerActivity : AppCompatActivity() {
         viewPager.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
             override fun onPageSelected(position: Int) {
                 super.onPageSelected(position)
-                Haptics.vibrate(this@PhotoViewerActivity, 12, 110)
+                // 页到位的轻 tick（即时确认已在 onSwipePage 给出，这里只做微弱收尾，
+                // 避免快速连翻时两记震动叠成糊震）。契约要求本处保留本前缀的调用。
+                Haptics.vibrate(this@PhotoViewerActivity, 8, 90)
                 if (panelVisible) renderPanel(position)
             }
         })
@@ -176,7 +178,14 @@ class PhotoViewerActivity : AppCompatActivity() {
     fun onSwipePage(direction: Int) {
         if (!::viewPager.isInitialized || !::uris.isInitialized) return
         val next = viewPager.currentItem + direction
-        if (next !in uris.indices) return
+        if (next !in uris.indices) {
+            Haptics.vibrate(this@PhotoViewerActivity, 10, 90)  // 到头轻震，和第 1/12 张护栏同档
+            return
+        }
+        // 手指判向的那一帧就给确认震 —— onPageSelected 要等 smooth scroll 走完
+        // （200-300ms 之后才回调），且原来的 12ms/110 是全工程最弱一档，
+        // 两者叠加就是你感觉「滑动没有震动」的原因。18ms/150 与设置面板翻档同档。
+        Haptics.vibrate(this@PhotoViewerActivity, 18, 150)
         viewPager.setCurrentItem(next, true)
     }
 
