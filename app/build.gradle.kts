@@ -20,7 +20,7 @@ android {
         applicationId = "com.filmcam.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 98
+        versionCode = 99
         versionName = "1.0.0"
     }
 
@@ -69,7 +69,7 @@ dependencies {
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("com.google.android.material:material:1.12.0")
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
-    implementation("androidx.activity:activity-ktx:1.9.0")
+    implementation("androidx.activity:activity-ktx:1.10.1")
 
     // 折叠屏姿态感知（腰平彩蛋）：FoldingFeature 判断「半开 + 折痕分离」，
     // 只读窗口布局信息，不新增任何权限（库本身无 manifest 权限）。

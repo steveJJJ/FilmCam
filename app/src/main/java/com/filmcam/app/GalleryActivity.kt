@@ -13,6 +13,8 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
@@ -118,7 +120,14 @@ class GalleryActivity : AppCompatActivity() {
         btnImport = findViewById(R.id.btnImport)
         btnImport.setOnClickListener {
             com.filmcam.app.ui.Haptics.vibrate(this, 24, 175)
-            pickPhotos.launch(arrayOf("image/*"))
+            // 11-21 用户：一进来要看到**相册列表**，选了相册再挑照片；
+            // SAF 的 OpenMultipleDocuments 默认落在 Camera 文件树，正是要修的体验。
+            pickPhotos.launch(
+                PickVisualMediaRequest.Builder()
+                    .setMediaType(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                    .setDefaultTab(ActivityResultContracts.PickVisualMedia.DefaultTab.AlbumsTab)
+                    .build()
+            )
         }
     }
 
@@ -127,11 +136,13 @@ class GalleryActivity : AppCompatActivity() {
     private lateinit var btnImport: TextView
 
     /**
-     * 从相册挑已有的照片来冲。走 SAF（无需存储权限），选完再问装哪卷胶卷 ——
-     * 这些照片本来就是别人拿数码拍的，装进哪一卷，出片就是哪一卷的味道。
+     * 从相册挑已有的照片来冲。用 Android Photo Picker（零存储权限），首屏直达
+     * 「相册」Tab —— 用户先进相册再挑照片，不再一进来就是 Camera 文件树（11-21 要求）。
+     * 设备不支持 Photo Picker 时 AndroidX 自动回落 SAF（行为同旧版，无回归）。
+     * 选完仍走原来的「装哪卷胶卷 → 导入冲洗」链路，一点不动。
      */
     private val pickPhotos = registerForActivityResult(
-        androidx.activity.result.contract.ActivityResultContracts.OpenMultipleDocuments()
+        ActivityResultContracts.PickMultipleVisualMedia(MAX_IMPORT_FRAMES)
     ) { uris ->
         if (uris.isNullOrEmpty()) return@registerForActivityResult
         askFilmAndImport(uris)

@@ -26,11 +26,28 @@ import android.view.OrientationEventListener
  * 进程被后台杀死后系统直接 resume 栈顶页面时也能立刻生效。
  *
  * ⚠️ vc76 起 MainActivity 声明了 `configChanges`，`requestedOrientation` 变化
- * 不再触发 Activity 重建（也不关相机）；但其他 4 页仍会重建，所以滞回/去抖
- * 依旧要留在这一层，且**继续对所有页面生效** —— 只对 MainActivity 生效会让
- * 相册/关于倒过来时铭牌与状态栏挤在一起，正是本类当初要修的问题。
+ * 不再触发 Activity 重建（也不关相机）；关于/配对页仍会重建，所以滞回/去抖
+ * 依旧要留在这一层。vc99 起暗房四页在 Manifest 锁 `portrait`，本 guard 必须
+ * 豁免它们 —— 否则 resume 时写回 `FULL_SENSOR` 会覆盖 Manifest 的锁竖屏，
+ * 用户摇手机冲洗时页面跟着转。关于/配对页仍受 guard 管辖。
  */
 object ReversePortraitGuard {
+
+    /**
+     * 暗房四页在 Manifest 已声明 `portrait`，且用户明确要求摇手机冲洗时页面不旋转。
+     * 这里必须短路：[apply] 会给其它页面写 `FULL_SENSOR`，不豁免就会把 Manifest
+     * 的 portrait 覆盖掉（真机表现：暗房仍随手机自动旋转）。
+     */
+    private val FIXED_PORTRAIT_PAGES = setOf(
+        "com.filmcam.app.GalleryActivity",
+        "com.filmcam.app.PhotoViewerActivity",
+        "com.filmcam.app.develop.DevelopmentActivity",
+        "com.filmcam.app.develop.EditActivity",
+    )
+
+    /** 供单测直接覆盖：这些页面不接受 guard 的运行时方向改写。 */
+    fun isFixedPortrait(componentClassName: String): Boolean =
+        componentClassName in FIXED_PORTRAIT_PAGES
 
     /** 进入反向竖屏的窄区间：必须比较明确地倒拿才锁。 */
     private const val ENTER_MIN = 165
@@ -119,6 +136,13 @@ object ReversePortraitGuard {
 
     private fun apply(activity: Activity) {
         if (activity.isFinishing) return
+        if (isFixedPortrait(activity.componentName.className)) {
+            // 双保险：保持 Manifest 的 portrait，绝不让 guard 写回 FULL_SENSOR。
+            if (activity.requestedOrientation != ActivityInfo.SCREEN_ORIENTATION_PORTRAIT) {
+                activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            }
+            return
+        }
         val wanted = if (reverse) {
             ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         } else {
