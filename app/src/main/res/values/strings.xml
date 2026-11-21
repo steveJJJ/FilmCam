@@ -469,6 +469,21 @@ App 版本：%1$s (%2$d)
     <string name="flash_pair_hit_first">先点这一行试发，灯闪了再点「闪了」</string>
     <string name="flash_pair_primary_confirm_with">保存这条 · %1$s</string>
     <string name="flash_pair_frame_disabled_hint">主按钮未点亮：先点一条，灯闪了再点「闪了」</string>
+    <!-- 神牛 A2 专用快速试闪：通用候选帧撞不上 1000,Test，识别到 A2 才显示 -->
+    <string name="flash_pair_a2_quick">神牛 A2 快速试闪 · 自动双发</string>
+    <string name="flash_pair_a2_hint">识别到 A2：点快配按钮自动复位并连发两次已验证试闪帧，氙气闪了直接点底部「保存配对」。</string>
+    <string name="flash_pair_a2_reset">A2 · 复位闪光模式</string>
+    <string name="flash_pair_a2_fire1">A2 · 试闪 1/2（首发可能被灯吃掉）</string>
+    <string name="flash_pair_a2_fire2">A2 · 试闪 2/2 · 请看灯</string>
+    <string name="flash_pair_a2_done">A2 · 已连发两次，氙气闪了直接点底部「保存配对」</string>
+    <string name="flash_pair_a2_no_cmd">A2 · 未找到 FEC7，直接试闪（可能只闪 LED）</string>
+    <string name="flash_pair_a2_no_char">A2 · 未找到 FFF1 试闪口，请换通道</string>
+    <!-- FotorGear COB 快速配对：已验证 FFE0 / FFE1 + 05 00，不再逐条试候选帧 -->
+    <string name="flash_pair_fg_quick">FotorGear 快速配对 · 一键试闪</string>
+    <string name="flash_pair_fg_hint">识别到 FotorGear：点快配按钮发已验证的 05 00（约 200ms 出光），灯闪了直接点底部「保存配对」。</string>
+    <string name="flash_pair_fg_fire">FotorGear · 试闪中（约 200ms 后出光）</string>
+    <string name="flash_pair_fg_done">FotorGear · 已试闪，灯闪了直接点底部「保存配对」</string>
+    <string name="flash_pair_fg_no_char">FotorGear · 未找到 FFE1 试闪口，请换通道</string>
     <string name="flash_pair_copy_profile">复制档案（可贴给朋友 / 论坛）</string>
     <string name="flash_pair_copied">档案已复制</string>
     <string name="flash_pair_copy_empty">还没有可复制的档案</string>

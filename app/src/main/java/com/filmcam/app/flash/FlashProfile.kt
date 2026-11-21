@@ -59,7 +59,7 @@ data class FlashProfile(
      * 显式存了非默认 offset 的档案原样尊重 —— 用户/众包可以标定自己的灯。
      */
     val effectiveSyncOffsetMs: Int
-        get() = if (isXenonA2 && syncOffsetMs == DEFAULT_OFFSET_MS) -80 else syncOffsetMs
+        get() = if (isXenonA2 && syncOffsetMs == DEFAULT_OFFSET_MS) A2_SYNC_OFFSET_MS else syncOffsetMs
 
     /**
      * 造型灯命令通道（生效值）：老 v1 档案没存 cmd 字段，但 A2 的命令口布局
@@ -107,11 +107,44 @@ data class FlashProfile(
         get() = !deviceName.contains("COB", ignoreCase = true)
 
     private val isXenonA2: Boolean
-        get() = deviceName.contains("A2", ignoreCase = true) ||
-            address.equals("A4:C1:38:3C:23:19", ignoreCase = true)
+        get() = isA2Device(deviceName, address)
 
     companion object {
         private const val DEFAULT_OFFSET_MS = -200
+
+        /** A2 触发口与服务（试闪 / 心跳 FFF1，服务 FFF0）。 */
+        val A2_TRIGGER_SERVICE: String = canonicalUuid("FFF0")
+        val A2_TRIGGER_CHAR: String = canonicalUuid("FFF1")
+
+        /**
+         * 唯一被真机验证能出氙气的试闪帧：ASCII `1000,Test`。
+         * 🔴 不要改成 `Take`——抓包报告里的 `,Take` 与代码/实拍结论冲突。
+         */
+        const val A2_TRIGGER_HEX = "313030302C54657374"
+
+        /** 配对向导识别 A2 的单一口径（名字含 A2 或已知 MAC）。 */
+        fun isA2Device(name: String?, address: String?): Boolean =
+            name?.contains("A2", ignoreCase = true) == true ||
+                address.equals("A4:C1:38:3C:23:19", ignoreCase = true)
+
+        /** FotorGear COB 触发口与服务（Nordic UART FFE1 / FFE0）。 */
+        val FG_TRIGGER_SERVICE: String = canonicalUuid("FFE0")
+        val FG_TRIGGER_CHAR: String = canonicalUuid("FFE1")
+
+        /** 真机 05 00 / 05 01 都能闪光；正式触发统一用 05 00。 */
+        const val FG_TRIGGER_HEX = "05 00"
+
+        /** COB 灯起辉慢约 200ms，拍照必须提前触发。 */
+        const val FG_SYNC_OFFSET_MS = -200
+
+        const val FG_KNOWN_ADDRESS = "DA:BA:CD:E2:BE:B0"
+
+        /** 配对向导识别 FotorGear 的单一口径（名字 / 已知 MAC）。 */
+        fun isFotorGearDevice(name: String?, address: String?): Boolean =
+            name?.let {
+                it.contains("fotorgear", ignoreCase = true) ||
+                    it.contains("fg-cob", ignoreCase = true)
+            } == true || address.equals(FG_KNOWN_ADDRESS, ignoreCase = true)
 
         /**
          * A2 一张照片的触发段数 —— **当前为 1（单发）**。
@@ -123,6 +156,9 @@ data class FlashProfile(
          * Camera2Controller（STAGE2_MS/STAGE3_MS），将来破出 `0c`/`a009` 语义再启用。
          */
         const val A2_TRIGGER_STAGES = 1
+
+        /** A2 氙气灯实测同步偏移（ms），配对向导存档案时也用这个单一口径。 */
+        const val A2_SYNC_OFFSET_MS = -80
 
         /** A2 造型灯命令口真值：服务 FEC0 / 特征 FEC7（handle 0x0012，prop=0x0c）。 */
         val A2_CMD_SERVICE: String = canonicalUuid("FEC0")

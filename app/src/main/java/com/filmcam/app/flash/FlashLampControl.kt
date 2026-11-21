@@ -49,6 +49,39 @@ interface FlashLampControl {
 
     /** 原样下发一帧到命令口（协议验证 / 调试用）。 */
     fun sendRawFrame(frame: ByteArray): Boolean = false
+
+}
+
+/**
+ * FotorGear COB 配置帧组帧（FFE0/FFE1 透传口，纯 Kotlin 零 Android 依赖）。
+ *
+ * 2026-11-21 从极影相机（com.shenzhenfotor.fotor v5.0）反编译还原
+ * （`tmp/fotorgear_app/`，smali `lf.3.smali` / `cq.3.smali`）：
+ *  - `03 <lo> <hi>`：预闪时间，16 位小端毫秒（UI "before" / 预闪光时间）
+ *  - `04 <lo> <hi>`：快门触发时间，16 位小端毫秒（UI "after" / 快门触发时间）
+ *  - `05 00` / `05 01`：简单触发（唯一真机验证过的拍摄路径，**不在这里动**）
+ *  - `07` + 8 字节小端 tick：定时触发（32.768kHz 时钟，极影主路径；未验证，暂不接入）
+ *
+ * ⚠️ 03/04 是**配置命令**：11-06 探测时「03 01 / 04 00 点不亮」正是因为它们
+ * 不触发闪光。下发后对 05 xx 出光行为的影响尚未定量 —— 只允许从工程控制台
+ * 手动下发，拍摄链路一字不动。
+ */
+object FotorGearProtocol {
+    /** 预闪时间（ms）：灯身先闪的补光时长。 */
+    const val CMD_PREFLASH_TIME = 0x03
+
+    /** 快门触发时间（ms）：极影 UI 的 "Shutter trigger time"。 */
+    const val CMD_SHUTTER_TRIGGER_TIME = 0x04
+
+    /** 组帧：`cmd + 16 位小端毫秒`，钳位到 0–65535。 */
+    fun timeFrame(cmd: Int, ms: Int): ByteArray {
+        val v = ms.coerceIn(0, 0xFFFF)
+        return byteArrayOf(
+            cmd.toByte(),
+            (v and 0xFF).toByte(),
+            ((v shr 8) and 0xFF).toByte()
+        )
+    }
 }
 
 /** CRC8-Dallas/Maxim：反射多项式 0x8c，初值 0。 */

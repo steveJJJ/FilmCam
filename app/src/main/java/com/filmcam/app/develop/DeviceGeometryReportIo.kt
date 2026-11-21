@@ -34,6 +34,16 @@ object DeviceGeometryReportIo {
             val dir = context.getExternalFilesDir(null) ?: context.filesDir
             File(dir, FILE_NAME).writeText(text)
         }
-        return text
+        // 11-21：附上引擎 Vulkan 日志尾部。spk_open failed 这类原生层报错的
+        // 真实原因（probe 失败 / 显存不足 / 超限）引擎只写在这个文件里，
+        // App 读得到但用户看不到 —— 不接进报告，线上反馈就只有二手转述。
+        return text + runCatching {
+            val dir = context.getExternalFilesDir(null) ?: context.filesDir
+            val vk = File(dir, "spektrafilm_vk.log")
+            if (vk.exists() && vk.length() > 0) {
+                "\n\n---SPK_VK_LOG（引擎 Vulkan 诊断尾部）---\n" +
+                    vk.readText(Charsets.UTF_8).takeLast(1500)
+            } else ""
+        }.getOrDefault("")
     }
 }

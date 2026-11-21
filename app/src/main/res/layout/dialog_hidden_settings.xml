@@ -259,11 +259,6 @@
                 android:textSize="12sp" />
         </LinearLayout>
 
-        <View
-            android:layout_width="match_parent"
-            android:layout_height="1dp"
-            android:background="#26262A" />
-
         <!-- v2 暗房编辑流程：11-18 起全量默认开；冲洗只出母片，编辑保存才入相册（只做状态展示） -->
         <include
             android:id="@+id/rowEngDarkroomV2"

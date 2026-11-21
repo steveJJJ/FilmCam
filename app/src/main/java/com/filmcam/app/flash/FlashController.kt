@@ -119,6 +119,9 @@ class FlashController(
     /** 当前灯一张照片要发几次触发帧（A2 = 3 段式：LED → 氙气预闪 → 氙气主闪）。 */
     fun triggerStages(): Int = bleFlash?.triggerStages ?: 1
 
+    /** 当前灯的可读名字（控制台按灯型启用面板用；null = 无会话）。 */
+    fun currentLightName(): String? = bleFlash?.displayName
+
     /** 当前灯是否需要「回电中」提示（氙气灯 true / COB false）。 */
     fun needsRecycleHint(): Boolean = bleFlash?.needsRecycleHint ?: false
 

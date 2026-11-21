@@ -32,6 +32,8 @@ object FlashProfileCodec {
     fun encode(p: FlashProfile): String = buildString {
         append(HEADER).append('\n')
         append("address=").append(p.address).append('\n')
+        // decode 读的是 brand=；以前只 decode 不 encode 会让非 learned 档案往返丢品牌
+        append("brand=").append(p.brandId).append('\n')
         append("name=").append(p.deviceName).append('\n')
         append("display=").append(p.displayName).append('\n')
         append("service=").append(p.serviceUuid).append('\n')

@@ -70,6 +70,7 @@ class FlashPairActivity : AppCompatActivity(), FlashPairEngine.Listener {
     private lateinit var trialChannel: TextView
     private lateinit var manualHex: EditText
     private lateinit var manualMac: EditText
+    private lateinit var btnQuickTrial: Button
     private lateinit var btnPrimary: Button
     private lateinit var btnBack: Button
     private lateinit var doneText: TextView
@@ -134,6 +135,7 @@ class FlashPairActivity : AppCompatActivity(), FlashPairEngine.Listener {
         trialChannel = findViewById(R.id.trialChannel)
         manualHex = findViewById(R.id.manualHex)
         manualMac = findViewById(R.id.manualMac)
+        btnQuickTrial = findViewById(R.id.btnQuickTrial)
         btnPrimary = findViewById(R.id.btnPrimary)
         btnBack = findViewById(R.id.btnBack)
         doneText = findViewById(R.id.doneText)
@@ -141,6 +143,7 @@ class FlashPairActivity : AppCompatActivity(), FlashPairEngine.Listener {
 
         findViewById<Button>(R.id.btnManualMac).hapticClick { connectManualMac() }
         findViewById<Button>(R.id.btnManualSend).hapticClick { sendManual() }
+        btnQuickTrial.hapticClick { quickTrial() }
         findViewById<Button>(R.id.btnNoneFlash).hapticClick { backToCharStep() }
         findViewById<Button>(R.id.btnTestAgain).hapticClick { testSavedTrigger() }
         findViewById<Button>(R.id.btnCopyProfile).hapticClick { copyProfile() }
@@ -484,6 +487,11 @@ class FlashPairActivity : AppCompatActivity(), FlashPairEngine.Listener {
 
     override fun onWriteSent(hex: String, ok: Boolean) {
         runOnUiThread {
+            // 快配帧（A2 / FotorGear）不在通用候选表里；发成功就必须让它出现在「已试」分组
+            // 且默认展开，用户才点得到那颗「闪了」确认按钮。
+            if (hex == FlashProfile.A2_TRIGGER_HEX || hex == FlashProfile.FG_TRIGGER_HEX) {
+                triedExpanded = true
+            }
             lastSentHex = if (ok) hex else null
             if (ok) markTried(hex) else status(getString(R.string.flash_pair_write_fail, hex))
             updatePrimary()
@@ -520,6 +528,52 @@ class FlashPairActivity : AppCompatActivity(), FlashPairEngine.Listener {
     override fun onWriteAck(delivered: Boolean) {
         runOnUiThread {
             if (!delivered) status(getString(R.string.flash_pair_write_rejected))
+        }
+    }
+
+    override fun onA2TrialProgress(stage: String) {
+        runOnUiThread {
+            if (stage == "DONE" || stage == "NO_TRIGGER_CHAR") {
+                btnQuickTrial.isEnabled = true
+            }
+            if (stage == "DONE") {
+                // 🔴 真机反馈：灯闪了以后用户找不到/点不中那颗小「闪了」，流程卡死。
+                // 快配路径的确认直接自动化：序列发完 = 帧已落「已试」，hitFrame 就位，
+                // 主按钮点亮 —— 用户看灯闪了直接点底部「保存配对」即可。
+                confirmQuickHit()
+            }
+            status(
+                getString(
+                    when (stage) {
+                        "RESET" -> R.string.flash_pair_a2_reset
+                        "FIRE_1" -> R.string.flash_pair_a2_fire1
+                        "FIRE_2" -> R.string.flash_pair_a2_fire2
+                        "NO_CMD" -> R.string.flash_pair_a2_no_cmd
+                        "NO_TRIGGER_CHAR" -> R.string.flash_pair_a2_no_char
+                        else -> R.string.flash_pair_a2_done
+                    }
+                )
+            )
+        }
+    }
+
+    override fun onFgTrialProgress(stage: String) {
+        runOnUiThread {
+            if (stage == "DONE" || stage == "NO_TRIGGER_CHAR") {
+                btnQuickTrial.isEnabled = true
+            }
+            if (stage == "DONE") {
+                confirmQuickHit()
+            }
+            status(
+                getString(
+                    when (stage) {
+                        "FG_FIRE" -> R.string.flash_pair_fg_fire
+                        "NO_TRIGGER_CHAR" -> R.string.flash_pair_fg_no_char
+                        else -> R.string.flash_pair_fg_done
+                    }
+                )
+            )
         }
     }
 
@@ -701,7 +755,95 @@ class FlashPairActivity : AppCompatActivity(), FlashPairEngine.Listener {
                 it.charUuid.uppercase().removePrefix("0000").take(8)
             )
         }
+        // A2 / FotorGear 的验证帧走专用快路径；其它灯保持通用候选帧流程。
+        val quickKind = quickPairKind()
+        btnQuickTrial.visibility = if (quickKind == null) View.GONE else View.VISIBLE
+        btnQuickTrial.isEnabled = true
+        if (quickKind == QuickPair.FG) {
+            btnQuickTrial.setText(R.string.flash_pair_fg_quick)
+        } else if (quickKind == QuickPair.A2) {
+            btnQuickTrial.setText(R.string.flash_pair_a2_quick)
+        }
         showPage(Page.FRAME)
+        when (quickKind) {
+            QuickPair.A2 -> status(getString(R.string.flash_pair_a2_hint))
+            QuickPair.FG -> status(getString(R.string.flash_pair_fg_hint))
+            null -> {}
+        }
+    }
+
+    private enum class QuickPair { A2, FG }
+
+    /** 单一口径：认灯页选中的是不是已验证过、有快配路径的灯。 */
+    private fun quickPairKind(): QuickPair? {
+        val dev = selectedDevice ?: return null
+        return when {
+            FlashProfile.isA2Device(dev.name, dev.address) -> QuickPair.A2
+            FlashProfile.isFotorGearDevice(dev.name, dev.address) -> QuickPair.FG
+            else -> null
+        }
+    }
+
+    /** 单一口径：认灯页选中的是不是已验证过的神牛 A2。 */
+    private fun isSelectedA2(): Boolean = quickPairKind() == QuickPair.A2
+
+    /** 单一口径：认灯页选中的是不是已验证过的 FotorGear COB。 */
+    private fun isSelectedFotorGear(): Boolean = quickPairKind() == QuickPair.FG
+
+    /**
+     * 一键跑已验证试闪路径，不要求用户先选对通道 —— 选错进到本页也能恢复。
+     * A2：FEC7 复位 + FFF1 双发；FotorGear：FFE1 单发 05 00。
+     */
+    private fun quickTrial() {
+        val hex: String
+        val hintRes: Int
+        val failRes: Int
+        when (quickPairKind()) {
+            QuickPair.A2 -> {
+                hex = FlashProfile.A2_TRIGGER_HEX
+                hintRes = R.string.flash_pair_a2_hint
+                failRes = R.string.flash_pair_a2_no_char
+            }
+            QuickPair.FG -> {
+                hex = FlashProfile.FG_TRIGGER_HEX
+                hintRes = R.string.flash_pair_fg_hint
+                failRes = R.string.flash_pair_fg_no_char
+            }
+            null -> return
+        }
+        markTried(hex)
+        triedExpanded = true
+        hitFrame = null
+        lastSentHex = hex
+        updateFrameGroups()
+        updatePrimary()
+        btnQuickTrial.isEnabled = false   // 序列跑完再放开，避免与候选帧试写抢 GATT
+        status(getString(hintRes))
+        val sent = when (quickPairKind()) {
+            QuickPair.A2 -> engine.quickTrialA2()
+            QuickPair.FG -> engine.quickTrialFotorGear()
+            null -> false
+        }
+        if (!sent) status(getString(failRes))
+    }
+
+    /**
+     * 快配序列发完后的自动确认：hitFrame 直接就位、主按钮点亮。
+     * 用户看灯闪了点底部「保存配对」即可；没看到闪就再点一次快配按钮重试。
+     */
+    private fun confirmQuickHit() {
+        val hex = when (quickPairKind()) {
+            QuickPair.A2 -> FlashProfile.A2_TRIGGER_HEX
+            QuickPair.FG -> FlashProfile.FG_TRIGGER_HEX
+            null -> return
+        }
+        markTried(hex)
+        triedExpanded = true
+        hitFrame = hex
+        lastSentHex = hex
+        updateFrameGroups()
+        refreshHitMarks()
+        updatePrimary()
     }
 
     /** 行：点左边试发，点右边「闪了」确认命中；命中的那条才会被保存。 */
@@ -720,9 +862,12 @@ class FlashPairActivity : AppCompatActivity(), FlashPairEngine.Listener {
         val hit = TextView(this).apply {
             tag = "hit"
             text = getString(R.string.flash_pair_hit)
-            setTextColor(0xFF8A8880.toInt())
-            textSize = 11f
-            setPadding(dp(10), dp(4), dp(10), dp(4))
+            setTextColor(0xFF9FE1CB.toInt())
+            textSize = 12f
+            // 真机反馈：11sp 灰字太小点不中。加大成一块真正的按钮（深底 + 实色字），
+            // 用户灯闪了以后不用瞄准一颗小灰字。
+            setBackgroundColor(0xFF141416.toInt())
+            setPadding(dp(14), dp(8), dp(14), dp(8))
         }
         row.addView(hexText)
         row.addView(View(this), LinearLayout.LayoutParams(
@@ -808,7 +953,46 @@ class FlashPairActivity : AppCompatActivity(), FlashPairEngine.Listener {
         val dev = selectedDevice ?: return
         val char = selectedChar ?: return
         val hex = hitFrame ?: return
-        val profile = FlashProfile(
+        val quickA2 = isSelectedA2() && hex == FlashProfile.A2_TRIGGER_HEX
+        val quickFg = isSelectedFotorGear() && hex == FlashProfile.FG_TRIGGER_HEX
+        val profile = if (quickA2) {
+            // 快速试闪命中：存完整 v2 档案（FFF1 触发 + FEC7 造型灯/复位口 + 实测 -80）。
+            // 不能只存「当前选中的通道」——用户可能是从 FEC7/HID 通道进来的。
+            val a2Name = dev.name.takeIf { FlashProfile.isA2Device(it, null) } ?: "Godox A2"
+            FlashProfile(
+                brandId = "learned",
+                displayName = a2Name,
+                deviceName = a2Name,
+                address = dev.address.uppercase(),
+                serviceUuid = FlashProfile.A2_TRIGGER_SERVICE,
+                writeCharUuid = FlashProfile.A2_TRIGGER_CHAR,
+                writeNoResponse = true,
+                triggerHex = FlashProfile.A2_TRIGGER_HEX,
+                // 同步偏移按灯型定：氙气灯（A2）出光快 ≈ -80ms，COB 持续灯起辉慢 ≈ -200ms。
+                // 用户可在档案文本里手改 offset 覆盖（导入时按行读取）。
+                syncOffsetMs = FlashProfile.A2_SYNC_OFFSET_MS,
+                pairedAt = System.currentTimeMillis(),
+                cmdServiceUuid = FlashProfile.A2_CMD_SERVICE,
+                cmdCharUuid = FlashProfile.A2_CMD_CHAR
+            )
+        } else if (quickFg) {
+            // FotorGear 快速配对命中：固定 FFE0 / FFE1 + 05 00 + -200，
+            // 不存用户误选的 HID / 配置通道（那些通道永远不会让灯闪）。
+            val fgName = dev.name.takeIf { FlashProfile.isFotorGearDevice(it, null) }
+                ?: "FG-COB-FLASH"
+            FlashProfile(
+                brandId = "fotorgear",
+                displayName = "FotorGear COB",
+                deviceName = fgName,
+                address = dev.address.uppercase(),
+                serviceUuid = FlashProfile.FG_TRIGGER_SERVICE,
+                writeCharUuid = FlashProfile.FG_TRIGGER_CHAR,
+                writeNoResponse = true,
+                triggerHex = FlashProfile.FG_TRIGGER_HEX,
+                syncOffsetMs = FlashProfile.FG_SYNC_OFFSET_MS,
+                pairedAt = System.currentTimeMillis()
+            )
+        } else FlashProfile(
             brandId = "learned",
             displayName = dev.name,
             deviceName = dev.name,
@@ -819,7 +1003,9 @@ class FlashPairActivity : AppCompatActivity(), FlashPairEngine.Listener {
             triggerHex = hex,
             // 同步偏移按灯型定：氙气灯（A2）出光快 ≈ -80ms，COB 持续灯起辉慢 ≈ -200ms。
             // 用户可在档案文本里手改 offset 覆盖（导入时按行读取）。
-            syncOffsetMs = if (dev.name.contains("A2", ignoreCase = true)) -80 else -200,
+            syncOffsetMs = if (isSelectedA2()) {
+                FlashProfile.A2_SYNC_OFFSET_MS
+            } else FlashProfile.FG_SYNC_OFFSET_MS,
             pairedAt = System.currentTimeMillis()
         )
         if (!store.save(profile)) {

@@ -295,8 +295,9 @@ class ExternalFlashRegistryTest {
         val pair = read("java/com/filmcam/app/flash/FlashPairActivity.kt") ?: return
         assertTrue("存档时必须显式设 syncOffsetMs（不能光靠 FlashProfile 默认 -200）",
             pair.contains("syncOffsetMs ="))
-        assertTrue("A2 氙气灯必须 -80（按名字特判）",
-            pair.contains("ignoreCase = true") && pair.contains("-80"))
-        assertTrue("COB/其它灯保留 -200", pair.contains("-200"))
+        assertTrue("A2 氙气灯必须走统一口径 -80（FlashProfile.A2_SYNC_OFFSET_MS）",
+            pair.contains("FlashProfile.A2_SYNC_OFFSET_MS"))
+        assertTrue("COB/其它灯保留 -200（统一口径 FG_SYNC_OFFSET_MS）",
+            pair.contains("FlashProfile.FG_SYNC_OFFSET_MS"))
     }
 }

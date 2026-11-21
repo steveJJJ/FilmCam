@@ -524,6 +524,18 @@ class DevelopmentService : Service() {
                     DevelopmentState.errorCount++
                     if (firstError == null) {
                         firstError = e.message ?: e.javaClass.simpleName
+                        // 11-21：冲洗失败上下文进设备诊断报告——线上用户走
+                        // 「关于 → 发邮件反馈」自动带走全文，否则 spk_open 这类
+                        // 报错只有二手转述（机型/胶卷/通路全不可知），没法定位。
+                        runCatching {
+                            com.filmcam.app.develop.DeviceGeometryReport.putAll(
+                                "dev.lastError" to (e.message ?: e.javaClass.simpleName),
+                                "dev.errorFrame" to index.toString(),
+                                "dev.film" to filmDisplayName,
+                                "dev.errorCount" to DevelopmentState.errorCount.toString(),
+                            )
+                            com.filmcam.app.develop.DeviceGeometryReportIo.flush(applicationContext)
+                        }
                     }
                 }
                 notifyStateToMain()

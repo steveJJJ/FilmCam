@@ -63,7 +63,7 @@ import androidx.annotation.RequiresPermission
  */
 class FotorGearFlash(
     private val context: Context
-) : ExternalFlashDriver {
+) : ExternalFlashDriver, FlashLampControl {
 
     companion object {
         private const val TAG = "FotorGearFlash"
@@ -103,6 +103,28 @@ class FotorGearFlash(
     private val connectWatchdog = Runnable { onConnectWatchdog() }
 
     override var onStatusChange: ((String) -> Unit)? = null
+
+    override val displayName: String? get() = "FG-COB-FLASH"
+
+    // ---- FlashLampControl：极影反编译还原的 03/04 配置帧走同一条 FFE1 透传口。
+    // 只暴露 sendRawFrame（工程控制台手动下发）；拍摄链路的 05 00 触发原样不动。
+    override val lampControl: FlashLampControl? get() = this
+
+    override val ready: Boolean
+        get() = gatt != null && writeChar != null
+
+    override fun sendRawFrame(frame: ByteArray): Boolean {
+        val g = gatt ?: return false
+        val char = writeChar ?: return false
+        if (frame.isEmpty()) return false
+        return writeCommand(g, char, frame, "LAMP_CMD")
+    }
+
+    // A2 语义的造型灯操作对 COB 常亮灯无意义：一律返回 false（接口默认实现不覆盖抽象方法，这里显式补齐）。
+    override fun setLed(on: Boolean): Boolean = false
+    override fun resetFlashMode(): Boolean = false
+    override fun setBrightnessPercent(pct: Int): Boolean = false
+    override fun setColorTemp(pos: Int): Boolean = false
 
     private val bluetoothAdapter: BluetoothAdapter? by lazy {
         (context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager).adapter

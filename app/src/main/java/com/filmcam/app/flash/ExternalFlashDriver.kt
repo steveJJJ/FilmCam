@@ -39,6 +39,9 @@ interface ExternalFlashDriver {
     /** 拍摄后是否提示「回电中」（氙气灯 true，COB 常亮灯 false）。 */
     val needsRecycleHint: Boolean get() = true
 
+    /** 当前灯的可读名字（工程控制台按灯型启用面板用；null = 未知）。 */
+    val displayName: String? get() = null
+
     /** 开始扫描 / 连接（实现自己维护重连）。 */
     fun startScan()
 

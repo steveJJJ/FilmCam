@@ -388,6 +388,18 @@
                 android:textSize="12sp"
                 android:lineSpacingExtra="4dp" />
 
+            <!-- 识别到 A2 / FotorGear 才显示：走各自已验证快路径，不让用户盲点候选帧 -->
+            <Button
+                android:id="@+id/btnQuickTrial"
+                android:layout_width="match_parent"
+                android:layout_height="40dp"
+                android:layout_marginTop="8dp"
+                android:background="#141416"
+                android:text="@string/flash_pair_a2_quick"
+                android:textColor="#9FE1CB"
+                android:textSize="12sp"
+                android:visibility="gone" />
+
             <ScrollView
                 android:layout_width="match_parent"
                 android:layout_height="0dp"

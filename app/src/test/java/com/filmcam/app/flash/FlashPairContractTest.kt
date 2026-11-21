@@ -236,9 +236,10 @@ class FlashPairContractTest {
                 .containsMatchIn(engine)
         )
         assertTrue(
-            "名字兜底只能用通用品类词，不能出现厂牌名",
-            Regex("FLASH_NAME_HINTS").containsMatchIn(engine) &&
-                !Regex("fotorgear|fg-cob", RegexOption.IGNORE_CASE).containsMatchIn(engine)
+            "通用扫描的名字兜底只能用通用品类词（专用快配才按厂牌，常量在 FlashProfile）",
+            Regex("FLASH_NAME_HINTS\\s*=\\s*listOf\\(\\s*\"flash\",\\s*\"light\",\\s*\"lamp\",\\s*\"cob\"")
+                .containsMatchIn(engine) &&
+                !engine.contains("\"FG-COB-FLASH\"") && !engine.contains("DA:BA:CD")
         )
         assertTrue(
             "已配对设备要读系统缓存的服务 UUID 用于判断",
@@ -384,6 +385,159 @@ class FlashPairContractTest {
         assertTrue(
             "从扫描区按 BACK 要回管理区，而不是直接退出向导",
             Regex("manageMode && !manageVisible\\) showManage\\(\\)").containsMatchIn(act)
+        )
+    }
+
+    @Test
+    fun `A2 快速试闪锁死已验证协议真值`() {
+        assertTrue(
+            "A2 触发必须是 ASCII 1000,Test（hex 313030302C54657374），绝不能换成 Take",
+            FlashProfile.A2_TRIGGER_HEX.equals("313030302C54657374", ignoreCase = true)
+        )
+        assertTrue(
+            "触发帧必须解析成 9 字节 ASCII（1000,Test）",
+            FlashTriggerCommand.parseHex(FlashProfile.A2_TRIGGER_HEX)?.size == 9
+        )
+        assertTrue(
+            "A2 触发口 = 服务 FFF0 / 特征 FFF1",
+            FlashProfile.A2_TRIGGER_SERVICE.endsWith("fff0-0000-1000-8000-00805f9b34fb") &&
+                FlashProfile.A2_TRIGGER_CHAR.endsWith("fff1-0000-1000-8000-00805f9b34fb")
+        )
+        assertTrue(
+            "A2 命令口 = 服务 FEC0 / 特征 FEC7（不是 FEC7 服务 / F0A0 特征）",
+            FlashProfile.A2_CMD_SERVICE.endsWith("fec0-0000-1000-8000-00805f9b34fb") &&
+                FlashProfile.A2_CMD_CHAR.endsWith("fec7-0000-1000-8000-00805f9b34fb")
+        )
+        assertTrue("A2 同步偏移固定 -80ms", FlashProfile.A2_SYNC_OFFSET_MS == -80)
+        assertTrue(
+            "A2 识别口径既能认名字也能认已知 MAC",
+            FlashProfile.isA2Device("Godox-A2-2319", null) &&
+                FlashProfile.isA2Device(null, "a4:c1:38:3c:23:19") &&
+                !FlashProfile.isA2Device("FG-COB-FLASH", "DA:BA:CD:E2:BE:B0")
+        )
+
+        val saved = FlashProfile(
+            brandId = "learned",
+            displayName = "Godox A2",
+            deviceName = "Godox A2",
+            address = "A4:C1:38:3C:23:19",
+            serviceUuid = FlashProfile.A2_TRIGGER_SERVICE,
+            writeCharUuid = FlashProfile.A2_TRIGGER_CHAR,
+            writeNoResponse = true,
+            triggerHex = FlashProfile.A2_TRIGGER_HEX,
+            syncOffsetMs = FlashProfile.A2_SYNC_OFFSET_MS,
+            cmdServiceUuid = FlashProfile.A2_CMD_SERVICE,
+            cmdCharUuid = FlashProfile.A2_CMD_CHAR
+        )
+        val decoded = FlashProfileCodec.decode(FlashProfileCodec.encode(saved))
+        assertTrue("快速试闪档案必须可完整往返", decoded == saved)
+    }
+
+    @Test
+    fun `A2 快速试闪引导接线与复位序列不可回退`() {
+        val engine = read("java/com/filmcam/app/flash/FlashPairEngine.kt") ?: return
+        val act = read("java/com/filmcam/app/flash/FlashPairActivity.kt") ?: return
+        val layout = read("res/layout/activity_flash_pair.xml") ?: return
+        val zh = read("res/values/strings.xml") ?: return
+        val en = read("res/values-en/strings.xml") ?: return
+
+        assertTrue(
+            "试闪页必须有快配按钮（A2 / FotorGear 共用，通用候选表撞不上 1000,Test）",
+            layout.contains("@+id/btnQuickTrial") &&
+                act.contains("R.id.btnQuickTrial") &&
+                act.contains("fun quickTrial()") &&
+                act.contains("enum class QuickPair")
+        )
+        assertTrue(
+            "中英都要有 A2 快速试闪文案",
+            zh.contains("name=\"flash_pair_a2_quick\"") && en.contains("name=\"flash_pair_a2_quick\"")
+        )
+        assertTrue(
+            "A2 快速试闪必须写已验证触发帧，不能用 Take 或候选 05 xx",
+            engine.contains("FlashProfile.A2_TRIGGER_HEX") &&
+                !engine.contains("1000,Take") && !engine.contains(",Take")
+        )
+        assertTrue(
+            "快速试闪必须重放唯一已验证复位序列，0c 必须是 00",
+            engine.contains("A2LampProtocol.frame(A2LampProtocol.CMD_LAMP_BRIGHTNESS, 0x01)") &&
+                engine.contains("A2LampProtocol.frame(A2LampProtocol.CMD_LAMP_MODE, 0x00)") &&
+                engine.contains("A2LampProtocol.frame(A2LampProtocol.CMD_FLASH_PARAM, 0x00)") &&
+                engine.contains("A2LampProtocol.frame(A2LampProtocol.CMD_SHUTTER_LISTEN, 0x00)") &&
+                !engine.contains("CMD_FLASH_PARAM, 0x50")
+        )
+        assertTrue(
+            "双发时序必须保留（首发被灯吃掉 + 1500ms 预热 + 500ms 双发）",
+            engine.contains("A2_PREROLL_MS") && engine.contains("A2_TRIAL_GAP_MS") &&
+                engine.contains("\"FIRE_2\"")
+        )
+        assertTrue(
+            "快配 DONE 必须自动确认（灯闪了直接点底部保存，不再找小「闪了」）",
+            Regex("onA2TrialProgress[\\s\\S]{0,800}confirmQuickHit\\(\\)").containsMatchIn(act) &&
+                Regex("onFgTrialProgress[\\s\\S]{0,800}confirmQuickHit\\(\\)").containsMatchIn(act) &&
+                act.contains("private fun confirmQuickHit()")
+        )
+        assertTrue(
+            "保存 A2 档案必须写 FFF1 触发口 + FEC7 命令口 + -80，不能拿误选的通道落盘",
+            Regex("val quickA2[\\s\\S]{0,1800}FlashProfile\\.A2_TRIGGER_CHAR[\\s\\S]{0,1800}FlashProfile\\.A2_CMD_CHAR")
+                .containsMatchIn(act) &&
+                act.contains("FlashProfile.A2_SYNC_OFFSET_MS") &&
+                act.contains("FlashProfile.A2_TRIGGER_HEX")
+        )
+    }
+
+    @Test
+    fun `FotorGear 快速配对锁死 FFE0 FFE1 05 00 与 -200`() {
+        assertTrue(
+            "FotorGear 触发口 = 服务 FFE0 / 特征 FFE1",
+            FlashProfile.FG_TRIGGER_SERVICE.endsWith("ffe0-0000-1000-8000-00805f9b34fb") &&
+                FlashProfile.FG_TRIGGER_CHAR.endsWith("ffe1-0000-1000-8000-00805f9b34fb")
+        )
+        assertTrue(
+            "FotorGear 触发帧必须是真机验证的 05 00",
+            FlashTriggerCommand.parseHex(FlashProfile.FG_TRIGGER_HEX)?.contentEquals(byteArrayOf(0x05, 0x00)) == true
+        )
+        assertTrue("FotorGear 同步偏移固定 -200ms", FlashProfile.FG_SYNC_OFFSET_MS == -200)
+        assertTrue(
+            "FotorGear 识别口径认名字与已知 MAC",
+            FlashProfile.isFotorGearDevice("FG-COB-FLASH", null) &&
+                FlashProfile.isFotorGearDevice(null, "da:ba:cd:e2:be:b0") &&
+                !FlashProfile.isFotorGearDevice("Godox A2", "A4:C1:38:3C:23:19")
+        )
+
+        val saved = FlashProfile(
+            brandId = "fotorgear",
+            displayName = "FotorGear COB",
+            deviceName = "FG-COB-FLASH",
+            address = "DA:BA:CD:E2:BE:B0",
+            serviceUuid = FlashProfile.FG_TRIGGER_SERVICE,
+            writeCharUuid = FlashProfile.FG_TRIGGER_CHAR,
+            writeNoResponse = true,
+            triggerHex = FlashProfile.FG_TRIGGER_HEX,
+            syncOffsetMs = FlashProfile.FG_SYNC_OFFSET_MS
+        )
+        assertTrue(
+            "快速配对档案必须可完整往返",
+            FlashProfileCodec.decode(FlashProfileCodec.encode(saved)) == saved
+        )
+
+        val engine = read("java/com/filmcam/app/flash/FlashPairEngine.kt") ?: return
+        val act = read("java/com/filmcam/app/flash/FlashPairActivity.kt") ?: return
+        val zh = read("res/values/strings.xml") ?: return
+        val en = read("res/values-en/strings.xml") ?: return
+        assertTrue(
+            "引擎必须有 FotorGear 快配入口且写已验证帧",
+            engine.contains("fun quickTrialFotorGear()") &&
+                engine.contains("FlashProfile.FG_TRIGGER_HEX")
+        )
+        assertTrue(
+            "中英都要有 FotorGear 快配文案",
+            zh.contains("name=\"flash_pair_fg_quick\"") && en.contains("name=\"flash_pair_fg_quick\"") &&
+                zh.contains("name=\"flash_pair_fg_hint\"") && en.contains("name=\"flash_pair_fg_hint\"")
+        )
+        assertTrue(
+            "快配保存必须写 FFE0 / FFE1 / 05 00 / -200，不能拿误选通道落盘",
+            Regex("val quickFg[\\s\\S]{0,2500}FlashProfile\\.FG_TRIGGER_CHAR[\\s\\S]{0,600}FlashProfile\\.FG_SYNC_OFFSET_MS")
+                .containsMatchIn(act)
         )
     }
 

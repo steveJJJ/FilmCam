@@ -5,6 +5,7 @@ import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothGatt
 import android.bluetooth.BluetoothGattCallback
 import android.bluetooth.BluetoothGattCharacteristic
+import android.bluetooth.BluetoothGattDescriptor
 import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothProfile
 import android.content.Context
@@ -32,6 +33,8 @@ class LearnedProfileDriver(
 
     companion object {
         private const val TAG = "LearnedFlash"
+        /** 标准通知开关描述符（触发口灯主动上报的取证通道，11-21 07+tick 校准调研）。 */
+        private const val CCCD_UUID = "00002902-0000-1000-8000-00805f9b34fb"
         private const val RECONNECT_DELAY_MS = 2_000L
         private const val CONNECT_TIMEOUT_MS = 15_000L
         /**
@@ -64,6 +67,8 @@ class LearnedProfileDriver(
 
     override val triggerStages: Int get() = profile.triggerStages
     override val needsRecycleHint: Boolean get() = profile.needsRecycleHint
+
+    override val displayName: String? get() = profile.displayName
 
     /** 造型灯命令通道（本驱动自己实现 [FlashLampControl]）。 */
     override val lampControl: FlashLampControl get() = this
@@ -161,6 +166,34 @@ class LearnedProfileDriver(
                     }
                     val char = svc?.getCharacteristic(java.util.UUID.fromString(profile.writeCharUuid))
                     writeChar = char
+                    // 11-21 取证：订阅触发口通知（灯主动上报：02 xx 电量心跳、
+                    // 可能的 07+tick 时钟校准源）。只监听不回写，不违反「连接后
+                    // 只重放复位序列」纪律；日志走 FlashNotify tag，不刷状态栏。
+                    if (char != null &&
+                        char.properties and BluetoothGattCharacteristic.PROPERTY_NOTIFY != 0
+                    ) {
+                        runCatching {
+                            g.setCharacteristicNotification(char, true)
+                            val cccd = char.getDescriptor(java.util.UUID.fromString(CCCD_UUID))
+                            if (cccd != null) {
+                                if (android.os.Build.VERSION.SDK_INT >=
+                                    android.os.Build.VERSION_CODES.TIRAMISU
+                                ) {
+                                    g.writeDescriptor(
+                                        cccd,
+                                        BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+                                    )
+                                } else {
+                                    @Suppress("DEPRECATION")
+                                    cccd.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+                                    @Suppress("DEPRECATION")
+                                    g.writeDescriptor(cccd)
+                                }
+                            } else {
+                                android.util.Log.w(TAG, "触发口没有 CCCD，通知收不到")
+                            }
+                        }.onFailure { android.util.Log.w(TAG, "订阅通知失败", it) }
+                    }
                     // v2 档案：造型灯命令通道（A2 = 服务 FEC0 / 特征 FEC7，老 v1 档案按灯型补全）。
                     // 找不到不阻塞触发链路 —— 触发是主功能，LED/亮度/色温是增值能力。
                     // 解析按「特征 UUID 全场扫」而不是「先锁服务再取特征」：档案里的服务
@@ -223,6 +256,22 @@ class LearnedProfileDriver(
                     handler.removeCallbacks(writeWatchdog)
                     drainWrites()
                 }
+
+                @Suppress("DEPRECATION")
+                override fun onCharacteristicChanged(
+                    g: BluetoothGatt,
+                    characteristic: BluetoothGattCharacteristic
+                ) {
+                    logNotify(characteristic.uuid, characteristic.value)
+                }
+
+                override fun onCharacteristicChanged(
+                    g: BluetoothGatt,
+                    characteristic: BluetoothGattCharacteristic,
+                    value: ByteArray
+                ) {
+                    logNotify(characteristic.uuid, value)
+                }
             })
         }.getOrNull()
         gatt = newGatt
@@ -246,10 +295,19 @@ class LearnedProfileDriver(
         scheduleReconnect(300L)
     }
 
+    /** 重连预算：连试 10 次（约 1 分钟）仍失败就判死会话，交 rebuildSession 换血。
+     *  11-21 真机事故：极影占住灯后死会话一直占「已有 BLE 会话」坑，全员 write=false。 */
+    private val maxReconnectAttempts = 10
+
     /** 灯休眠后 Android 的 connectGatt 常直接给超时 status；定时重试直到连上。 */
     private fun scheduleReconnect(delayMs: Long = RECONNECT_DELAY_MS) {
         handler.postDelayed({
             if (released || connecting || writeChar != null) return@postDelayed
+            if (reconnectAttempts >= maxReconnectAttempts) {
+                android.util.Log.w(TAG, "重连预算耗尽，会话判死 ${profile.displayName}")
+                onStatusChange?.invoke("SESSION_DEAD")
+                return@postDelayed
+            }
             reconnectAttempts++
             android.util.Log.i(TAG, "重连 ${profile.displayName} #$reconnectAttempts")
             val adapter = bluetoothAdapter ?: return@postDelayed
@@ -304,7 +362,9 @@ class LearnedProfileDriver(
     // ---- FlashLampControl：造型灯命令通道（A2 协议见 [A2LampProtocol]，CRC8-Maxim）----
 
     override val ready: Boolean
-        get() = gatt != null && cmdChar != null
+        // A2 有独立命令口；无独立命令口的档案（触发口即命令口，03/04 配置
+        // 与触发同一根特征）——任一就绪即可用。
+        get() = gatt != null && (cmdChar != null || writeChar != null)
 
     /** 造型灯模式是否已进入（0x05 01）。官方 App 没把这个做成开关，驱动内部自己管。 */
     private var ledModeOn = false
@@ -381,9 +441,21 @@ class LearnedProfileDriver(
         return writeCmd(frame)
     }
 
+    /** 灯主动上报取证：tag=FlashNotify，带 elapsedRealtime，便于对齐 07+tick 时序。 */
+    private fun logNotify(uuid: java.util.UUID, value: ByteArray?) {
+        val hex = value?.joinToString(" ") { "%02X".format(it.toInt() and 0xFF) } ?: "(null)"
+        android.util.Log.i(
+            "FlashNotify",
+            "$uuid <- $hex @ ${android.os.SystemClock.elapsedRealtime()} ${profile.displayName}"
+        )
+   
+    }
+
     private fun writeCmd(frame: ByteArray): Boolean {
         if (gatt == null) return false
-        val char = cmdChar ?: run {
+        // 命令口优先（A2 有独立命令口）；无独立命令口的档案回落触发口
+        //（03/04 配置帧走同一条透传口，见 FotorGearProtocol）。
+        val char = (cmdChar ?: writeChar) ?: run {
             android.util.Log.w(TAG, "命令通道未就绪，造型灯指令丢弃 ${profile.displayName}")
             return false
         }

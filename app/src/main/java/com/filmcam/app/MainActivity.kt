@@ -265,6 +265,12 @@ class MainActivity : AppCompatActivity() {
             // 三类结果直接决定「是没连上」还是「连上了但写不进去」。
             runCatching { com.filmcam.app.develop.DeviceGeometryReport.put("flash.extStatus", status) }
             runOnUiThread {
+                // 11-21：重连预算耗尽（典型=灯被极影等其它主设备占用）→ 换血重建，
+                // 别让死会话占住「已有 BLE 会话」的坑（23:28 全员 write=false 事故）。
+                if (status == "SESSION_DEAD") {
+                    flash.rebuildSession()
+                    return@runOnUiThread
+                }
                 // 只在外置闪光模式时显示 BLE 状态
                 if (flash.mode == FlashMode.EXTERNAL) {
                     // vc86：有已学档案时把灯名带进状态字，用户一眼知道连的是哪盏灯，
