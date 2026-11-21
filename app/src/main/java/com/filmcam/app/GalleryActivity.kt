@@ -5,6 +5,9 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
+import android.text.Spannable
+import android.text.SpannableString
+import android.text.style.ForegroundColorSpan
 import android.util.Log
 import android.view.View
 import android.view.ViewGroup
@@ -42,7 +45,8 @@ class GalleryActivity : AppCompatActivity() {
     }
 
     private lateinit var rvGallery: RecyclerView
-    private lateinit var tvEmpty: TextView
+    /** 空态铭牌整组（含圆环 + 标题 + 引导文案），ids 沿用 tvEmpty 以复用显隐逻辑 */
+    private lateinit var tvEmpty: View
     private lateinit var layoutUndeveloped: LinearLayout
     private lateinit var rvUndeveloped: RecyclerView
     private lateinit var devProgressCard: View
@@ -85,6 +89,7 @@ class GalleryActivity : AppCompatActivity() {
         devProgressCard = findViewById(R.id.devProgressCard)
         tvDevProgress = findViewById(R.id.tvDevProgress)
         pbDevProgress = findViewById(R.id.pbDevProgress)
+        paintEmptyHint()
 
         // 列数按屏宽自适应：每格最小约 104dp，手机 3 列、大屏/折叠屏展开可到 6 列。
         // 原来固定 3 列 + 400px 行高，在 2K 屏上是细扁条，在折叠屏上又过大。
@@ -650,6 +655,30 @@ class GalleryActivity : AppCompatActivity() {
     }
 
     // ---------- 已冲洗相册网格 ----------
+
+    /**
+     * 空态引导文案里把关键词染成暖黄：中文「成片」/ 英文「prints」。
+     * 直接按当前语言资源里实际出现的词判断，不碰 Locale / 配置 API，
+     * 中英任一侧文案改动都不会让高亮错位到别的词上。
+     */
+    private fun paintEmptyHint() {
+        val hint = findViewById<TextView>(R.id.emptyHint)
+        val text = getString(R.string.gallery_empty_hint)
+        val token = if (text.contains("成片")) "成片" else "prints"
+        val start = text.indexOf(token)
+        if (start < 0) {
+            hint.text = text
+            return
+        }
+        val spannable = SpannableString(text)
+        spannable.setSpan(
+            ForegroundColorSpan(0xFFFFC107.toInt()),
+            start,
+            start + token.length,
+            Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+        )
+        hint.text = spannable
+    }
 
     private fun loadPhotos() {
         val photos = mutableListOf<Uri>()

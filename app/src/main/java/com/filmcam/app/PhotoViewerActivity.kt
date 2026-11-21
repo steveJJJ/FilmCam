@@ -1,12 +1,18 @@
 package com.filmcam.app
 
+import android.content.Intent
 import android.graphics.BitmapFactory
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.provider.MediaStore
 import android.view.View
+import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentActivity
 import androidx.viewpager2.adapter.FragmentStateAdapter
@@ -55,6 +61,26 @@ class PhotoViewerActivity : AppCompatActivity() {
         // 拍摄同款：把这张的胶卷 + 冲洗参数带回取景器。
         // 这是「带着这卷胶卷回机身」的确认动作，触感给得比普通点击重一档
         findViewById<View>(R.id.btnShootSame).hapticClick(ms = 30, amp = 210) { shootSame() }
+
+        // 系统分享：与拍摄同款同一档确认触感，按钮常驻不随面板隐藏
+        val btnShare = findViewById<View>(R.id.btnShare)
+        btnShare.hapticClick(ms = 30, amp = 210) { shareCurrent() }
+        // vc100 真机回归：edge-to-edge 后内容根从屏幕 y=0 起，XML 里的 10dp 只是
+        // 「离屏幕顶」的间距，按钮整个缩进状态栏被电池图标盖住（截图实测按钮
+        // y=26..93px，状态栏图标正压在上面）。和其它页面的边到边补偿同口径，
+        // 把顶部 systemBar inset 加到原 margin 上，让它落到状态栏下方。
+        val baseTopMargin = (btnShare.layoutParams as ViewGroup.MarginLayoutParams).topMargin
+        ViewCompat.setOnApplyWindowInsetsListener(btnShare) { v, insets ->
+            val topInset = insets.getInsetsIgnoringVisibility(WindowInsetsCompat.Type.systemBars()).top
+            val lp = v.layoutParams as ViewGroup.MarginLayoutParams
+            val target = baseTopMargin + topInset
+            if (lp.topMargin != target) {
+                lp.topMargin = target
+                v.layoutParams = lp
+            }
+            insets
+        }
+        ViewCompat.requestApplyInsets(btnShare)
 
         // 切换照片时同步刷新面板内容；顺手给一记轻 tick ——
         // 左右拨片是看片的核心动作，纯视觉滑动会觉得「这页没反应」。
@@ -106,6 +132,47 @@ class PhotoViewerActivity : AppCompatActivity() {
         }
         startActivity(intent)
         finish()
+    }
+
+    /**
+     * 系统分享当前这张成片。
+     *
+     * uris 由 GalleryActivity.loadPhotos() 传入 —— 那一侧的查询只取 DCIM/FilmCam/
+     * 且 IS_PENDING=0 的成片，母片与未冲洗帧根本不在这个列表里。这里再按 id 复核
+     * 一次 final 状态，避免任何上游改动把未冲洗帧漏进分享通道。
+     */
+    private fun shareCurrent() {
+        val pos = viewPager.currentItem
+        if (pos !in uris.indices) return
+        val uri = Uri.parse(uris[pos])
+        if (!isFinalPrint(uri)) return
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "image/jpeg"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        startActivity(Intent.createChooser(intent, getString(R.string.viewer_share)))
+    }
+
+    /** 只认 DCIM/FilmCam 下 IS_PENDING=0 的成片；API 26-28 没有 IS_PENDING 列，信任相册列表的来源过滤。 */
+    private fun isFinalPrint(uri: Uri): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return true
+        val id = uri.lastPathSegment?.toLongOrNull() ?: return false
+        val projection = arrayOf(MediaStore.Images.Media._ID)
+        val selection = "${MediaStore.Images.Media._ID}=? AND " +
+            "${MediaStore.Images.Media.RELATIVE_PATH}=? AND " +
+            "${MediaStore.Images.Media.IS_PENDING}=0"
+        return try {
+            contentResolver.query(
+                MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                projection,
+                selection,
+                arrayOf(id.toString(), "DCIM/FilmCam/"),
+                null
+            )?.use { it.moveToFirst() } ?: false
+        } catch (e: Exception) {
+            false
+        }
     }
 
     /** 由 Fragment 在图片被点击时回调，切换面板可见性。 */

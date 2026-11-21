@@ -34,6 +34,7 @@ import com.filmcam.app.GalleryActivity
 import com.filmcam.app.R
 import com.filmcam.app.film.RollInfo
 import com.filmcam.app.film.UndevelopedFilmStore
+import com.filmcam.app.ui.PermissionNameplate
 import com.filmcam.app.ui.animateSceneReveal
 import kotlin.math.abs
 import kotlin.math.sqrt
@@ -661,6 +662,18 @@ class DevelopmentActivity : AppCompatActivity(), SensorEventListener {
                     REQ_POST_NOTIF
                 )
             }
+        }
+    }
+
+    /** 通知权限被拒不该无声：冲洗完成通知是这一页的核心回报，拒绝也给一张告知铭牌。 */
+    override fun onRequestPermissionsResult(
+        requestCode: Int, permissions: Array<out String>, grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQ_POST_NOTIF &&
+            (grantResults.isEmpty() || grantResults[0] != PackageManager.PERMISSION_GRANTED)
+        ) {
+            PermissionNameplate.show(this, PermissionNameplate.Kind.NOTIFICATION)
         }
     }
 

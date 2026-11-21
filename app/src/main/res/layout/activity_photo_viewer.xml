@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
@@ -9,6 +10,26 @@
         android:id="@+id/viewPager"
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
+
+    <!-- 系统分享：常驻右上角，不跟信息面板收起。
+         ⚠️ edge-to-edge 下内容从 y=0 起，10dp 只是「离屏幕顶」的基准，
+         真正的顶部间距由 PhotoViewerActivity 再加 systemBar top inset，
+         否则整个按钮会缩进状态栏、被电池图标盖住（vc100 真机回归）。
+         elevation 保证它压在 ViewPager2 的 item 之上。 -->
+    <ImageButton
+        android:id="@+id/btnShare"
+        android:layout_width="26dp"
+        android:layout_height="26dp"
+        android:layout_gravity="top|end"
+        android:layout_marginTop="10dp"
+        android:layout_marginEnd="10dp"
+        android:elevation="2dp"
+        android:background="@drawable/bg_share_btn"
+        android:contentDescription="@string/viewer_share"
+        android:padding="3dp"
+        android:scaleType="centerInside"
+        android:src="@drawable/ic_share"
+        app:tint="@null" />
 
     <!-- 成片胶卷信息面板（覆盖层，默认收起） -->
     <LinearLayout

@@ -268,9 +268,13 @@ Memory available: %10$d MB / %11$d MB total
     <!-- ===== Layout: gallery ===== -->
     <string name="main_undeveloped_rolls">Undeveloped rolls</string>
     <string name="main_no_photos">No prints yet</string>
+    <string name="gallery_empty_title">No prints yet</string>
+    <string name="gallery_empty_hint">The negatives are still in the roll. Shoot a full roll, rewind, then develop in the darkroom — prints appear here.</string>
+    <string name="gallery_undeveloped_hint">Rolls waiting to be developed · tap to develop</string>
 
     <!-- ===== Layout: print viewer ===== -->
     <string name="main_shoot_same">Shoot the same</string>
+    <string name="viewer_share">Share</string>
 
     <!-- ===== About screen nameplate: spec table ===== -->
     <string name="about_spec_model">MODEL</string>
@@ -500,5 +504,17 @@ Memory available: %10$d MB / %11$d MB total
     <string name="waist_level_cd_rotate">Cycle frame gate: auto / 1:1 6x6 medium format / 3:2 135 full frame</string>
     <string name="lcd_notice_waist">WAIST LEVEL · HALF SCREEN</string>
     <string name="lcd_notice_waist_off">WAIST LEVEL · OFF</string>
+
+    <!-- ===== Permission denial nameplate ===== -->
+    <string name="perm_dlg_camera_title">Camera permission needed</string>
+    <string name="perm_dlg_camera_body">Without it the viewfinder can\'t work. Enable it in Settings → Apps → Permissions.</string>
+    <string name="perm_dlg_bt_title">Bluetooth permission needed</string>
+    <string name="perm_dlg_bt_body">External flash connects over Bluetooth. Enable it in Settings, or switch to the built-in flash.</string>
+    <string name="perm_dlg_storage_title">Storage permission needed</string>
+    <string name="perm_dlg_storage_body">Older Android versions need it to save negatives and prints.</string>
+    <string name="perm_dlg_notif_title">Notification permission needed</string>
+    <string name="perm_dlg_notif_body">It lets us tell you when developing finishes. Enable it in Settings.</string>
+    <string name="perm_dlg_go_settings">Settings</string>
+    <string name="perm_dlg_dismiss">Got it</string>
 
 </resources>

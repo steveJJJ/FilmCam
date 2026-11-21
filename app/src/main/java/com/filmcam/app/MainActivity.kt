@@ -34,6 +34,7 @@ import com.filmcam.app.flash.FlashMode
 import com.filmcam.app.ui.AdvanceRitual
 import com.filmcam.app.ui.attachEdgeHaptics
 import com.filmcam.app.ui.Motion
+import com.filmcam.app.ui.PermissionNameplate
 import com.filmcam.app.ui.attachPressFeedback
 import com.filmcam.app.ui.animatePanelIn
 import com.filmcam.app.ui.fadeInChrome
@@ -146,6 +147,13 @@ class MainActivity : AppCompatActivity() {
         val id = activeRollId() ?: return 0
         return UndevelopedFilmStore.shotCount(id)
     }
+
+    /**
+     * 被拒一次就不再反复拉系统权限框：铭牌已经把「去哪开」说清楚了，
+     * 再弹只会形成「拒绝→重启→再弹」的死循环。相机仍是必需项，
+     * 这个标记只挡重复申请，不放行无权限拍照。
+     */
+    private var permissionDeniedHandled = false
 
     private val permissions = mutableListOf(Manifest.permission.CAMERA).apply {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -2698,7 +2706,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onStart() {
         super.onStart()
-        if (!hasPermissions()) {
+        if (!hasPermissions() && !permissionDeniedHandled) {
             ActivityCompat.requestPermissions(this, permissions, REQ_CODE)
         }
     }
@@ -2814,11 +2822,30 @@ class MainActivity : AppCompatActivity() {
         requestCode: Int, permissions: Array<out String>, grantResults: IntArray
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == REQ_CODE && grantResults.all { it == PackageManager.PERMISSION_GRANTED }) {
+        if (requestCode != REQ_CODE) return
+        if (grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }) {
             // 权限通过后，等 onSurfaceTextureReady 回调自动启动相机
-        } else {
-            Toast.makeText(this, getString(R.string.main_toast_permission_required), Toast.LENGTH_SHORT).show()
+            return
         }
+        permissionDeniedHandled = true
+        // 多组被拒时只弹一张铭牌，按「没它就无法拍照」的相关度取最要紧的一组。
+        // grantResults 可能短于 permissions（用户中途取消），缺项按被拒处理。
+        val denied = permissions.filterIndexed { i, _ ->
+            i >= grantResults.size || grantResults[i] != PackageManager.PERMISSION_GRANTED
+        }
+        val kind = when {
+            denied.any { it == Manifest.permission.CAMERA } ->
+                PermissionNameplate.Kind.CAMERA
+            denied.any {
+                it == Manifest.permission.BLUETOOTH_SCAN ||
+                    it == Manifest.permission.BLUETOOTH_CONNECT ||
+                    it == Manifest.permission.ACCESS_FINE_LOCATION
+            } -> PermissionNameplate.Kind.BLUETOOTH
+            denied.any { it == Manifest.permission.WRITE_EXTERNAL_STORAGE } ->
+                PermissionNameplate.Kind.STORAGE
+            else -> PermissionNameplate.Kind.CAMERA
+        }
+        PermissionNameplate.show(this, kind)
     }
 
     private fun startCamera(surfaceTexture: SurfaceTexture) {

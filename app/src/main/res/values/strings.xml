@@ -159,7 +159,7 @@ App 版本：%1$s (%2$d)
     <string name="qs_title_1">这是一台胶片相机</string>
     <string name="qs_body_1">装卷、过片、按快门，和真胶卷一样。36 张拍满一卷，冲洗之前看不到任何成片——惊喜留在暗房。\n\n· 点一下取景框：对焦\n· 取景框内上下滑：调曝光\n· 按快门：过片进卷</string>
     <string name="qs_title_2">拍完去暗房冲洗</string>
-    <string name="qs_body_2">一卷拍满后机身提示回卷，打开暗房页冲洗，出片自动进相册。\n\n冲洗前相册里空空的不量坏了——底片都还卷在胶卷里。首卷相机会提醒你去冲洗。</string>
+    <string name="qs_body_2">一卷拍满后机身提示回卷，打开暗房页冲洗，出片自动进相册。\n\n冲洗前相册里空空的不是坏了——底片都还卷在胶卷里。首卷相机会提醒你去冲洗。</string>
     <string name="qs_title_3">机身上的可调项</string>
     <string name="qs_body_3">快门条循环：闪光灯 / 外置闪光。\n\n设置面板（机身右侧键）：白平衡、RAW 底片、色彩浓度、冲洗画质、胶片相框。\n\n开拍前拨好档，成片风格都在冲洗里定。</string>
     <string name="qs_next">下一页</string>
@@ -276,9 +276,13 @@ App 版本：%1$s (%2$d)
     <!-- ===== 布局：相册页 ===== -->
     <string name="main_undeveloped_rolls">未冲洗胶卷</string>
     <string name="main_no_photos">暂无照片</string>
+    <string name="gallery_empty_title">还没有成片</string>
+    <string name="gallery_empty_hint">底片还卷在相机里。拍满一卷后回卷，到暗房冲洗，成片才会出现在这里。</string>
+    <string name="gallery_undeveloped_hint">这里有卷待冲洗 · 点进去洗</string>
 
     <!-- ===== 布局：成片查看 ===== -->
     <string name="main_shoot_same">拍摄同款</string>
+    <string name="viewer_share">分享</string>
 
     <!-- ===== 关于页铭牌：规格表 ===== -->
     <string name="about_spec_model">型号 MODEL</string>
@@ -513,5 +517,17 @@ App 版本：%1$s (%2$d)
     <string name="waist_level_cd_rotate">切换画幅：自动 / 1:1 6×6 中画幅 / 3:2 135 全幅</string>
     <string name="lcd_notice_waist">腰平取景 · 半屏</string>
     <string name="lcd_notice_waist_off">腰平取景 · 关闭</string>
+
+    <!-- ===== 权限拒绝铭牌 ===== -->
+    <string name="perm_dlg_camera_title">需要相机权限</string>
+    <string name="perm_dlg_camera_body">没有它无法取景拍照。请在 设置 → 应用 → 权限 中开启。</string>
+    <string name="perm_dlg_bt_title">需要蓝牙权限</string>
+    <string name="perm_dlg_bt_body">外置闪光灯靠它连接。可在设置里开启，或改用内置闪光。</string>
+    <string name="perm_dlg_storage_title">需要存储权限</string>
+    <string name="perm_dlg_storage_body">旧版本安卓需要它来保存底片和成片。</string>
+    <string name="perm_dlg_notif_title">需要通知权限</string>
+    <string name="perm_dlg_notif_body">冲洗完成时靠它通知你。可在设置里开启。</string>
+    <string name="perm_dlg_go_settings">去设置</string>
+    <string name="perm_dlg_dismiss">知道了</string>
 
 </resources>

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 看图页分享按钮：与「拍摄同款」同一支暗红描边胶囊，收成圆形 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="oval">
+    <!-- 20% 填充在纯黑上只剩 (40,12,10)，真机几乎看不见；提到 40% + 1.5dp 描边 -->
+    <solid android:color="#66C93A30" />
+    <stroke android:width="1.5dp" android:color="#C93A30" />
+</shape>

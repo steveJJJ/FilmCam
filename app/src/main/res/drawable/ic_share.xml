@@ -1,0 +1,35 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!--
+      ⚠️ strokeColor / strokeWidth / fillColor 只在 <path> 上生效，写在 <vector> 根上
+      会被 VectorDrawable 忽略（vc100 真机：圆钮在、图标一个像素都没有）。
+      写法与项目里可正常显示的 ic_feedback_mail.xml 一致：每条 path 自带描边。
+    -->
+    <!-- 托盘：箭头从里面向上指出 -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFD7C4"
+        android:strokeWidth="1.7"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M9,11H6.5A2.5,2.5 0 0 0 4,13.5v5A2.5,2.5 0 0 0 6.5,21h11a2.5,2.5 0 0 0 2.5,-2.5v-5A2.5,2.5 0 0 0 17.5,11H15" />
+    <!-- 箭杆 -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFD7C4"
+        android:strokeWidth="1.7"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M12,15V3.5" />
+    <!-- 箭头 -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFD7C4"
+        android:strokeWidth="1.7"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M8,7.5L12,3.5L16,7.5" />
+</vector>
