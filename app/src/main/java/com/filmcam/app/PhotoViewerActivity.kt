@@ -7,12 +7,9 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
 import android.view.View
-import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.view.ViewCompat
-import androidx.core.view.WindowInsetsCompat
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentActivity
 import androidx.viewpager2.adapter.FragmentStateAdapter
@@ -62,25 +59,12 @@ class PhotoViewerActivity : AppCompatActivity() {
         // 这是「带着这卷胶卷回机身」的确认动作，触感给得比普通点击重一档
         findViewById<View>(R.id.btnShootSame).hapticClick(ms = 30, amp = 210) { shootSame() }
 
-        // 系统分享：与拍摄同款同一档确认触感，按钮常驻不随面板隐藏
+        // 系统分享：按钮已移入底部信息面板标题行，与 EXIF 一起显隐 ——
+        // 看照片时整块收起，屏幕上没有常驻的红色标志；点照片展开面板后才出现。
+        // 面板 gone 时该子 view 不可点，无需再单独判显隐，也不需要状态栏 inset 补偿。
+        // 与拍摄同款同一档确认触感。
         val btnShare = findViewById<View>(R.id.btnShare)
         btnShare.hapticClick(ms = 30, amp = 210) { shareCurrent() }
-        // vc100 真机回归：edge-to-edge 后内容根从屏幕 y=0 起，XML 里的 10dp 只是
-        // 「离屏幕顶」的间距，按钮整个缩进状态栏被电池图标盖住（截图实测按钮
-        // y=26..93px，状态栏图标正压在上面）。和其它页面的边到边补偿同口径，
-        // 把顶部 systemBar inset 加到原 margin 上，让它落到状态栏下方。
-        val baseTopMargin = (btnShare.layoutParams as ViewGroup.MarginLayoutParams).topMargin
-        ViewCompat.setOnApplyWindowInsetsListener(btnShare) { v, insets ->
-            val topInset = insets.getInsetsIgnoringVisibility(WindowInsetsCompat.Type.systemBars()).top
-            val lp = v.layoutParams as ViewGroup.MarginLayoutParams
-            val target = baseTopMargin + topInset
-            if (lp.topMargin != target) {
-                lp.topMargin = target
-                v.layoutParams = lp
-            }
-            insets
-        }
-        ViewCompat.requestApplyInsets(btnShare)
 
         // 切换照片时同步刷新面板内容；顺手给一记轻 tick ——
         // 左右拨片是看片的核心动作，纯视觉滑动会觉得「这页没反应」。

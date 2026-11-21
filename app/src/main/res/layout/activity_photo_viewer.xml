@@ -11,27 +11,9 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
-    <!-- 系统分享：常驻右上角，不跟信息面板收起。
-         ⚠️ edge-to-edge 下内容从 y=0 起，10dp 只是「离屏幕顶」的基准，
-         真正的顶部间距由 PhotoViewerActivity 再加 systemBar top inset，
-         否则整个按钮会缩进状态栏、被电池图标盖住（vc100 真机回归）。
-         elevation 保证它压在 ViewPager2 的 item 之上。 -->
-    <ImageButton
-        android:id="@+id/btnShare"
-        android:layout_width="26dp"
-        android:layout_height="26dp"
-        android:layout_gravity="top|end"
-        android:layout_marginTop="10dp"
-        android:layout_marginEnd="10dp"
-        android:elevation="2dp"
-        android:background="@drawable/bg_share_btn"
-        android:contentDescription="@string/viewer_share"
-        android:padding="3dp"
-        android:scaleType="centerInside"
-        android:src="@drawable/ic_share"
-        app:tint="@null" />
-
-    <!-- 成片胶卷信息面板（覆盖层，默认收起） -->
+    <!-- 成片胶卷信息面板（覆盖层，默认收起）。
+         分享入口移进本面板标题行，与 EXIF 一起显隐：看照片时整块收起，
+         屏幕上只有照片、没有常驻的红色标志（vc102 用户拍板）。 -->
     <LinearLayout
         android:id="@+id/panelInfo"
         android:layout_width="match_parent"
@@ -53,7 +35,8 @@
             android:layout_marginBottom="10dp"
             android:background="#8B1A1A" />
 
-        <!-- 胶卷名（主标题）与「拍摄同款」同一行，按钮与文字基线对齐 -->
+        <!-- 胶卷名（主标题）+ 两个操作胶囊：都随面板一起显隐，
+             看照片时整块收起，屏幕上只有照片、没有任何红色标志打扰。 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -65,10 +48,34 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
+                android:layout_marginEnd="8dp"
+                android:maxLines="1"
+                android:ellipsize="end"
                 android:textColor="#FFD7C4"
                 android:textSize="20sp"
                 android:textStyle="bold"
                 tools:text="Kodak Portra 400" />
+
+            <!-- 分享：淡描边文字胶囊（无红色填充），与「拍摄同款」同排、同显隐。
+                 只在信息面板展开时出现，点击调系统分享。 -->
+            <TextView
+                android:id="@+id/btnShare"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="8dp"
+                android:paddingStart="13dp"
+                android:paddingEnd="13dp"
+                android:paddingTop="5dp"
+                android:paddingBottom="5dp"
+                android:background="@drawable/bg_chip_share"
+                android:text="@string/viewer_share"
+                android:textColor="#C9C9C9"
+                android:textSize="14sp"
+                android:letterSpacing="0.02"
+                android:includeFontPadding="false"
+                android:contentDescription="@string/viewer_share"
+                android:clickable="true"
+                android:focusable="true" />
 
             <!-- 拍摄同款：按这张的 EXIF 套用胶卷与冲洗参数，回到取景器直接拍 -->
             <TextView

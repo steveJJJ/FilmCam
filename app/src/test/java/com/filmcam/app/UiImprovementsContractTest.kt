@@ -54,25 +54,26 @@ class UiImprovementsContractTest {
     }
 
     @Test
-    fun `分享按钮走系统分享且只暴露 IS_PENDING 为 0 的成片`() {
+    fun `分享入口融入信息面板随面板显隐且只暴露 IS_PENDING 为 0 的成片`() {
         val xml = read("res/layout/activity_photo_viewer.xml") ?: return
+        // 分享是面板内的一个淡描边文字胶囊，与「拍摄同款」同排
         assertTrue(xml.contains("android:id=\"@+id/btnShare\""))
-        assertTrue(xml.contains("android:layout_gravity=\"top|end\""))
-        assertTrue(xml.contains("android:contentDescription=\"@string/viewer_share\""))
-        assertTrue(xml.contains("@drawable/bg_share_btn"))
-        assertTrue(xml.contains("@drawable/ic_share"))
-        assertTrue(xml.contains("app:tint=\"@null\""))
-        assertTrue("分享按钮必须有 elevation 压在 ViewPager2 之上", xml.contains("android:elevation=\"2dp\""))
-        val icon = read("res/drawable/ic_share.xml") ?: return
-        val strokes = Regex("android:strokeColor=\"#FFD7C4\"").findAll(icon).count()
-        assertTrue("每条 path 都要自带 strokeColor，实际 $strokes 条", strokes >= 3)
-        val vectorHeader = icon.replace(Regex("<!--.*?-->", RegexOption.DOT_MATCHES_ALL), "")
-            .substringBefore("<path")
-        assertFalse("strokeColor 写在 <vector> 根上会被忽略，图标不渲染",
-            vectorHeader.contains("strokeColor"))
-        val bg = read("res/drawable/bg_share_btn.xml") ?: return
-        assertTrue("填充在黑底上要有对比度", bg.contains("#66C93A30"))
-        assertTrue(bg.contains("1.5dp"))
+        assertTrue(xml.contains("android:text=\"@string/viewer_share\""))
+        assertTrue(xml.contains("@drawable/bg_chip_share"))
+        // 关键契约：btnShare 必须定义在 panelInfo 之后（即成为面板的子 view），
+        // 面板 gone 时它一起隐藏 —— 看照片时没有常驻红色标志打扰，
+        // 点照片展开 EXIF 面板时分享一起出现（vc102 用户拍板）。
+        val panelAt = xml.indexOf("android:id=\"@+id/panelInfo\"")
+        val shareAt = xml.indexOf("android:id=\"@+id/btnShare\"")
+        assertTrue("btnShare 必须落在 panelInfo 内", panelAt >= 0 && shareAt > panelAt)
+        assertTrue("信息面板默认收起", xml.contains("android:visibility=\"gone\""))
+        // 不再有右上角常驻圆钮：无 top|end gravity / elevation / 暗红圆钮背景 / 图标
+        assertFalse("不得再有常驻右上角按钮", xml.contains("android:layout_gravity=\"top|end\""))
+        assertFalse("不得再引用暗红圆钮背景", xml.contains("@drawable/bg_share_btn"))
+        assertFalse("不得再引用分享图标", xml.contains("@drawable/ic_share"))
+        val shareBg = read("res/drawable/bg_chip_share.xml") ?: return
+        assertTrue("分享胶囊要用淡描边", shareBg.contains("#66FFD7C4"))
+        assertFalse("分享胶囊不得用暗红填充", shareBg.contains("C93A30"))
         val kt = read("java/com/filmcam/app/PhotoViewerActivity.kt") ?: return
         assertTrue(kt.contains("Intent.ACTION_SEND"))
         assertTrue(kt.contains("Intent.EXTRA_STREAM"))
@@ -81,10 +82,8 @@ class UiImprovementsContractTest {
         assertTrue("必须复核成片状态", kt.contains("IS_PENDING}=0"))
         assertTrue("必须限定 DCIM/FilmCam 路径", kt.contains("DCIM/FilmCam/"))
         assertTrue("分享按钮要有确认档触感", kt.contains("btnShare.hapticClick(ms = 30, amp = 210)"))
-        assertTrue("必须补 systemBar top inset，否则按钮缩进状态栏",
-            kt.contains("getInsetsIgnoringVisibility(WindowInsetsCompat.Type.systemBars()).top"))
-        assertTrue("必须把 inset 叠加到原 margin 上", kt.contains("baseTopMargin + topInset"))
-        assertTrue(kt.contains("ViewCompat.requestApplyInsets(btnShare)"))
+        assertFalse("按钮移入面板后不再需要状态栏 inset 补偿", kt.contains("requestApplyInsets(btnShare)"))
+        assertFalse("不得单独控制分享按钮显隐（应随面板一起）", kt.contains("btnShare.visibility"))
         assertBothLocales(listOf("viewer_share"))
     }
 
