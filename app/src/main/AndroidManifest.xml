@@ -6,6 +6,12 @@
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
 
+    <!-- 暗房四页（相册/看图/冲洗/编辑）在 Manifest 锁 portrait，框架会据此隐式推断
+         android.hardware.screen.portrait 为必需功能，Play Console 会过滤掉桌面/XR/部分平板，
+         报「在声明中将硬件功能标记为必需，导致应用分发范围受限」。显式声明 required=false
+         只影响商店分发过滤，不影响运行时锁竖屏行为 —— 暗房页照样是 portrait。 -->
+    <uses-feature android:name="android.hardware.screen.portrait" android:required="false" />
+
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.VIBRATE" />
 

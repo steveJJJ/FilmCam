@@ -53,6 +53,19 @@ class DarkroomRotationAndImportContractTest {
     }
 
     @Test
+    fun `锁竖屏不得被 Play 推断为必需硬件功能`() {
+        val s = read("AndroidManifest.xml") ?: return
+        assertTrue("必须显式声明 android.hardware.screen.portrait 为可选，否则 Play Console 报分发受限",
+            s.contains("""<uses-feature android:name="android.hardware.screen.portrait" android:required="false" />"""))
+        // 暗房四页仍必须锁竖屏（uses-feature 只影响商店过滤，不改运行时行为）
+        for (act in listOf(
+            "GalleryActivity", "PhotoViewerActivity", "DevelopmentActivity", "EditActivity"
+        )) {
+            assertTrue("$act 必须锁竖屏", orientationOf(s, act) == "portrait")
+        }
+    }
+
+    @Test
     fun `运行时方向守卫必须豁免暗房四页`() {
         // 真正的坑：Manifest 写 portrait 也会被 ReversePortraitGuard 在 resume 时
         // 写成 FULL_SENSOR 覆盖掉。只锁 Manifest 而漏掉这一层，真机照样转。
