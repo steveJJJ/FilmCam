@@ -145,6 +145,69 @@
                     style="@style/InfoRow"
                     tools:text="BE:B0:XX:XX · CH FFE1 · TRIG 05 01 · 闪补 -1.5 EV" />
 
+                <!-- 外闪手动标定样本（11-22）：显示功率/距离/环境/p50，按 calibId 事后标记好坏 -->
+                <TextView
+                    android:id="@+id/tvCalibInfo"
+                    style="@style/InfoRow"
+                    android:visibility="gone"
+                    tools:text="标定 #1795355560930 · 功率1/4 · 1.8m · 环境ISO7186 · p50=123" />
+
+                <LinearLayout
+                    android:id="@+id/calibMarkRow"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:orientation="horizontal"
+                    android:visibility="gone">
+
+                    <TextView
+                        android:id="@+id/btnCalibGood"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginEnd="6dp"
+                        android:paddingStart="12dp"
+                        android:paddingEnd="12dp"
+                        android:paddingTop="5dp"
+                        android:paddingBottom="5dp"
+                        android:background="@drawable/bg_nameplate_chip"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:text="@string/viewer_calib_mark_good"
+                        android:textColor="#7FD4A0"
+                        android:textSize="12sp" />
+
+                    <TextView
+                        android:id="@+id/btnCalibBad"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginEnd="6dp"
+                        android:paddingStart="12dp"
+                        android:paddingEnd="12dp"
+                        android:paddingTop="5dp"
+                        android:paddingBottom="5dp"
+                        android:background="@drawable/bg_nameplate_chip"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:text="@string/viewer_calib_mark_bad"
+                        android:textColor="#E0A08A"
+                        android:textSize="12sp" />
+
+                    <TextView
+                        android:id="@+id/btnCalibClear"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:paddingStart="12dp"
+                        android:paddingEnd="12dp"
+                        android:paddingTop="5dp"
+                        android:paddingBottom="5dp"
+                        android:background="@drawable/bg_nameplate_chip"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:text="@string/viewer_calib_mark_clear"
+                        android:textColor="#C9C5BC"
+                        android:textSize="12sp" />
+                </LinearLayout>
+
                 <TextView
                     android:id="@+id/tvShotTime"
                     style="@style/InfoRow"

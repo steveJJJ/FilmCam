@@ -109,6 +109,14 @@ data class FlashProfile(
     private val isXenonA2: Boolean
         get() = isA2Device(deviceName, address)
 
+    /**
+     * 是否走编排式同步（宽窗等灯）：仅 A2 氙气灯。
+     * 起辉快（~80ms）但 BLE/HAL 抖动大 ⇒ 触发必须绑到曝光真开始 + 宽窗兜底；
+     * COB 常亮灯（起辉 ~200ms、脉冲长）保持原预测逻辑，避免改动其已验证时序。
+     */
+    val orchestratedSync: Boolean
+        get() = isXenonA2
+
     companion object {
         private const val DEFAULT_OFFSET_MS = -200
 

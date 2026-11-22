@@ -35,6 +35,13 @@ class LearnedProfileDriver(
         private const val TAG = "LearnedFlash"
         /** 标准通知开关描述符（触发口灯主动上报的取证通道，11-21 07+tick 校准调研）。 */
         private const val CCCD_UUID = "00002902-0000-1000-8000-00805f9b34fb"
+
+        /**
+         * 调研路②：A2 回电状态通知特征。抓包档案 `A2功率协议破解.md`：
+         * FEC8 收到 `F0 E0 …`（6 字节）时 `value[3]==1` = 回电中、`0` = 就绪。
+         * 之前只订阅了触发口 FFF1，FEC8 从未订阅 → 回电状态帧根本收不到。
+         */
+        private const val RECYCLE_NOTIFY_UUID = "0000fec8-0000-1000-8000-00805f9b34fb"
         private const val RECONNECT_DELAY_MS = 2_000L
         private const val CONNECT_TIMEOUT_MS = 15_000L
         /**
@@ -45,19 +52,6 @@ class LearnedProfileDriver(
          */
         private const val CONNECT_WATCHDOG_MS = 6_000L
 
-        /**
-         * 连接后多久发预热触发：要等复位序列 `06 01 → 05 00 → 0c 00 → 03 00`
-         * 四帧全部走完，否则预热帧会被写队列挤到复位前面。
-         */
-        private const val WARMUP_TRIGGER_DELAY_MS = 1_500L
-
-        /**
-         * 两次预热之间的最小间隔。
-         *
-         * 链路抖动反复重连时不能每次都闪一下（历史上曾空转重连 277 次），
-         * 但灯真睡过去再连回来（超过这个间隔）时又要重新预热。
-         */
-        private const val WARMUP_RETRY_GUARD_MS = 60_000L
     }
 
     override var onStatusChange: ((String) -> Unit)? = null
@@ -67,6 +61,10 @@ class LearnedProfileDriver(
 
     override val triggerStages: Int get() = profile.triggerStages
     override val needsRecycleHint: Boolean get() = profile.needsRecycleHint
+    override val orchestratedSync: Boolean get() = profile.orchestratedSync
+
+    /** 调研路②：FEC8 回电状态（null = 该灯无此通道 / 尚未收到状态帧）。 */
+    override fun isFlashReady(): Boolean? = flashReadyState
 
     override val displayName: String? get() = profile.displayName
 
@@ -77,11 +75,14 @@ class LearnedProfileDriver(
     private var gatt: BluetoothGatt? = null
     private var writeChar: BluetoothGattCharacteristic? = null
 
-    /** 上次预热触发的时间戳（elapsedRealtime），0 = 本次会话还没预热过。 */
-    private var lastWarmUpAt = 0L
-
     /** 造型灯命令特征（A2 = 服务 FEC0 / 特征 FEC7；null = 档案没有命令通道或未发现）。 */
     private var cmdChar: BluetoothGattCharacteristic? = null
+
+    /**
+     * 调研路②：回电就绪状态。null = 尚未收到任何 FEC8 状态帧（不门控）；
+     * true = 就绪可拍；false = 回电中。仅 A2 氙气灯会更新。
+     */
+    @Volatile private var flashReadyState: Boolean? = null
 
     @Volatile private var connecting = false
     @Volatile private var released = false
@@ -194,6 +195,14 @@ class LearnedProfileDriver(
                             }
                         }.onFailure { android.util.Log.w(TAG, "订阅通知失败", it) }
                     }
+                    // 调研路②：订阅回电状态特征 FEC8（A2 氙气灯）。失败不影响触发主链路。
+                    if (FlashProfile.isA2Device(profile.displayName, profile.address)) {
+                        g.services.orEmpty().flatMap { it.characteristics.orEmpty() }
+                            .firstOrNull {
+                                it.uuid.toString().equals(RECYCLE_NOTIFY_UUID, ignoreCase = true) &&
+                                    it.properties and BluetoothGattCharacteristic.PROPERTY_NOTIFY != 0
+                            }?.let { recycleChar -> subscribeNotify(g, recycleChar, "回电状态FEC8") }
+                    }
                     // v2 档案：造型灯命令通道（A2 = 服务 FEC0 / 特征 FEC7，老 v1 档案按灯型补全）。
                     // 找不到不阻塞触发链路 —— 触发是主功能，LED/亮度/色温是增值能力。
                     // 解析按「特征 UUID 全场扫」而不是「先锁服务再取特征」：档案里的服务
@@ -225,15 +234,10 @@ class LearnedProfileDriver(
                     // 所以固化成连接后的默认动作；其余「看起来合理」的初始化一律不许加。
                     if (char != null && cmdChar != null) {
                         applyVerifiedReset("连接后自动")
-                        // 🔴 预热触发：真机两次实证（19:32 / 19:39，App 各重启一次）
-                        // **重连后第一发触发会被灯吃掉** —— 首张成片全黑（p50=3），
-                        // 第二发才正常出氙气。把这发消耗在连接阶段，用户按下的第一张
-                        // 就是好的。代价是连接瞬间灯会闪一下（用户已确认接受）。
-                        val now = android.os.SystemClock.elapsedRealtime()
-                        if (now - lastWarmUpAt > WARMUP_RETRY_GUARD_MS) {
-                            lastWarmUpAt = now
-                            handler.postDelayed({ warmUpTrigger() }, WARMUP_TRIGGER_DELAY_MS)
-                        }
+                        // 11-22 用户拍板：删掉连接后的预热触发。旧逻辑会故意在开 APP
+                        // 重连时闪一下（用来消化「重连后第一发被灯吃掉」），用户明确
+                        // 要求开 APP 绝不闪。代价＝冷启动后第一张可能黑，用户已接受。
+                        // 复位序列仍保留（把灯拉回纯氙气档，与闪不闪无关）。
                     }
                     if (char == null) {
                         // 档案与灯对不上（固件换了 GATT 布局）：不硬重连，等用户重新配对
@@ -314,24 +318,6 @@ class LearnedProfileDriver(
             val device = runCatching { adapter.getRemoteDevice(profile.address) }.getOrNull()
             if (device != null) connectGatt(device) else connecting = false
         }, delayMs)
-    }
-
-    /**
-     * 预热触发：把「重连后第一发被灯吃掉」这件事消化在连接阶段。
-     *
-     * 走 [enqueueWrite] 而不是直写 —— 队列里可能还挂着复位序列的帧；
-     * [WARMUP_TRIGGER_DELAY_MS] 的延时就是留给它们走完的。
-     */
-    private fun warmUpTrigger() {
-        val char = writeChar ?: return
-        val cmd = profile.triggerBytes() ?: return
-        val writeType = if (profile.writeNoResponse) {
-            BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
-        } else {
-            BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
-        }
-        android.util.Log.i(TAG, "预热触发（消化重连后首发的丢失）${profile.displayName}")
-        enqueueWrite(char, cmd, writeType, "WARMUP")
     }
 
     @RequiresPermission("android.permission.BLUETOOTH_CONNECT")
@@ -430,7 +416,9 @@ class LearnedProfileDriver(
      * 帧一旦被接受，就是真正的「灯侧功率控制」，TTL 闭环的最后一环。
      */
     override fun setFlashPowerLevel(powerByte: Int): Boolean {
-        val ok = writeCmd(A2PowerProtocol.manualFrame(powerByte))
+        // 🔴 11-22 抓包真值：A2 功率命令是短帧 `a0 01 arg crc`，不是 A1 长帧。
+        // 之前用 A2PowerProtocol.manualFrame（F0 A1 07...）灯无反应 = 命令字错。
+        val ok = writeCmd(A2ShortPower.frame(powerByte))
         if (ok) A2PowerProtocol.lastSentPowerByte = powerByte
         return ok
     }
@@ -441,6 +429,32 @@ class LearnedProfileDriver(
         return writeCmd(frame)
     }
 
+    /** 订阅某个特征的 notification（CCCD），失败只记日志不影响主链路。 */
+    @RequiresPermission("android.permission.BLUETOOTH_CONNECT")
+    private fun subscribeNotify(
+        g: BluetoothGatt,
+        char: BluetoothGattCharacteristic,
+        label: String
+    ) {
+        runCatching {
+            g.setCharacteristicNotification(char, true)
+            val cccd = char.getDescriptor(java.util.UUID.fromString(CCCD_UUID))
+            if (cccd != null) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    g.writeDescriptor(cccd, BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)
+                } else {
+                    @Suppress("DEPRECATION")
+                    cccd.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+                    @Suppress("DEPRECATION")
+                    g.writeDescriptor(cccd)
+                }
+                android.util.Log.w(TAG, "调研路②：订阅 $label 通知已发起")
+            } else {
+                android.util.Log.w(TAG, "调研路②：$label 无 CCCD，状态帧收不到")
+            }
+        }.onFailure { android.util.Log.w(TAG, "调研路②：订阅 $label 失败", it) }
+    }
+
     /** 灯主动上报取证：tag=FlashNotify，带 elapsedRealtime，便于对齐 07+tick 时序。 */
     private fun logNotify(uuid: java.util.UUID, value: ByteArray?) {
         val hex = value?.joinToString(" ") { "%02X".format(it.toInt() and 0xFF) } ?: "(null)"
@@ -448,7 +462,19 @@ class LearnedProfileDriver(
             "FlashNotify",
             "$uuid <- $hex @ ${android.os.SystemClock.elapsedRealtime()} ${profile.displayName}"
         )
-   
+        // 调研路②：FEC8 回电状态。抓包档案：F0 E0 …（6 字节），value[3]==1=回电中。
+        if (value != null && value.size >= 4 &&
+            (value[0].toInt() and 0xFF) == 0xF0 && (value[1].toInt() and 0xFF) == 0xE0
+        ) {
+            val recycling = (value[3].toInt() and 0xFF) == 1
+            val prev = flashReadyState
+            flashReadyState = !recycling
+            android.util.Log.w(
+                TAG,
+                "调研路②：回电状态 ${if (recycling) "回电中(不可拍)" else "就绪(可拍)"}" +
+                    " prev=$prev raw=$hex"
+            )
+        }
     }
 
     private fun writeCmd(frame: ByteArray): Boolean {

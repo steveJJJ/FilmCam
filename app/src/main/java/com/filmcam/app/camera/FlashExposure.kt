@@ -90,4 +90,40 @@ object FlashExposure {
         } else ""
         return Result(shutterNs, iso, clamped, note)
     }
+
+    /**
+     * 编排式同步（对齐神牛官方 iPhone Godox Camera 方案）用的「锁 ISO、窗固定不缩」。
+     *
+     * 与 [solve] 的差别在**优先级**：`solve` 守恒 `ISO x t`（环境光口径），ISO
+     * 一旦越界（`wantedIso > hiI`）会反过来改 `t` 去把 ISO 拉回合法区间（`> hiI` 拉长窗、`< loI` 缩短窗）
+     * —— 也就是**窗口会被守恒补偿改动、脱离编排要的固定窗**。编排模式里 150ms 宽窗是覆盖「BLE 抖动 + 灯起辉」的硬需求，
+     * 绝不能被守恒补偿侵蚀；而闪光是 ~1ms 瞬时脉冲、主体亮度只认 ISO，窗宽只影响
+     * 环境光。所以这里钳 ISO 到设备区间、**窗固定 targetShutterNs**（仅受设备快门
+     * 上限钳制），环境光多进约 0.58EV 是官方慢速同步的预期观感。
+     *
+     * 供编排模式（仅 A2 氙气灯）在 `Camera2Controller.applyExternalFlashSync` 调用；
+     * 纯 Kotlin 零 Android 依赖，JVM 单测可直接定量守住「ISO 不变 / 窗固定不被守恒改动」。
+     */
+    fun solveFixedIso(
+        fixedIso: Float,
+        targetShutterNs: Long,
+        minIso: Int,
+        maxIso: Int,
+        minShutterNs: Long,
+        maxShutterNs: Long,
+    ): Result {
+        val loI = maxOf(1, minIso)
+        val hiI = maxOf(minIso, maxIso).coerceAtLeast(loI)
+        val loT = maxOf(1L, minShutterNs)
+        val hiT = maxOf(minShutterNs, maxShutterNs).coerceAtLeast(loT)
+        val iso = fixedIso.coerceAtLeast(1f).roundToInt().coerceIn(loI, hiI)
+        val shutterNs = targetShutterNs.coerceIn(loT, hiT)
+        val clamped = shutterNs != targetShutterNs
+        val note = if (clamped) {
+            "设备快门上限不足，编排窗由 %dms 收敛到 %dms".format(
+                targetShutterNs / 1_000_000, shutterNs / 1_000_000
+            )
+        } else ""
+        return Result(shutterNs, iso, clamped, note)
+    }
 }

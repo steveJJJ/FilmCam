@@ -114,154 +114,19 @@
             android:layout_height="1dp"
             android:background="#26262A" />
 
-        <!-- A2 造型灯控制（11-18 nRF 抓包破解 FEC7 命令通道 + CRC8-Maxim）：
-             外置闪光档连上 A2 后可用；触发链路不受影响（FFF1 Test 帧原样保留） -->
-        <LinearLayout
-            android:id="@+id/groupEngA2"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:paddingStart="24dp"
-            android:paddingTop="10dp"
-            android:paddingEnd="24dp">
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="@string/eng_a2_title"
-                android:textSize="13sp"
-                android:textStyle="bold" />
-
-            <TextView
-                android:id="@+id/tvA2Status"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="2dp"
-                android:text="@string/eng_a2_not_ready"
-                android:textColor="#888"
-                android:textSize="12sp" />
-
-            <!-- 官方 App 没有「开关」，造型灯就一根 0–100 滑杆（0 = 关），照抄这个模型：
-                 0x05 是进入/退出造型灯模式，不是用户可见的开关，由驱动按滑杆值自动切换 -->
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                android:text="@string/eng_a2_brightness"
-                android:textSize="15sp" />
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:gravity="center_vertical"
-                android:orientation="horizontal">
-
-                <SeekBar
-                    android:id="@+id/sbA2Bright"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1" />
-
-                <TextView
-                    android:id="@+id/tvA2Bright"
-                    android:layout_width="44dp"
-                    android:layout_height="wrap_content"
-                    android:gravity="end"
-                    android:text="0%"
-                    android:textSize="14sp"
-                    android:textStyle="bold" />
-            </LinearLayout>
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
-                android:text="@string/eng_a2_cct"
-                android:textSize="15sp" />
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:gravity="center_vertical"
-                android:orientation="horizontal">
-
-                <SeekBar
-                    android:id="@+id/sbA2Cct"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1" />
-
-                <TextView
-                    android:id="@+id/tvA2Cct"
-                    android:layout_width="44dp"
-                    android:layout_height="wrap_content"
-                    android:gravity="end"
-                    android:text="50"
-                    android:textSize="14sp"
-                    android:textStyle="bold" />
-            </LinearLayout>
-
-            <!-- A1 长帧功率（实验）：0 = 1/1，70 = 1/128。用来验证 A2 是否接受官方
-                 「组功率」帧族 F0 A1 07 …（11-19 从 godoxflash v1.3.2 逐字节还原） -->
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
-                android:text="@string/eng_a2_power"
-                android:textSize="15sp" />
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:gravity="center_vertical"
-                android:orientation="horizontal">
-
-                <SeekBar
-                    android:id="@+id/sbA2Power"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:max="70" />
-
-                <TextView
-                    android:id="@+id/tvA2Power"
-                    android:layout_width="56dp"
-                    android:layout_height="wrap_content"
-                    android:gravity="end"
-                    android:text="1/1"
-                    android:textSize="14sp"
-                    android:textStyle="bold" />
-            </LinearLayout>
-
-            <TextView
-                android:id="@+id/btnA2Reset"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
-                android:background="#2A2A30"
-                android:gravity="center"
-                android:paddingTop="10dp"
-                android:paddingBottom="10dp"
-                android:text="@string/eng_a2_reset"
-                android:textSize="14sp"
-                android:textStyle="bold" />
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:layout_marginBottom="4dp"
-                android:text="@string/eng_a2_hint"
-                android:textColor="#888"
-                android:textSize="12sp" />
-        </LinearLayout>
-
         <!-- v2 暗房编辑流程：11-18 起全量默认开；冲洗只出母片，编辑保存才入相册（只做状态展示） -->
         <include
             android:id="@+id/rowEngDarkroomV2"
+            layout="@layout/item_setting_row" />
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="#26262A" />
+
+        <!-- 外闪标定样本记录范围：仅外置闪光档（默认）/ 所有照片（11-23，归纳其他模式用） -->
+        <include
+            android:id="@+id/rowEngCalib"
             layout="@layout/item_setting_row" />
 
         <View

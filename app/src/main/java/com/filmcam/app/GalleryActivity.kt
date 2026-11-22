@@ -123,6 +123,12 @@ class GalleryActivity : AppCompatActivity() {
         // 全黑底才能看片（银底会把成片的暗部压掉，也会破坏暗房氛围）。
         // 这里刻意不做 BodyTheme 重映射，保持原来的暗房配色。
 
+        // 外闪标定样本列表（11-22）：从暗房进，集中看待标定参数与好坏标记
+        findViewById<android.view.View>(R.id.btnCalibList).setOnClickListener {
+            com.filmcam.app.ui.Haptics.vibrate(this, 24, 175)
+            startActivity(android.content.Intent(this, CalibListActivity::class.java))
+        }
+
         btnImport = findViewById(R.id.btnImport)
         btnImport.setOnClickListener {
             com.filmcam.app.ui.Haptics.vibrate(this, 24, 175)

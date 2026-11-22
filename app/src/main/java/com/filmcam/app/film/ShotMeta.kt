@@ -65,6 +65,25 @@ data class ShotMeta(
      * 冲洗端按帧裁片门、选片框版式，腰平方窗拍的就是 6×6 成片。
      */
     val gate: String = "135",
+    // ===== 外闪手动标定样本（2026-11-22）=====
+    // 为「人工标定 → 归纳 TTL 算法」采集：每帧把闪光功率/距离/环境基线/成片亮度
+    // 刻进 ShotMeta，随帧落盘、冲洗写进 EXIF，看图页按 calibId 事后标记好坏。
+    // 全部走 ShotMeta 现成通路，样本天然与成片一一对应，零匹配风险。
+
+    /** 标定样本唯一 id（拍摄时刻 epoch ms）；0 = 非标定帧。 */
+    val calibId: Long = 0L,
+    /** 下发给灯的功率字节 arg（0~70，1/1~1/128）；-1 = 未记录。 */
+    val calibPwr: Int = -1,
+    /** AF 测得主体距离（米）；0 = 未测到。 */
+    val calibDist: Float = 0f,
+    /** 闪光前环境光基线 ISO（AE 收敛值）；0 = 未记录。 */
+    val calibAmbIso: Int = 0,
+    /** 闪光前环境光基线快门（秒）；0 = 未记录。 */
+    val calibAmbSec: Float = 0f,
+    /** 成片中心亮度 p50（落卷时尚无，冲洗回写前为 0）。 */
+    val calibP50: Int = 0,
+    /** 是否 Pro 手动档拍摄（手动 ISO/快门接管）。 */
+    val calibManual: Boolean = false,
 ) {
 
     fun toJson(): String = JSONObject().apply {
@@ -85,6 +104,14 @@ data class ShotMeta(
         if (aperture > 0f) put("ap", aperture.toDouble())
         if (focalMm > 0f) put("fl", focalMm.toDouble())
         if (gate != "135") put("gate", gate)
+        // 外闪标定样本字段（短键，沿用 ShotMeta 的紧凑风格）
+        if (calibId > 0L) put("cid", calibId)
+        if (calibPwr >= 0) put("cpw", calibPwr)
+        if (calibDist > 0f) put("cdi", calibDist.toDouble())
+        if (calibAmbIso > 0) put("cai", calibAmbIso)
+        if (calibAmbSec > 0f) put("cas", calibAmbSec.toDouble())
+        if (calibP50 > 0) put("cp5", calibP50)
+        if (calibManual) put("cma", true)
     }.toString()
 
     companion object {
@@ -110,6 +137,13 @@ data class ShotMeta(
                     aperture = o.optDouble("ap", 0.0).toFloat(),
                     focalMm = o.optDouble("fl", 0.0).toFloat(),
                     gate = o.optString("gate", "135"),
+                    calibId = o.optLong("cid", 0L),
+                    calibPwr = o.optInt("cpw", -1),
+                    calibDist = o.optDouble("cdi", 0.0).toFloat(),
+                    calibAmbIso = o.optInt("cai", 0),
+                    calibAmbSec = o.optDouble("cas", 0.0).toFloat(),
+                    calibP50 = o.optInt("cp5", 0),
+                    calibManual = o.optBoolean("cma", false),
                 )
             } catch (_: Exception) {
                 null

@@ -125,6 +125,15 @@ class FlashController(
     /** 当前灯是否需要「回电中」提示（氙气灯 true / COB false）。 */
     fun needsRecycleHint(): Boolean = bleFlash?.needsRecycleHint ?: false
 
+    /** 调研路②：FEC8 回电就绪状态（null = 该灯无通道 / 尚无状态帧，不门控）。 */
+    fun isFlashReady(): Boolean? = bleFlash?.isFlashReady()
+
+    /**
+     * 当前灯是否走编排式同步（A2 氙气灯 true / COB 与内置灯 false）。
+     * 由 MainActivity.applyExposure 单一路径下发给相机；会话未建时为 false。
+     */
+    fun useOrchestratedSync(): Boolean = bleFlash?.orchestratedSync ?: false
+
     /**
      * 当前外闪的造型灯控制通道（null / 未就绪 = 控制台按钮置灰）。
      * A2 连上后返回 FEC7 命令通道封装（LED / 亮度 / 色温，CRC8-Maxim）。

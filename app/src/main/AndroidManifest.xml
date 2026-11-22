@@ -104,6 +104,11 @@
             android:name=".PhotoViewerActivity"
             android:exported="false"
             android:screenOrientation="portrait" />
+        <!-- 外闪手动标定样本列表（11-22）：从暗房进，汇总所有成片的标定参数与好坏标记 -->
+        <activity
+            android:name=".CalibListActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
         <!-- 外闪自学习配对向导：长按取景器闪光状态字进入（非 launcher 入口，不导出） -->
         <!-- 真机取证（Godox A2 / 00010203 HID 通道）：往厂商 HID 服务里的特征写指令会
              让系统把灯当成 HID 键盘接入，触发 keyboard / navigation 配置变化。

@@ -46,10 +46,142 @@ class Camera2Controller(private val context: Context) {
         private const val FLASH_SYNC_ISO_AT_100MS = 57f
         private const val FLASH_SYNC_GAIN_DEFAULT = 4.0f
 
+        /**
+         * 外置闪光（氙气灯 ≈5500K 日光色温）拍照帧的白平衡锁定（11-22 真机根因）。
+         *
+         * 取证：暖光房间（AWB 实测 CT≈3079K、B 通道增益 2.524）拍外闪，五张成片
+         * 全部系统性偏蓝 B−R=+28~+54。成因＝闪光只有 ~1ms，AWB 来不及为它重测光，
+         * 拍照帧直接套用了"暖光→猛拉蓝"的 AUTO 增益，把中性氙气光补偿成蓝青。
+         * 内置闪光早有 [applyFlashCaptureTuning] 在 AUTO 时钉 DAYLIGHT 防这个偏色，
+         * 但外闪走独立的 [applyExternalFlashSync] 路径、没经过那笔，故只有外闪偏蓝。
+         *
+         * 修法对称补齐：外闪帧 AWB 为 AUTO/null 时钉 DAYLIGHT（日光=氙气灯色温）。
+         * 用户若手动选了白平衡预设则尊重预设、不覆盖。默认开；私有目录写
+         * flash_awb_daylight.txt=0 可一键 A/B 回退（棱镜/冷调场景对比用）。
+         */
+        private const val EXT_FLASH_AWB_DAYLIGHT_HOTFILE = "flash_awb_daylight.txt"
+
+        /** 触发时机模型回退开关：私有目录写 flash_latency_model.txt=0 回退旧实测缓存预测。 */
+        private const val FLASH_LATENCY_MODEL_HOTFILE = "flash_latency_model.txt"
+
+        /**
+         * 外闪黑片侦测阈值（11-22 真机定量）：灯没电那批直出中心 p50=1/1/1/1，
+         * 所有正常张 p50≥91，中间有巨大分界。p50≤5 判「灯没闪」，误伤极低——
+         * 暗调主体只要被闪光照到，中心 p50 也远高于 5。
+         */
+        private const val FLASH_MISS_P50_MAX = 5
+
         /** 闪光同步窗口物理下限：灯脉冲几十毫秒，窗口再窄会漏闪。 */
         private const val MIN_SYNC_SHUTTER_NS = 8_000_000L
-        /** 闪光同步窗口上限（S25U 设备上限 176ms，留 26ms 余量）。 */
-        private const val MAX_SYNC_SHUTTER_NS = 150_000_000L
+        /**
+         * 闪光同步窗口上限。11-23 由 150ms 放宽到 176ms：S25U HAL 实测
+         * SENSOR_INFO_EXPOSURE_TIME_RANGE.upper = 0.17603727s，旧上限白白扔掉 26ms
+         * 窗口（手动档最慢 1/8=125ms，钳制后用户拧到最慢也只拿到 125ms）。
+         * 更低上限的机型仍由 deviceMaxExposureSec 先收敛，这里只是「设备允许时的天花板」。
+         */
+        private const val MAX_SYNC_SHUTTER_NS = 176_000_000L
+
+        /**
+         * 编排式同步窗口（对齐神牛官方 iPhone Godox Camera 方案，仅 A2 氙气灯）。
+         *
+         * 触发绑到 onCaptureStarted（HAL 实测「曝光真开始」）后，灯还要走
+         * BLE 连接间隔 20~50ms + A2 起辉 ~80ms 才出光；原本 100ms 窗只剩
+         * 20ms 余量，任一环节抖动就漏闪。放宽到设备上限内最大的 150ms，
+         * 覆盖整段抖动带 —— 代价是环境光多进 0.58EV（官方慢速同步观感）。
+         * ISO 由 FlashExposure.solveFixedIso 锁死不变，闪光主体不会欠曝。
+         */
+        private const val ORCHESTRATED_SYNC_SHUTTER_NS = 150_000_000L
+
+        /**
+         * 编排模式热调开关：外部私有目录写 0 可强制回退到旧的「预测触发」
+         * 逻辑，真机不重编译即可 A/B 对比。缺文件/其它值 = 按灯能力启用。
+         */
+        private const val ORCHESTRATED_HOTFILE = "flash_orchestrated.txt"
+
+        /**
+         * 拍照帧标记（11-22）：onCaptureStarted 对预览每一帧都回调，编排式触发必须
+         * 只认「正式拍照帧」——靠时间闸门伪解法已两次失败（预览帧持续回调挡不住）。
+         * 给 TEMPLATE_STILL_CAPTURE 的 builder setTag 这个字符串，onCaptureStarted
+         * 里比对 request.tag，非此 tag 的帧（预览/测光）一律跳过发灯。
+         */
+        private const val STILL_CAPTURE_TAG = "filmcam_still_capture"
+
+        /**
+         * 预闪 TTL 测光可行性探针热调：外部私有目录写 1 开启。
+         * 只把每张相机直出 JPEG 的中心 p50/p90 与原样功率字节打进日志，**不改任何
+         * 拍照/触发/调功率行为** —— 用来定量回答「相机读数能否看见灯的功率/距离差」。
+         * 默认缺文件/其它值 = 关闭，线上零影响。
+         */
+        private const val METER_PROBE_HOTFILE = "flash_meter_probe.txt"
+
+        /**
+         * 多帧覆盖验证（flash_burst.txt）：写帧数 N（2~8）开启，缺文件/0/1 = 关。
+         *
+         * 治 A2「快门遇不到闪光」：灯触发后固定约 440ms 出主闪，但本机相机提交→真实
+         * 曝光延迟抖动 238~539ms、单帧窗硬上限 150ms，任何「预测提前量」都猜不准。
+         * 改为一次快门连拍 N 帧铺开覆盖整段抖动带，触发延时 [BURST_TRIGGER_DELAY_MS]
+         * 发出让主闪落在覆盖带内，再从 N 帧里选最亮（吃到闪光）的一帧当底片。
+         * 验证版走纯 JPEG（不写 DNG），只验证「能否稳定拍到」，默认关闭零影响。
+         */
+        private const val BURST_HOTFILE = "flash_burst.txt"
+        private const val BURST_TRIGGER_DELAY_MS = 200L
+
+        /**
+         * 调研路①：三段式 Take 热调（flash_stages.txt，写 3 开启，缺文件=关）。
+         *
+         * A2 是三段式灯（LED预闪→氙气预闪→氙气主闪），官方 iPhone App 一张照片发
+         * 2~3 个相同 Take（间隔约 440ms）推进灯的状态机。我们把 A2_TRIGGER_STAGES
+         * 锁成 1（历史三段式失败=三下全 LED，当时没先复位到 0c=0 氙气档）。现在复位
+         * 序列已确认在连接后自动跑（0c 00 氙气档），三段式代码现成（STAGE2/STAGE3），
+         * 用这个开关单独把「复位 + 三段式」组合重新拉起来验证。默认关 = 零行为变化。
+         */
+        private const val STAGES_HOTFILE = "flash_stages.txt"
+
+        /**
+         * 调研路②：FEC8 回电就绪门控（flash_ready_gate.txt=1 开启，缺文件=关）。
+         *
+         * A2 的 FEC8 特征回 `F0 E0 …`（6 字节，value[3]==1 = 回电中）。此前只打日志
+         * 从不解析。开启后拍照前先问灯「回电好了没」，回电中就等到就绪再触发 ——
+         * 用灯的硬件状态替代抖动的 halLatency 预测。默认关 = 零行为变化。
+         */
+        private const val READY_GATE_HOTFILE = "flash_ready_gate.txt"
+
+        /**
+         * 调研路③：YUV 高速环形缓冲挑帧（flash_yuv_burst.txt，写 N 帧开启，缺文件=关）。
+         *
+         * 复刻 iPhone/Pixel 的计算摄影：不再依赖「精确对齐闪光时刻」，而是用 YUV
+         * 预览流（30fps）在触发前后持续采帧进环形缓冲，事后挑亮度跃升最大那帧当底片。
+         * JPEG 连拍实测被 HAL 节流到 100ms/帧抓不住 1ms 脉冲，YUV 30fps（33ms）覆盖
+         * 密度高 3 倍。默认关 = 零行为变化。
+         */
+        private const val YUV_BURST_HOTFILE = "flash_yuv_burst.txt"
+
+        /**
+         * 调研路③亮度修正：flash_yuv_ev.txt 写 EV 值（如 -2 = 压 2 档），缺文件=0。
+         * YUV 走预览流 AE（暗环境 iso 自动拉到 ~7232），满功率闪光打上去 p50 顶到
+         * 255 饱和、细节被削平 → 冲洗后一片均匀灰。这个增益在 YUV→JPEG 时对 Y plane
+         * 数字降亮（2^EV），压回不过曝区间。纯软件、零风险、可实时扫值。
+         * 注意：已饱和的纯白像素救不回（光子信息丢了），只能压整体亮度/恢复未饱和层次。
+         */
+        private const val YUV_EV_HOTFILE = "flash_yuv_ev.txt"
+
+        /**
+         * 调研路③配套：固定闪光功率热调（flash_pwr.txt，写 arg 0~70，缺文件=-1 不干预）。
+         * arg: 0=1/1 满功率，10=1/2，20=1/4，30=1/8，40=1/16，70=1/128（每 +10 降一档）。
+         * 正常距离主体仍过曝 = 满功率太猛；从光源端降功率才是根治（1/d² 下近距离尤甚）。
+         * 独立于 TTL 闭环（ttl_off 时也生效），每次拍照前下发一次，方便扫值。
+         */
+        private const val FLASH_PWR_HOTFILE = "flash_pwr.txt"
+        /**
+         * 转正默认帧数：18 帧 × 40ms = 680ms 覆盖带。
+         * 三星 HAL 把请求的 100ms 窗压成 AE 的 40ms（实测 expNs≈40ms），
+         * 命中率 = 窗宽/帧间隔。帧间隔必须 ≤ 40ms 才能让窗首尾相接连续覆盖，
+         * 否则主闪 1ms 脉冲从 60ms 空隙漏掉（8 帧×100ms 时命中率仅 40%）。
+         */
+        private const val BURST_DEFAULT_FRAMES = 18
+        /** 帧间隔：必须 ≤ AE 实际窗宽 40ms，窗才能连续覆盖不漏闪。 */
+        private const val BURST_STEP_MS = 40L
+
 
         /**
          * 灯的固件固有延迟：从收到 05 xx 到 COB 真正出光约 200ms（官方所谓
@@ -104,11 +236,34 @@ class Camera2Controller(private val context: Context) {
         fun flashPreRollMs(halLatencyMs: Long, offsetMs: Long): Long =
             (-offsetMs - halLatencyMs).coerceAtLeast(0L)
 
+        /**
+         * 曝光时长模型（纯函数，供单测；11-23）：S25U 实测「提交→曝光开始」随
+         * 曝光时长线性放大，≈ max(BASE, PER_EXP×曝光ms)。
+         * 真机 8 样本拟合：8ms→88 / 33ms→158,177 / 125ms→621 / 200ms→971,1095,1112
+         * （斜率 5.0、截距≈0、±10%）。机制：长曝光帧的 still 通路要等流水线腾位，
+         * 曝光越长等得越久。
+         *
+         * 为什么必须换掉「上一帧实测」：换快门档时缓存必过期（33ms 档的 160ms
+         * 拿去预测 200ms 帧 → 指令早发 ~800ms → 必黑），用户实测观察即
+         * 「闪光时间跟着快门走」。模型直接从本帧曝光算，换档即时正确。
+         */
+        private const val FLASH_LATENCY_BASE_MS = 90L
+        private const val FLASH_LATENCY_PER_EXP = 5L
+
+        fun predictFlashLatencyMs(exposureMs: Long): Long =
+            maxOf(FLASH_LATENCY_BASE_MS, FLASH_LATENCY_PER_EXP * exposureMs)
+
         /** 三段式：第 2 发相对快门的延迟（官方抓包 0.40s）。 */
         const val STAGE2_MS = 400L
 
         /** 三段式：第 3 发（氙气主闪）相对快门的延迟（官方抓包累计 1.40s）。 */
         const val STAGE3_MS = 1_400L
+
+        /** 调研路①：复位 4 帧写入后，等灯切到氙气通道的沉降时间。 */
+        const val RESET_SETTLE_MS = 350L
+
+        /** 调研路②：回电门控最大等待（A2 实测回电约 4s，略放宽；超时兜底放行防卡死）。 */
+        const val READY_GATE_MAX_WAIT_MS = 4_500L
 
         /**
          * 最近 N 次实测延迟的中位数，抵消单次抖动；空样本回落到首帧兜底值。
@@ -410,6 +565,25 @@ class Camera2Controller(private val context: Context) {
     /** RAW 第二路输出（RAW_SENSOR 16bit Bayer）；null = 设备不支持 */
     private var rawImageReader: ImageReader? = null
 
+    // ---------------- 调研路③：YUV 高速环形缓冲挑帧 ----------------
+
+    /** YUV 预览流 reader（YUV_420_888，预览尺寸）；null = 路③未开启或设备不支持。 */
+    private var yuvImageReader: ImageReader? = null
+    private class YuvProbeFrame {
+        var ts: Long = -1L
+        var p50: Int = -1
+        var jpeg: ByteArray? = null
+    }
+    /** 环形缓冲：持续存最近 N 帧 YUV 的亮度与 JPEG 副本（30fps × 3s 上限 90）。 */
+    private val yuvRing = java.util.ArrayDeque<YuvProbeFrame>()
+    @Volatile private var yuvRingActive = false
+    @Volatile private var yuvRingArmedAtMs = 0L
+
+    // 路③交付接管：拍照 JPEG 暂存等 YUV 判定，选 YUV 闪光帧替换碰运气的相机帧。
+    @Volatile private var yuvPendingJpeg: ByteArray? = null
+    @Volatile private var yuvPendingRotation = 0
+    @Volatile private var yuvDeliveryGuard = false
+
     /** RAW 早到寄存槽：HAL 的 RAW 图可能先于快门结果回调到货（三星实测），先存这等 JPEG 锚点来取 */
     @Volatile private var bufferedRaw: Image? = null
 
@@ -503,8 +677,16 @@ class Camera2Controller(private val context: Context) {
      * 快门帧结果的暂存回调：P3 RAW 负片要拿 TotalCaptureResult 喂 DngCreator
      * （DNG 头里的曝光/白平衡/方向元数据全从它来），顺手把原闪光状态日志也打了。
      */
-    /** 外置闪光相机侧闭环 TTL 总开关（真机出问题可关掉，退回单闪）。 */
-    private val EXTERNAL_TTL_ENABLED = false
+    /**
+     * 外置闪光相机侧闭环 TTL 总开关（真机出问题可关掉，退回单闪）。
+     *
+     * 11-22 重开（用户拍板）：编排让每发闪光精准命中后，固定 ISO 暴露出
+     * 「近距过曝 / 远距欠曝」——A2 走自己的 TTL 功率逻辑、不吃 GN 公式，
+     * 唯一可靠的距离自适应就是实测闭环（TtlMeter 先拍低 ISO 测光帧反解 ISO）。
+     * 测光帧必须跳过 applyExternalFlashSync 的 ISO 覆盖（见 takePicture），
+     * 否则测光帧被改回 ISO228 就测不出量级。
+     */
+    private val EXTERNAL_TTL_ENABLED = true
 
     private val stillCaptureCallback =
         object : android.hardware.camera2.CameraCaptureSession.CaptureCallback() {
@@ -514,6 +696,8 @@ class Camera2Controller(private val context: Context) {
                 timestamp: Long,
                 frameNumber: Long
             ) {
+                // 曝光开始 sensor 时钟(ns)，供 burst  computes 帧相对触发的真实曝光时刻
+                if (timestamp > 0L) lastCaptureStartedTs = timestamp
                 // EXT 取证：指令发出 → 真正开曝光的间隔。这条值直接把「灯闪了但
                 // 快门晚了」与「指令根本没发」分开 —— 小米/HyperOS 的 still 通路
                 // 常见 onCaptureStarted 早于真实积分，光看延迟中位数会误判。
@@ -542,8 +726,13 @@ class Camera2Controller(private val context: Context) {
                         flashHalLatencyMs = Camera2Controller.medianLatencyMs(
                             flashHalLatencySamples.toList(), flashLatencyFallbackMs()
                         )
-                        // 攒到 2 个样本才写缓存：单个样本抖动大，写进去反而害下一个会话
-                        if (flashHalLatencySamples.size >= 2) saveFlashLatency(flashHalLatencyMs)
+                        // 🔴 11-22 缓存恶性循环修复：原来攒够2样本才写盘，但每次拍照会话
+                        // 重建都会清空样本（样本永远=1）⇒ 永远不写 ⇒ 下个会话读回陈旧值
+                        // 722ms，而本次实测只有253ms，差470ms⇒闪光发晚黑片。
+                        // 改为每次实测立即写盘：同通路延迟本就稳定（真机同会话253/253），
+                        // 单样本可信；陈旧值比抖动值危害大得多。
+                        saveFlashLatency(flashHalLatencyMs)
+                        flashHalLatencyCalibrated = true
                     }
                     android.util.Log.i(
                         "FlashSync",
@@ -551,8 +740,32 @@ class Camera2Controller(private val context: Context) {
                             " 采用=${flashHalLatencyMs}ms frame=$frameNumber"
                     )
                 }
+                // 编排式同步（对齐神牛官方 iPhone 方案）：这是 HAL 唯一明确告知
+                // 「曝光真开始」的事件 —— 在这一刻发单发 1000,Test，不再靠
+                // halLatency 中位数猜灯出光时刻。宽窗 150ms 覆盖 BLE + 80ms 起辉，
+                // 任一环节抖动主闪都落在窗内。COB / 关闭编排时走下方旧分支。
+                if (orchestratedFlashSync) {
+                    // 🔴 帧身份判定（11-22 根治）：只认带 STILL_CAPTURE_TAG 的正式拍照帧。
+                    // 预览帧 / 测光帧没有这个 tag，一律跳过。此前用时间闸门（提交后
+                    // 1200ms）伪判定两次失败——提交拍照后预览帧仍在持续回调，挡不住。
+                    val isStillFrame = request.tag == STILL_CAPTURE_TAG
+                    if (isStillFrame) {
+                        android.util.Log.i(
+                            "FlashSync",
+                            "编排式：拍照帧曝光真开始 frame=$frameNumber → 发单发触发" +
+                                "（零预测误差 tag=${request.tag}）"
+                        )
+                        fireExternalFlashOnce("编排·拍照帧曝光开始")
+                    } else {
+                        android.util.Log.d(
+                            "FlashSync",
+                            "编排式：跳过非拍照帧 frame=$frameNumber tag=${request.tag}"
+                        )
+                    }
+                }
                 // 负偏移走 submitStillCapture 的预触发；这里只负责 0 / 正偏移。
-                if (externalFlashSync && flashTriggerOffsetMs >= 0) {
+                // 编排模式已发过（flashTriggerPosted 防重），此处不再发。
+                if (!orchestratedFlashSync && externalFlashSync && flashTriggerOffsetMs >= 0) {
                     android.util.Log.i(
                         "FlashSync",
                         "曝光开始 frame=$frameNumber ts=$timestamp"
@@ -573,7 +786,17 @@ class Camera2Controller(private val context: Context) {
                 request: CaptureRequest,
                 result: TotalCaptureResult,
             ) {
-                if (rawNegativeEnabled && rawImageReader != null) {
+                if (burstActive) {
+                    // burst：result 按 timestamp 归入同帧碎片，不写单槽 pendingShot
+                    val ts = result.get(android.hardware.camera2.CaptureResult.SENSOR_TIMESTAMP) ?: -1L
+                    val bf = burstMap.getOrPut(ts) { BurstFrame().also { it.ts = ts } }
+                    bf.result = result
+                    if (burstJpegCount >= burstFrames && burstPickedTs == ts &&
+                        bf.jpeg != null && bf.raw != null
+                    ) {
+                        deliverBurstBest(bf)
+                    }
+                } else if (rawNegativeEnabled && rawImageReader != null) {
                     // 到达顺序不保证（结果可能先于 JPEG/RAW）：槽不存在就建，谁先到谁开户
                     val p = pendingShot ?: PendingShot().also { pendingShot = it }
                     if (!p.completed) p.result = result
@@ -704,6 +927,59 @@ class Camera2Controller(private val context: Context) {
     }
 
     /**
+     * 多帧覆盖：最亮帧的三路碎片到齐后写 DNG 母片交付。相机线程调用。
+     * 与 [deliverPendingShot] 同样的 DngCreator 写盘，但 raw/result 来自按 timestamp
+     * 配对的 burst 帧，不是单槽 pendingShot。写盘失败降级纯 JPEG，绝不丢帧。
+     */
+    private fun deliverBurstBest(bf: BurstFrame) {
+        if (burstDelivered) return
+        burstDelivered = true
+        burstActive = false
+        val jpeg = bf.jpeg ?: return
+        val image = bf.raw
+        val result = bf.result
+        val chars = cameraChars
+        if (image == null || result == null || chars == null) {
+            // 配对失败（timestamp 不一致/RAW 未到）→ 纯 JPEG 落卷，不比验证版差
+            image?.close()
+            android.util.Log.w(TAG, "burst 最亮帧 RAW/result 未配对，按纯 JPEG 落卷")
+            onPhotoCaptured?.invoke(jpeg, bf.rotation, null)
+            return
+        }
+        val submitted = runCatching {
+            rawWriterExecutor.execute {
+                val tmp = File(context.cacheDir, "raw_burst_${System.currentTimeMillis()}.dng")
+                val ok = runCatching {
+                    android.hardware.camera2.DngCreator(chars, result).use { creator ->
+                        java.io.FileOutputStream(tmp).use { out -> creator.writeImage(out, image) }
+                    }
+                    tmp.length() > 0
+                }.onFailure {
+                    android.util.Log.e(TAG, "burst DNG 写盘失败（按 JPEG 负片）: ${it.message}", it)
+                }.getOrDefault(false)
+                image.close()
+                val dng = if (ok) tmp else { tmp.delete(); null }
+                android.util.Log.i(TAG, "burst 母片 ${if (dng != null) "${tmp.length() / 1024}KB" else "失败"} -> ${dng?.name}")
+                onPhotoCaptured?.invoke(jpeg, bf.rotation, dng)
+            }
+        }.isSuccess
+        if (!submitted) {
+            image.close()
+            onPhotoCaptured?.invoke(jpeg, bf.rotation, null)
+        }
+    }
+
+    /** burst 收尾：关掉所有非选中帧的 RAW，避免 Image 泄漏。 */
+    private fun closeBurstRawExcept(keepTs: Long) {
+        for ((ts, bf) in burstMap) {
+            if (ts != keepTs) {
+                bf.raw?.close()
+                bf.raw = null
+            }
+        }
+    }
+
+    /**
      * 内置闪光灯是否开启。
      *
      * 注意语义变化：以前「闪光灯」是用常亮手电（FLASH_MODE_TORCH）在快门那一刻亮 200ms
@@ -810,7 +1086,52 @@ class Camera2Controller(private val context: Context) {
      * 直接过曝。判据是「上一张还是正常的（>=40），这一张突然全黑」⇒ 闪光失效。
      */
     @Volatile private var lastHealthyP50 = -1
+
+    /** 灯侧 TTL 当前功率档（arg 0=1/1…70=1/128）与上次有效距离（换场景检测用）。 */
+    @Volatile private var lampPowerArg: Int = TtlMeter.FLASH_POWER_REF_ARG
+    @Volatile private var lampLastDistanceM: Float = 0f
     @Volatile var externalTtlEnabled = false
+
+    /** 功率帧验证热调：flash_ttl_off.txt 内容=1 时跳过 TTL 闭环，避免它补偿掉功率差。 */
+    @Volatile private var ttlHotOff = false
+
+    /** 预闪测光可行性探针：flash_meter_probe.txt=1 时打印每张原始 p50/p90 + 功率字节。 */
+    @Volatile private var meterProbe = false
+
+    /** 多帧覆盖：连拍帧数（0/1=关，默认 8 转正）。一次快门连拍 N 帧，选最亮的交付。 */
+    @Volatile private var burstFrames = BURST_DEFAULT_FRAMES
+
+    /** 调研路①：三段式 Take 热调帧数（1=单发原样，3=三段式，缺文件=1）。 */
+    @Volatile private var researchStages = 1
+
+    /** 调研路②：FEC8 回电就绪门控（false=原样立即触发）。 */
+    @Volatile private var readyGate = false
+
+    /** 调研路③：YUV 环形缓冲帧数（0=关）。 */
+    @Volatile private var yuvBurstFrames = 0
+
+    /** 调研路③：YUV 帧数字曝光修正（EV，负=压暗；0=不修正）。 */
+    @Volatile private var yuvEvComp = 0f
+
+    /** 固定闪光功率热调（-1=不干预，0~70=功率 arg）。 */
+    @Volatile private var fixedPowerArg = -1
+
+    /** burst 单帧碎片：JPEG/RAW/result 三路靠 SENSOR_TIMESTAMP 配对，绝不能配错帧。 */
+    private class BurstFrame {
+        var ts: Long = -1L
+        var jpeg: ByteArray? = null
+        var rotation: Int = 0
+        var p50: Int = -1
+        var raw: Image? = null
+        var result: TotalCaptureResult? = null
+    }
+
+    private var burstActive = false
+    private var burstJpegCount = 0
+    private var burstBestP50 = -1
+    private var burstPickedTs = -1L
+    private var burstDelivered = false
+    private val burstMap = HashMap<Long, BurstFrame>()
     @Volatile private var ttlMetering = false
     @Volatile private var ttlSecondPass = false
     @Volatile private var ttlSkipRawFrames = 0
@@ -820,6 +1141,21 @@ class Camera2Controller(private val context: Context) {
     @Volatile private var ttlShutterNs = 8_000_000L
     /** 测光结果回调（测光 ISO, 正式 ISO, 测光帧 p50, 说明），给 UI 显示用。 */
     var onExternalTtlResult: ((Int, Int, Int, String) -> Unit)? = null
+
+    /**
+     * 外闪黑片侦测回调（11-22）：外闪档直出中心 p50 ≤ [FLASH_MISS_P50_MAX] 时判定
+     * 「灯没闪（没电/失联）」，把中心 p50 与环境基线 ISO 传给 UI 提示用户。
+     * 只提示、不影响落卷（用户选「照常落卷」自己决定删不删）。
+     */
+    var onFlashMissDetected: ((Int, Int) -> Unit)? = null
+    /** 本次快门是否走了外闪正式曝光（takePicture 置位，JPEG 回调据此守卫黑片判定）。 */
+    @Volatile private var flashFrameArmed: Boolean = false
+    /**
+     * 灯侧 TTL：请求把 A2 闪光功率调到指定档（arg: 0=1/1 … 70=1/128）。
+     * 由 MainActivity 绑定到 FlashController.lampControl().setFlashPowerLevel。
+     * 返回是否成功写入（失败时本次不改档，避免状态漂移）。
+     */
+    var onFlashPowerRequest: ((Int) -> Boolean)? = null
 
     /** 实验分支：repeating precapture 的 aeState 监听，仅在一次拍照期间临时注册 */
     @Volatile private var halPrecaptureAeSink: ((Int) -> Unit)? = null
@@ -854,11 +1190,35 @@ class Camera2Controller(private val context: Context) {
     @Volatile private var externalFlashSync = false
 
     /**
+     * 编排式同步的灯能力（A2 氙气灯 true）。由 [setExternalFlashSync] 第三参数
+     * 随当前灯下发，会话级；仅当 EXTERNAL 档 + A2 时为 true。
+     */
+    @Volatile private var orchestratedFlashCapable = false
+    /**
+     * 本次拍照是否真正走编排式同步。每次 [readFlashSyncConfig] 按
+     * 「灯能力 && 热调文件未强制关闭」重算，保证真机可即时回退。
+     */
+    @Volatile private var orchestratedFlashSync = false
+
+    /**
      * 传感器真正开始曝光的回调。外接灯的 BLE 触发指令必须**在这一刻**发出：
      * 按快门时发的话，灯在 t+0 就闪完，而三星 HAL 要 ~240ms 后才开曝光，
      * 闪光根本进不了画面（真机 11-06 实测）。
      */
     @Volatile var onExposureStarted: (() -> Unit)? = null
+
+    /**
+     * 调研路①：三段式序列启动前的「复位到氙气档」回调。11-19 用户实证
+     * 「点了复位后每次都是氙气」，三段式必须先把灯拉回 0c=00 氙气通道才有意义。
+     * 默认 null = 不复位（零行为变化）。
+     */
+    @Volatile var onBeforeStagedFlash: (() -> Unit)? = null
+
+    /**
+     * 调研路②：查询外闪是否已回电就绪（FEC8 value[3]==0）。返回 true=就绪可拍 /
+     * false=回电中需等待 / null=该灯无回电状态通道（不门控）。默认 null。
+     */
+    @Volatile var isFlashReady: (() -> Boolean?)? = null
 
     /**
      * 外置闪光触发偏移（ms，相对「曝光开始」的灯起辉补偿）。负值 = 提前发指令，
@@ -877,6 +1237,8 @@ class Camera2Controller(private val context: Context) {
      */
     @Volatile private var profileFlashOffsetMs: Int? = null
     @Volatile private var flashSyncGain: Float = FLASH_SYNC_GAIN_DEFAULT
+    /** 外闪帧 AWB 是否钉日光（默认开，热调 flash_awb_daylight.txt=0 关）。 */
+    @Volatile private var extFlashAwbDaylight: Boolean = true
     /**
      * 外置闪光档的细档补偿（EV，0.5 一档，−3…+3）。切到 EXT 后机顶 EV 拨盘
      * 只改这个值；常规档的 [exposureComp] 原样保留，切回 OFF / INT 时拨盘
@@ -903,11 +1265,46 @@ class Camera2Controller(private val context: Context) {
     @Volatile var lastCaptureFocalMm: Float = 0f
         private set
 
+    /**
+     * 外闪手动标定样本快照（11-22）：一次性打包暴露给 MainActivity 写进 ShotMeta/EXIF。
+     * 只读诊断字段，绝不参与成像。MainActivity 在落卷点调用。
+     */
+    data class FlashCalibSnapshot(
+        val powerArg: Int,       // 下发给灯的功率字节 arg（0~70），-1=未记录
+        val distM: Float,        // AF 主体距离（米）
+        val ambIso: Int,         // 闪光前环境 ISO 基线
+        val ambSec: Float,       // 闪光前环境快门基线（秒）
+        val p50: Int,            // 相机直出中心亮度 p50（本帧 JPEG 回调算出）
+    )
+    /** 本帧直出中心亮度，JPEG 回调里写入，供落卷时的标定快照读取。 */
+    @Volatile private var lastFrameP50: Int = 0
+
+    /**
+     * 外闪手动标定档（11-22）：由 MainActivity 的 Pro 模式 + 外置闪光档驱动。
+     * 开启后 [applyExternalFlashSync] 用手动 ISO/快门（[manualIso]/[manualExposure]）
+     * 而不是 gain 反算，让用户的手动设置真正作用到拍照帧，供人工标定采样。
+     * 额外的 manualIso!=null 判据保证退出 Pro（setManualIso(null)）后自动回落，
+     * 即使这个标志因故未清也不会卡在手动档。
+     */
+    @Volatile var extFlashManualCalib: Boolean = false
+
+    val flashCalibSnapshot: FlashCalibSnapshot
+        get() = FlashCalibSnapshot(
+            powerArg = com.filmcam.app.flash.A2PowerProtocol.lastSentPowerByte,
+            distM = ttlSubjectDistanceM,
+            ambIso = aeBaselineIso,
+            ambSec = aeBaselineSec,
+            p50 = lastFrameP50,
+        )
+
     private var flashTriggerPosted = false
 
     // ---- EXT 外闪取证（写进诊断报告，用来区分「指令没发」和「发晚了」）----
     private var extTriggerCount = 0
     @Volatile private var extLastTriggerAtMs = 0L
+    /** onCaptureStarted 的曝光开始 sensor 时钟(ns)，触发时快照为 burst 取证基准。 */
+    @Volatile private var lastCaptureStartedTs = 0L
+    @Volatile private var burstTriggerSensorTs = 0L
     @Volatile private var extLastTriggerWhere = "-"
     @Volatile private var extLastPreRollMs = -1L
     @Volatile private var extTriggerToExposureMs = -1L
@@ -919,6 +1316,8 @@ class Camera2Controller(private val context: Context) {
     private val flashHalLatencySamples = java.util.ArrayDeque<Long>()
     /** 本帧采用的 HAL 延迟：首帧按当前通路兜底，之后由实测中位数替换。 */
     @Volatile private var flashHalLatencyMs = FLASH_HAL_LATENCY_MS_JPEG
+    /** halLatency 来源：true=来自上次会话实测缓存（可信），false=兜底值（未校准）。 */
+    @Volatile private var flashHalLatencyCalibrated = false
 
     /** 当前通路的 HAL 延迟兜底值（JPG 直提交 ~40ms / RAW 多挂 surface ~270ms）。 */
     private fun flashLatencyFallbackMs(): Long =
@@ -954,10 +1353,22 @@ class Camera2Controller(private val context: Context) {
 
     init {
         // 开局就带着上一会话的实测延迟，否则第一帧永远按 40ms 兜底算错（见上）
-        loadCachedFlashLatency()?.let { flashHalLatencyMs = it }
+        loadCachedFlashLatency()?.let {
+            flashHalLatencyMs = it
+            flashHalLatencyCalibrated = true
+        }
         // 同样把上次的 TTL 增益带过来：否则每次重启都要从 0 增益开始，
         // 第一张必然偏暗一档多（真机：重启后首张 p50=118，目标 195）。
-        loadCachedTtlEv()?.let { externalTtlEv = it }
+        // 11-22 TTL 重开：旧版本死代码期写进 prefs 的 externalTtlEv（真机残留 +2EV）
+        // 是虚高基线，必须丢弃，否则第一张就按 +2EV 过曝。清零后让闭环按真实
+        // 成片亮度逐张收敛（TtlMeter 首帧半步 +1EV 的设计正好接手）。
+        if (EXTERNAL_TTL_ENABLED) {
+            externalTtlEv = 0f
+            saveTtlEv(0f)
+            android.util.Log.i("FlashTtl", "TTL 重开：历史残留增益已清零，从 0EV 开始收敛")
+        } else {
+            loadCachedTtlEv()?.let { externalTtlEv = it }
+        }
     }
 
     /** TTL 累积增益的缓存（跨会话），键名带通路无关性 —— 增益只跟场景/距离有关。 */
@@ -967,6 +1378,11 @@ class Camera2Controller(private val context: Context) {
             .getFloat("extTtlEv", Float.NaN)
         if (v.isNaN() || v < -TtlMeter.MAX_CORRECTION_EV || v > TtlMeter.MAX_CORRECTION_EV) null else v
     }.getOrNull()
+
+    /** 曝光时长模型开关（11-23）：默认开；热调 flash_latency_model.txt=0 回退旧实测缓存预测。 */
+    @Volatile private var flashLatencyModel = true
+    /** 本帧请求的曝光时长（applyExternalFlashSync 求解后写；0 = 非外闪固定曝光帧，模型不适用）。 */
+    @Volatile private var pendingFlashExposureNs = 0L
 
     private fun saveTtlEv(ev: Float) {
         runCatching {
@@ -979,6 +1395,11 @@ class Camera2Controller(private val context: Context) {
      *  实测样本刻意不重置 —— 它要跨帧累积才能做中位数。 */
     private fun readFlashSyncConfig() {
         val dir = runCatching { context.getExternalFilesDir(null) }.getOrNull()
+        // 触发时机模型（11-23）：默认按本帧曝光算延迟；写 0 回退上一帧实测缓存。
+        flashLatencyModel = if (dir == null) true else runCatching {
+            val f = java.io.File(dir, FLASH_LATENCY_MODEL_HOTFILE)
+            !(f.exists() && f.readText().substringBefore("//").trim() == "0")
+        }.getOrDefault(true)
         // 优先级：热调文件（adb 扫参）> 当前灯的档案 offset > 全局默认 -200。
         // 氙气灯（A2 实测 -80）与 COB 灯（-200）起辉速度不同，必须按灯取默认值。
         val fallback = profileFlashOffsetMs?.toLong() ?: DEFAULT_FLASH_SYNC_OFFSET_MS
@@ -994,6 +1415,73 @@ class Camera2Controller(private val context: Context) {
             else f.readText().substringBefore("//").trim().toFloatOrNull()
                 ?: FLASH_SYNC_GAIN_DEFAULT
         }.getOrDefault(FLASH_SYNC_GAIN_DEFAULT).coerceIn(0.05f, 10.0f)
+        // 功率帧验证热调：写 1 关掉 TTL 闭环，让固定 ISO 直接反映灯的功率差。
+        ttlHotOff = if (dir == null) false else runCatching {
+            val f = java.io.File(dir, "flash_ttl_off.txt")
+            f.exists() && f.readText().substringBefore("//").trim() == "1"
+        }.getOrDefault(false)
+        // 预闪测光探针：只读日志、不改行为；写 1 开启，缺文件默认关。
+        meterProbe = if (dir == null) false else runCatching {
+            val f = java.io.File(dir, METER_PROBE_HOTFILE)
+            f.exists() && f.readText().substringBefore("//").trim() == "1"
+        }.getOrDefault(false)
+        // 多帧覆盖验证帧数：缺文件/非法/0/1 = 关（0），2~8 生效。
+        // 转正：默认 8 帧开启；热调文件可覆盖（写 0/1 关闭 A/B，写 2~8 改帧数）。
+        burstFrames = if (dir == null) BURST_DEFAULT_FRAMES else runCatching {
+            val f = java.io.File(dir, BURST_HOTFILE)
+            if (!f.exists()) BURST_DEFAULT_FRAMES
+            else f.readText().substringBefore("//").trim().toIntOrNull() ?: BURST_DEFAULT_FRAMES
+        }.getOrDefault(BURST_DEFAULT_FRAMES).coerceIn(0, 20).let { if (it < 2) 0 else it }
+        // 调研路①：三段式 Take。缺文件/非法/1 = 关（单发原样），2~4 = 段数。
+        researchStages = if (dir == null) 1 else runCatching {
+            val f = java.io.File(dir, STAGES_HOTFILE)
+            if (!f.exists()) 1 else f.readText().substringBefore("//").trim().toIntOrNull() ?: 1
+        }.getOrDefault(1).coerceIn(1, 4)
+        // 热调显式开三段式（2~4）时覆盖 profile 的 stages（A2 被锁 1）；=1 时不碰，
+        // 让 setExternalFlashStages(profile.triggerStages) 的原值生效。
+        if (researchStages >= 2) {
+            flashStages = researchStages
+            stagedFlashStarted = false
+            android.util.Log.w("FlashSync", "调研路①三段式启用：stages=$researchStages（热调覆盖 profile）")
+        }
+        // 调研路②：FEC8 回电就绪门控。写 1 开启，缺文件=关。
+        readyGate = if (dir == null) false else runCatching {
+            val f = java.io.File(dir, READY_GATE_HOTFILE)
+            f.exists() && f.readText().substringBefore("//").trim() == "1"
+        }.getOrDefault(false)
+        // 调研路③：YUV 环形缓冲帧数。缺文件/非法/0/1=关，2~90 生效（30fps×3s 上限）。
+        yuvBurstFrames = if (dir == null) 0 else runCatching {
+            val f = java.io.File(dir, YUV_BURST_HOTFILE)
+            if (!f.exists()) 0 else f.readText().substringBefore("//").trim().toIntOrNull() ?: 0
+        }.getOrDefault(0).coerceIn(0, 90).let { if (it < 2) 0 else it }
+        // 调研路③：YUV 数字曝光修正 EV。缺文件/非法=0，钳 -4~+2 档。
+        yuvEvComp = if (dir == null) 0f else runCatching {
+            val f = java.io.File(dir, YUV_EV_HOTFILE)
+            if (!f.exists()) 0f else f.readText().substringBefore("//").trim().toFloatOrNull() ?: 0f
+        }.getOrDefault(0f).coerceIn(-4f, 2f)
+        // 固定闪光功率热调。缺文件/非法=-1（不干预），0~70 生效。
+        fixedPowerArg = if (dir == null) -1 else runCatching {
+            val f = java.io.File(dir, FLASH_PWR_HOTFILE)
+            if (!f.exists()) -1 else f.readText().substringBefore("//").trim().toIntOrNull() ?: -1
+        }.getOrDefault(-1).let { if (it < 0) -1 else it.coerceIn(0, 70) }
+        // 外闪帧 AWB 钉日光。缺文件=开，只有显式写 0 才关（真机 A/B 回退用）。
+        extFlashAwbDaylight = if (dir == null) true else runCatching {
+            val f = java.io.File(dir, EXT_FLASH_AWB_DAYLIGHT_HOTFILE)
+            !f.exists() || f.readText().substringBefore("//").trim() != "0"
+        }.getOrDefault(true)
+        // 编排式同步：默认由灯能力决定；热调文件写 0 强制回退旧预测逻辑（真机 A/B）。
+        val hotOff = if (dir == null) false else runCatching {
+            val f = java.io.File(dir, ORCHESTRATED_HOTFILE)
+            f.exists() && f.readText().substringBefore("//").trim() == "0"
+        }.getOrDefault(false)
+        orchestratedFlashSync = externalFlashSync && orchestratedFlashCapable && !hotOff
+        if (orchestratedFlashSync) {
+            android.util.Log.i(
+                "FlashSync",
+                "编排式同步启用：触发绑 onCaptureStarted / 宽窗 " +
+                    "${ORCHESTRATED_SYNC_SHUTTER_NS / 1_000_000}ms / 锁 ISO 不变（A2 氙气灯）"
+            )
+        }
         flashTriggerPosted = false
     }
 
@@ -1011,10 +1499,56 @@ class Camera2Controller(private val context: Context) {
         )
         extTriggerCount++
         extLastTriggerAtMs = android.os.SystemClock.elapsedRealtime()
+        // burst 取证：把触发时刻锚到 sensor 时钟，后面每帧 ts - 它 = 相对触发的曝光时刻
+        burstTriggerSensorTs = lastCaptureStartedTs
         extLastTriggerWhere = where
         extExposurePending = true
         reportExtFlashState()
         onExposureStarted?.invoke()
+        // 调研路③：触发后等环形缓冲填满（N 帧 @30fps + 余量），挑亮度跃升最大的帧。
+        if (yuvRingActive) {
+            backgroundHandler?.postDelayed(
+                { pickYuvFlashFrame() },
+                (yuvBurstFrames * 33L + 300L).coerceAtMost(4_000L)
+            )
+        }
+    }
+
+    /** 调研路③：从环形缓冲挑 p50 峰值帧，对比触发前后基线，判定 YUV 是否看见闪光。 */
+    private fun pickYuvFlashFrame() {
+        val frames: List<YuvProbeFrame> = synchronized(yuvRing) { yuvRing.toList() }
+        yuvRingActive = false
+        if (frames.isEmpty()) {
+            android.util.Log.w("YuvProbe", "路③：环形缓冲空，未采到帧")
+            return
+        }
+        val base = frames.take(frames.size / 3).map { it.p50 }.filter { it >= 0 }
+        val baseline = if (base.isEmpty()) 0 else base.sorted()[base.size / 2]
+        val peak = frames.maxByOrNull { it.p50 }
+        val peakP50 = peak?.p50 ?: -1
+        val jump = peakP50 - baseline
+        android.util.Log.w(
+            "YuvProbe",
+            "路③挑帧：frames=${frames.size} 基线p50=$baseline 峰值p50=$peakP50" +
+                " 跃升=$jump ts=${peak?.ts}" +
+                " ${if (jump >= 30) "★闪光被YUV捕获" else "未见明显跃升"}"
+        )
+        // 路③交付接管：抓到闪光 → 用 YUV 峰值帧替换暂存的相机帧交付（走暗房 JPEG 通路）；
+        // 没抓到 → 回退相机原帧。两条路都只交一次（yuvDeliveryGuard 守）。
+        val pending = yuvPendingJpeg
+        if (pending == null) {
+            android.util.Log.w("YuvProbe", "路③：无暂存相机帧，跳过交付替换")
+            return
+        }
+        if (jump >= 30 && peak?.jpeg != null) {
+            android.util.Log.w("YuvProbe", "路③：★用 YUV 闪光帧替换底片 (${peak.jpeg!!.size}B)")
+            yuvPendingJpeg = null
+            deliverFinalJpeg(peak.jpeg!!, yuvPendingRotation, null)
+        } else {
+            android.util.Log.w("YuvProbe", "路③：未见闪光，回退相机原帧交付")
+            yuvPendingJpeg = null
+            deliverFinalJpeg(pending, yuvPendingRotation, null)
+        }
     }
 
     // 复刻康泰时 T3 35mm 视角：主摄等效约23mm，裁切至35mm ≈ 1.52x（常量与 RAW 冲洗端共享）
@@ -1074,6 +1608,13 @@ class Camera2Controller(private val context: Context) {
      * 用完（或落卷失败）由落卷方负责删除。
      */
     var onPhotoCaptured: ((ByteArray, Int, File?) -> Unit)? = null
+
+    /** 唯一落卷出口（路③接管时经此统一交付，保证一次快门只交一次）。 */
+    private fun deliverFinalJpeg(jpeg: ByteArray, rotation: Int, dng: File? = null) {
+        if (yuvDeliveryGuard && yuvBurstFrames >= 2) return
+        yuvDeliveryGuard = true
+        onPhotoCaptured?.invoke(jpeg, rotation, dng)
+    }
 
     /** 取景器元信息回调：(AF 状态, 曝光时间秒)，驱动 T3 取景器内的合焦灯与快门档显示 */
     var onViewfinderMeta: ((afState: Int?, exposureSec: Float, isoAe: Int) -> Unit)? = null
@@ -1258,7 +1799,40 @@ class Camera2Controller(private val context: Context) {
         // 全分辨率拍照（JPEG 最大尺寸）
         val jpegSizes = map?.getOutputSizes(ImageFormat.JPEG)
         val maxJpeg = jpegSizes?.maxByOrNull { it.width * it.height } ?: Size(4000, 3000)
-        imageReader = ImageReader.newInstance(maxJpeg.width, maxJpeg.height, ImageFormat.JPEG, 2)
+        // 缓冲 6：多帧覆盖验证连拍最多 8 帧，JPEG 回调是逐帧异步的，缓冲太小会在
+        // 处理前溢出丢帧（正常单帧拍照只用 1 个槽，提到 6 无副作用）。
+        // 缓冲 20：默认 18 帧连拍不丢帧。
+        imageReader = ImageReader.newInstance(maxJpeg.width, maxJpeg.height, ImageFormat.JPEG, 20)
+        // 调研路③：YUV 预览流 reader（用预览尺寸，30fps 高频采帧）。缓冲给到 yuvBurstFrames
+        // 上限 90 + 余量，避免环形缓冲处理慢时被 HAL 丢弃。默认路③关（yuvBurstFrames=0）
+        // 时不创建，零开销。
+        // 相机启动时热调值可能还没被 takePicture 刷新，这里直接读一次文件确保路③开关生效。
+        val yuvFramesAtOpen = runCatching {
+            val d = context.getExternalFilesDir(null)
+            val f = java.io.File(d, YUV_BURST_HOTFILE)
+            if (f.exists()) f.readText().substringBefore("//").trim().toIntOrNull() ?: 0 else 0
+        }.getOrDefault(0).coerceIn(0, 90)
+        if (yuvFramesAtOpen >= 2) {
+            yuvBurstFrames = yuvFramesAtOpen
+            try {
+                yuvImageReader = ImageReader.newInstance(
+                    previewSize.width, previewSize.height, ImageFormat.YUV_420_888, 12
+                ).also { reader ->
+                    reader.setOnImageAvailableListener({ r ->
+                        val img = r.acquireLatestImage() ?: return@setOnImageAvailableListener
+                        try {
+                            onYuvFrame(img)
+                        } finally {
+                            img.close()
+                        }
+                    }, backgroundHandler)
+                }
+                android.util.Log.w("YuvProbe", "路③：YUV reader 已创建 ${previewSize.width}x${previewSize.height}")
+            } catch (e: Exception) {
+                android.util.Log.w("YuvProbe", "路③：YUV reader 创建失败，路③不可用", e)
+                yuvImageReader = null
+            }
+        }
         // 读取传感器方向
         val sensorOrientation = chars.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 90
         android.util.Log.i("Camera2", "previewSize=$previewSize sensorOrientation=$sensorOrientation")
@@ -1311,11 +1885,55 @@ class Camera2Controller(private val context: Context) {
         // 每次出片时现算设备朝向：Activity 旋转重建后朝向会变，不能只在 start() 取一次。
         imageReader?.setOnImageAvailableListener({ reader ->
             val image = reader.acquireNextImage() ?: return@setOnImageAvailableListener
+            // SENSOR_TIMESTAMP 是 JPEG/RAW/result 三路唯一的同帧锚点，必须在 close 前抓。
+            val ts = image.timestamp
             val bytes = try {
                 val buffer = image.planes[0].buffer
                 ByteArray(buffer.remaining()).also { buffer.get(it) }
             } finally {
                 image.close()
+            }
+            // 多帧覆盖：连拍的 N 帧不逐张交付，按 timestamp 存三路碎片、比亮度，
+            // 选吃到主闪的最亮帧；收满后用同帧 RAW 写 DNG 母片交付（配对失败降级 JPEG）。
+            if (burstActive) {
+                val reading = analyzeMeteringLuma(bytes)
+                val bf = burstMap.getOrPut(ts) { BurstFrame().also { it.ts = ts } }
+                bf.jpeg = bytes
+                bf.rotation = jpegRotationDegrees(sensorOrientation)
+                bf.p50 = reading.p50
+                burstJpegCount++
+                // 取证：这帧 JPEG 到货距灯触发多久。触发时刻→出光延迟是本次要定的未知量，
+                // 闪光若进画面，那一帧 p50 会跳高，配合这个时间戳就能反推真实出光延迟。
+                val sinceTriggerMs = if (extLastTriggerAtMs > 0L)
+                    android.os.SystemClock.elapsedRealtime() - extLastTriggerAtMs else -1L
+                // 曝光开始时刻相对触发的偏移(ns→ms)：闪光若进画面，那帧 p50 跳高，
+                // 这条值就是「触发→出光」的真实延迟，用来定 BURST_TRIGGER_DELAY_MS。
+                val expRelTriggerMs = if (burstTriggerSensorTs > 0L)
+                    (ts - burstTriggerSensorTs) / 1_000_000L else -1L
+                android.util.Log.i(
+                    "BurstProbe",
+                    "帧 $burstJpegCount/$burstFrames 曝光+${expRelTriggerMs}ms 到货+${sinceTriggerMs}ms" +
+                        " p50=${reading.p50} p90=${reading.p90}" +
+                        " pwr=${com.filmcam.app.flash.A2PowerProtocol.lastSentPowerByte}"
+                )
+                if (reading.p50 > burstBestP50) {
+                    burstBestP50 = reading.p50
+                    burstPickedTs = ts
+                }
+                if (burstJpegCount >= burstFrames && burstPickedTs >= 0) {
+                    closeBurstRawExcept(burstPickedTs)
+                    val best = burstMap[burstPickedTs]
+                    android.util.Log.i(
+                        "BurstProbe",
+                        "选中最亮帧 ts=$burstPickedTs p50=$burstBestP50" +
+                            " raw=${best?.raw != null} result=${best?.result != null} → 交付落卷"
+                    )
+                    if (best != null) {
+                        if (best.raw != null && best.result != null) deliverBurstBest(best)
+                        // 三路没齐：等 RAW/result 回调里再触发交付（带超时兜底）
+                    }
+                }
+                return@setOnImageAvailableListener
             }
             if (ttlMetering) {
                 ttlMetering = false
@@ -1340,52 +1958,93 @@ class Camera2Controller(private val context: Context) {
                 }, TtlMeter.SECOND_SHOT_DELAY_MS)
                 return@setOnImageAvailableListener
             }
-            // 相机侧 TTL（跨张收敛）：这张已经拍完了，量它的亮度，把偏差累加到
-            // 下一张的曝光增益里。不改动本帧，也不拦截交付。
-            if (externalTtlEnabled && externalFlashSync) {
+            // 🔴 灯侧 TTL（11-22 抓到 a0 01 功率帧后定稿）：这张拍完，量成片亮度，
+            // 调整**灯的功率档**（不是相机 ISO）—— 背景曝光稳定、零延迟、对齐官方。
+            // 相机 ISO 锁标定 228 不动，ttlGain 恒 1（不再用 externalTtlEv 调 ISO）。
+            if (externalTtlEnabled && externalFlashSync && !ttlHotOff) {
                 val reading = analyzeMeteringLuma(bytes)
-                val isoUsed = if (manualIso != null && manualIso!! > 0) manualIso!! else 400
                 val dark = reading.p50 <= TtlMeter.CLIP_LOW
-                // 🔴 闪光失效识别：上一张还正常、这一张突然全黑 ⇒ 灯没亮，不是欠曝。
-                // 重连后首张必踩这个坑（19:32 真机：p50=3 被当成欠曝 +2EV，
-                // 下一张直接 p50=202 过曝）。这种情况不计入修正。
+                // 闪光失效识别：上一张健康、这张突然全黑 = 灯没亮/回电没跟上，不算欠曝，
+                // 否则会误把功率拉满（11-19 老坑）。与相机侧不同：这里即使误判也只走 1 档。
                 val flashMiss = dark && lastHealthyP50 >= 40
-                val sol = TtlMeter.solve(
-                    isoUsed, reading,
-                    includeRecycleComp = false,
-                    targetOffsetEv = externalTtlTargetEv
-                )
-                val delta = when {
-                    flashMiss -> 0f
-                    // 没有历史读数时（首张/换场景）不要一次跳 2EV，半步更稳
-                    dark && lastHealthyP50 < 0 -> 1.0f
-                    else -> sol.correctionEv
-                }
-                // 死区 ±0.25EV：避免在目标附近来回抖
-                val applied = if (kotlin.math.abs(delta) < 0.25f) 0f else delta
                 if (!flashMiss) {
-                    externalTtlEv = (externalTtlEv + applied)
-                        .coerceIn(-TtlMeter.MAX_CORRECTION_EV, TtlMeter.MAX_CORRECTION_EV)
-                    // 存下来给下一个会话开局用（见 init 里的 loadCachedTtlEv）
-                    saveTtlEv(externalTtlEv)
+                    val adjust = TtlMeter.flashPowerAdjust(reading.p50)
+                    if (adjust != 0) {
+                        val target = (lampPowerArg + adjust).coerceIn(
+                            TtlMeter.POWER_ARG_MIN, TtlMeter.POWER_ARG_MAX)
+                        if (target != lampPowerArg) {
+                            val sent = onFlashPowerRequest?.invoke(target) == true
+                            if (sent) lampPowerArg = target
+                            android.util.Log.i("FlashTtl",
+                                "灯侧TTL 成片 p50=${reading.p50} → 功率档 $lampPowerArg→$target" +
+                                " (${if (adjust > 0) "降功率" else "升功率"} ${kotlin.math.abs(adjust / TtlMeter.POWER_ARG_STEP)}档)" +
+                                " sent=$sent")
+                        }
+                    }
+                    if (!dark) lastHealthyP50 = reading.p50
+                } else {
+                    android.util.Log.i("FlashTtl",
+                        "灯侧TTL 成片 p50=${reading.p50} [闪光未触发/回电中，本帧不调功率]")
                 }
-                if (!dark) lastHealthyP50 = reading.p50
+                onExternalTtlResult?.invoke(lastCaptureIso, 0, reading.p50, "灯侧功率TTL")
+            }
+            // 预闪测光可行性探针（默认关）：独立于 TTL 闭环，把每张相机直出 JPEG 的
+            // 中心亮度 + 触发时的真实功率字节打出来，用来定量判断「相机读数能否区分
+            // 近/远、能否跟随功率变化」。只读不改：不影响拍照/触发/调功率任何行为。
+            // 中心亮度只解一次码：探针日志与黑片侦测共用（避免每张外闪都解码两遍）。
+            val centerLuma = if (meterProbe || externalFlashSync) analyzeMeteringLuma(bytes) else null
+            // 外闪标定：把本帧直出中心亮度存进快照，落卷时随 ShotMeta 写进 EXIF。
+            if (externalFlashSync && centerLuma != null) lastFrameP50 = centerLuma.p50
+            if (meterProbe) {
                 android.util.Log.i(
-                    "FlashTtl",
-                    "成片 p50=" + reading.p50 + " p90=" + reading.p90 +
-                        (if (flashMiss) " [闪光未触发，本帧不计入]" else "") +
-                        " → 本帧偏差 " + "%.2f".format(applied) + "EV，" +
-                        "累计修正 " + "%.2f".format(externalTtlEv) + "EV"
+                    "MeterProbe",
+                    "成片 p50=${centerLuma?.p50} p90=${centerLuma?.p90} 裁切=${"%.1f".format(centerLuma?.clippedPct ?: 0f)}%" +
+                        " iso=$lastCaptureIso ambExp=${"%.4f".format(lastAeSec)}s" +
+                        " pwr=${com.filmcam.app.flash.A2PowerProtocol.lastSentPowerByte}" +
+                        " dist=$ttlSubjectDistanceM ttlOff=$ttlHotOff" +
+                        " orchestrated=$orchestratedFlashSync"
                 )
-                onExternalTtlResult?.invoke(isoUsed, 0, reading.p50, sol.note)
+            }
+            // 外闪黑片侦测（11-22）：灯没电/失联时 p50≈1，正常张≥91。只提示不拦落卷。
+            // 守卫：本次是外闪正式帧（takePicture 按 externalFlashSync && !slow 置位）、
+            // 非 TTL 测光帧（测光帧曝光量本就不同，不参与判定）。
+            if (flashFrameArmed && !ttlMetering && centerLuma != null &&
+                centerLuma.p50 <= FLASH_MISS_P50_MAX
+            ) {
+                android.util.Log.w(
+                    "FlashMiss",
+                    "外闪黑片：中心 p50=${centerLuma.p50} ≤ $FLASH_MISS_P50_MAX" +
+                        "（灯没闪/没电/失联）iso=$lastCaptureIso 环境基线iso=${aeBaselineIso}" +
+                        " pwr=${com.filmcam.app.flash.A2PowerProtocol.lastSentPowerByte}"
+                )
+                onFlashMissDetected?.invoke(centerLuma.p50, aeBaselineIso)
             }
             val rotation = jpegRotationDegrees(sensorOrientation).also {
                 android.util.Log.i("Camera2", "capture jpegRotation=$it deviceRotation=${deviceRotationDegrees()}")
             }
             android.util.Log.i(TAG, "JPEG 到货：rawNegativeEnabled=$rawNegativeEnabled rawReader=${rawImageReader != null}")
+            // 调研路③交付接管：外闪档 + YUV 环形缓冲开启时，相机这帧 JPEG 只是"碰运气"
+            // （闪光可能落在曝光窗外=黑片）。暂存它、不走 RAW 汇合（三星闪光 RAW 常是黑
+            // 底片），等 YUV 判定后用真正抓到闪光的那帧替换交付。超时兜底保证不丢卷。
+            if (yuvBurstFrames >= 2 && externalFlashSync && yuvRingActive) {
+                yuvPendingJpeg = bytes
+                yuvPendingRotation = rotation
+                yuvDeliveryGuard = false
+                android.util.Log.w("YuvProbe", "路③：相机帧暂存(${bytes.size}B)，等 YUV 判定替换")
+                // 兜底：YUV 判定若因故没跑，1s 后用原相机帧交付（不丢卷）
+                backgroundHandler?.postDelayed({
+                    if (!yuvDeliveryGuard && yuvPendingJpeg != null) {
+                        val fb = yuvPendingJpeg ?: return@postDelayed
+                        android.util.Log.w("YuvProbe", "路③：YUV 判定超时，回退相机原帧交付")
+                        yuvPendingJpeg = null
+                        deliverFinalJpeg(fb, yuvPendingRotation, null)
+                    }
+                }, 3_500L)
+                return@setOnImageAvailableListener
+            }
             if (!rawNegativeEnabled || rawImageReader == null) {
                 // RAW 没开 / 不支持：老路径，JPEG 即全部
-                onPhotoCaptured?.invoke(bytes, rotation, null)
+                deliverFinalJpeg(bytes, rotation, null)
             } else {
                 // RAW 开着：JPEG 先进汇合处，等 RAW 图 + 快门结果（或超时）一起交付
                 val p = pendingShot ?: PendingShot().also { pendingShot = it }
@@ -1401,7 +2060,7 @@ class Camera2Controller(private val context: Context) {
                     tryCompletePendingShot()
                 } else {
                     // 上一张的超时碎片混进来（极小概率）：按独立 JPEG 帧交付，不丢
-                    onPhotoCaptured?.invoke(bytes, rotation, null)
+                    deliverFinalJpeg(bytes, rotation, null)
                 }
             }
         }, backgroundHandler)
@@ -1415,7 +2074,8 @@ class Camera2Controller(private val context: Context) {
         val rawPicked = pickRawSize(rawSizes.map { it.width to it.height })
         if (rawPicked != null) {
             val rs = Size(rawPicked.first, rawPicked.second)
-            rawImageReader = ImageReader.newInstance(rs.width, rs.height, ImageFormat.RAW_SENSOR, 2)
+            // 缓冲 20：18 帧连拍每帧一份 RAW，不丢帧（单帧路径 2 够用）。
+            rawImageReader = ImageReader.newInstance(rs.width, rs.height, ImageFormat.RAW_SENSOR, 20)
             rawImageReader?.setOnImageAvailableListener({ reader ->
                 val image = reader.acquireNextImage() ?: return@setOnImageAvailableListener
                 // 测光帧的 RAW 必须丢掉：否则它会占住 bufferedRaw 单槽，
@@ -1423,6 +2083,19 @@ class Camera2Controller(private val context: Context) {
                 if (ttlSkipRawFrames > 0) {
                     ttlSkipRawFrames--
                     image.close()
+                    return@setOnImageAvailableListener
+                }
+                // 多帧覆盖：RAW 按 timestamp 归入同帧的 burstMap 碎片（不写单槽）。
+                // 最亮帧还没选出时先收着；选出后非最亮帧的 RAW 会在收尾时统一 close。
+                if (burstActive) {
+                    val ts = image.timestamp
+                    val bf = burstMap.getOrPut(ts) { BurstFrame().also { it.ts = ts } }
+                    bf.raw = image
+                    if (burstJpegCount >= burstFrames && burstPickedTs == ts &&
+                        bf.jpeg != null && bf.result != null
+                    ) {
+                        deliverBurstBest(bf)
+                    }
                     return@setOnImageAvailableListener
                 }
                 val p = pendingShot
@@ -1464,6 +2137,106 @@ class Camera2Controller(private val context: Context) {
         } catch (e: SecurityException) {
             Toast.makeText(context, "需要相机权限", Toast.LENGTH_SHORT).show()
         }
+    }
+
+    /**
+     * 调研路③：处理一帧 YUV 预览帧 —— 算中心亮度 p50 + 转 NV21/JPEG，存进环形缓冲。
+     * 触发拍照后 [pickYuvFlashFrame] 会从缓冲里挑亮度跃升最大的一帧交付当底片。
+     */
+    private fun onYuvFrame(image: Image) {
+        if (!yuvRingActive) return
+        try {
+            val w = image.width
+            val h = image.height
+            val yPlane = image.planes[0]
+            val yBuf = yPlane.buffer
+            val yRowStride = yPlane.rowStride
+            val yPixStride = yPlane.pixelStride
+
+            // 中心 40% 区域采样算 p50（Y plane 直接读，不解码，开销极低）
+            val hist = IntArray(256)
+            val x0 = (w * 0.3f).toInt()
+            val x1 = (w * 0.7f).toInt()
+            val y0 = (h * 0.3f).toInt()
+            val y1 = (h * 0.7f).toInt()
+            var total = 0
+            var yy = y0
+            while (yy < y1) {
+                var base = yy * yRowStride + x0 * yPixStride
+                var xx = x0
+                while (xx < x1) {
+                    hist[yBuf.get(base).toInt() and 0xFF]++
+                    total++
+                    base += yPixStride
+                    xx += 2
+                }
+                yy += 2
+            }
+            var p50 = 0
+            if (total > 0) {
+                var acc = 0
+                for (v in 0..255) {
+                    acc += hist[v]
+                    if (p50 == 0 && acc >= total * 0.5f) { p50 = v; break }
+                }
+            }
+
+            // 转 NV21 → JPEG（供交付底片）。只在环形缓冲窗口内做，开销可接受。
+            val nv21 = yuv420ToNv21(image)
+            // 调研路③亮度修正：对 Y plane（NV21 前 w*h 字节）乘 2^EV 数字降亮。
+            // UV 保持中性 128 不动；p50 判定已在上方用原始值算好（闪光命中不受影响）。
+            if (nv21 != null && yuvEvComp != 0f) {
+                val gain = Math.pow(2.0, yuvEvComp.toDouble()).toFloat()
+                val yLen = w * h
+                for (i in 0 until yLen) {
+                    val v = (nv21[i].toInt() and 0xFF) * gain
+                    nv21[i] = v.toInt().coerceIn(0, 255).toByte()
+                }
+            }
+            val jpeg = if (nv21 != null) {
+                val yuvImage = android.graphics.YuvImage(nv21, android.graphics.ImageFormat.NV21, w, h, null)
+                val out = java.io.ByteArrayOutputStream()
+                yuvImage.compressToJpeg(android.graphics.Rect(0, 0, w, h), 92, out)
+                out.toByteArray()
+            } else null
+
+            synchronized(yuvRing) {
+                val frame = YuvProbeFrame().apply {
+                    ts = image.timestamp
+                    this.p50 = p50
+                    this.jpeg = jpeg
+                }
+                yuvRing.addLast(frame)
+                while (yuvRing.size > yuvBurstFrames) yuvRing.removeFirst()
+            }
+        } catch (e: Exception) {
+            android.util.Log.w("YuvProbe", "路③：单帧处理异常", e)
+        }
+    }
+
+    /** YUV_420_888 → NV21（YuvImage 只吃 NV21）。三个 plane 按 stride 逐行拷贝。 */
+    private fun yuv420ToNv21(image: Image): ByteArray? {
+        val w = image.width
+        val h = image.height
+        if (image.planes.size < 3) return null
+        val y = image.planes[0]
+        val u = image.planes[1]
+        val v = image.planes[2]
+        val out = ByteArray(w * h * 3 / 2)
+        // Y 平面
+        val yb = y.buffer
+        for (row in 0 until h) {
+            yb.position(row * y.rowStride)
+            yb.get(out, row * w, w)
+        }
+        // UV 全部填中性值 128 → 输出纯灰度图。
+        // 🔴 不再自己解析 U/V plane：三星的 U/V 布局（共享 buffer / pixelStride /
+        // 交错顺序）在不同 ROM 上不一致，实测两种"正确"写法分别得到整片绿 / 整片白。
+        // 而闪光成片本就是黑白胶片风格，Y plane（亮度）才是信号本体——Y 我读得很准
+        // （p50 就是对它算的）。UV=128 是中性灰，YuvImage 出来的就是干净的黑白成片，
+        // 彻底绕开色度布局的坑。
+        java.util.Arrays.fill(out, w * h, out.size, 128.toByte())
+        return out
     }
 
     /**
@@ -1530,9 +2303,13 @@ class Camera2Controller(private val context: Context) {
         // 往没配置过的 surface 上 addTarget 会让整次 capture 直接抛异常）
         val outputs = mutableListOf(previewSurface, readerSurface)
         rawImageReader?.let { outputs.add(it.surface) }
+        // 调研路③：YUV surface 加入会话（常驻），让预览流持续出 YUV 帧进环形缓冲。
+        yuvImageReader?.let { outputs.add(it.surface) }
 
         previewRequestBuilder = camera.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW).apply {
             addTarget(previewSurface)
+            // 调研路③：预览流同时输出到 YUV reader（30fps 环形缓冲采帧）。
+            yuvImageReader?.let { addTarget(it.surface) }
             set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
             applyManualSettings(this)
             applyPreviewFlashSettings(this)
@@ -1580,10 +2357,31 @@ class Camera2Controller(private val context: Context) {
             val camera = cameraDevice ?: return
             val readerSurface = imageReader!!.surface
             val slow = slowExposureNs > 0L && slowIso > 0
+            // 本次是否外闪正式帧（黑片侦测守卫）：TTL 测光帧会在下面覆写成 false。
+            flashFrameArmed = externalFlashSync && !slow
+            // 外闪标定：每帧清零直出亮度，避免落到上一帧的值。
+            lastFrameP50 = 0
+            // 调研路③：开启环形缓冲采集（触发前清空，只留本次快门附近的帧）。
+            if (yuvBurstFrames >= 2 && yuvImageReader != null && externalFlashSync && !slow) {
+                synchronized(yuvRing) { yuvRing.clear() }
+                yuvRingActive = true
+                yuvRingArmedAtMs = android.os.SystemClock.elapsedRealtime()
+                yuvDeliveryGuard = false
+                yuvPendingJpeg = null
+                android.util.Log.w("YuvProbe", "路③：环形缓冲已布防 frames=$yuvBurstFrames")
+            }
             // 相机侧闭环 TTL：外置闪光 + 曝光已锁（专业档）时，先拍测光帧。
             // 快门对闪光无效、光圈固定，能动的只有 ISO，所以「先量后拍」是唯一闭环。
+            // 编排模式下不走「双闪测光帧」分支：它会 setManualIso(finalIso)，但编排帧的
+            // applyExternalFlashSync 随后按 gain 覆盖 ISO，反解结果白算。编排用更简单的
+            // 跨张闭环（见 imageReader 回调里 EXTERNAL_TTL_ENABLED 段）：每张量亮度 →
+            // externalTtlEv 累加 → 下一张 gain 自动调 ISO。效果等价且零冲突。
+            // 🔴 flash_ttl_off.txt=1 必须连**拍前两段式测光帧**一起关：此前 ttlHotOff 只
+            // 挡了拍后功率闭环，这段仍偷偷跑（拍一张 ISO100 测光帧 + 隔 2.6s 再拍正式帧），
+            // 表现为「一次快门闪两次、第一次全功率成片黑、第二次碰运气」。扫参/取证时必须
+            // 回到干净单次拍照，否则测光帧污染读数且闪光时机错乱。
             if (EXTERNAL_TTL_ENABLED && externalFlashSync && externalTtlEnabled && !slow &&
-                !ttlMetering && !ttlSecondPass
+                !ttlMetering && !ttlSecondPass && !orchestratedFlashSync && !ttlHotOff
             ) {
                 ttlMetering = true
                 ttlSkipRawFrames = 1
@@ -1614,9 +2412,15 @@ class Camera2Controller(private val context: Context) {
                 return
             }
             if (ttlSecondPass) ttlSecondPass = false
+            // 多帧覆盖：连拍帧也收 RAW，靠 SENSOR_TIMESTAMP 与 JPEG/result 按帧配对。
+            val burstMode = burstFrames >= 2 && externalFlashSync && !slow
             val captureBuilder = camera.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE).apply {
+                // 编排式触发的帧身份标记：onCaptureStarted 只认这个 tag 的帧发灯，
+                // 排除持续回调的预览帧（时间闸门伪解法已两次失败）。
+                setTag(STILL_CAPTURE_TAG)
                 addTarget(readerSurface)
-                // P3 RAW：开着的快门同时收 RAW_SENSOR（同一帧的 Bayer 原始数据）
+                // P3 RAW：开着的快门同时收 RAW_SENSOR（同一帧的 Bayer 原始数据）。
+                // burst 帧也要收——转正后最亮帧要写 DNG 母片。
                 if (rawNegativeEnabled) {
                     rawImageReader?.surface?.let { addTarget(it) }
                 }
@@ -1643,9 +2447,36 @@ class Camera2Controller(private val context: Context) {
                 // 外置闪光一律走 App 自己的同步曝光（100ms 窗口）：真机实测闪光
                 // 指令比快门早约 450ms，短窗口必然拍空。TTL 的修正量通过
                 // externalTtlEv 乘进这里的 gain，而不是改手动 ISO。
-                if (externalFlashSync && !slow) applyExternalFlashSync(this)
+                // TTL 测光帧：必须用 manualIso(=100) 的自定义曝光测光，跳过编排的固定
+                // ISO 覆盖（否则测光帧被改成 ISO228 全白、反解失效）。正式帧照常走编排。
+                if (externalFlashSync && !slow && !ttlMetering) applyExternalFlashSync(this)
+                // 多帧覆盖：沿用 applyExternalFlashSync 的 CONTROL_MODE=AUTO + AE_MODE_OFF。
+                // 实测 CONTROL_MODE=OFF 反而让三星 HAL 忽略手动传感器参数（iso=7232/40ms），
+                // 与历史单帧成功配置（AUTO+AE_OFF → iso=227/100ms）不一致，故不再覆盖。
                 // 必须放在最后：慢门要覆盖 AE 模式，也要压过上面闪光分支的 ALWAYS_FLASH
                 if (slow) applySlowShutter(this, slowExposureNs, slowIso)
+            }
+            // 灯侧 TTL P0/P2：拍前用 AF 距离算功率初值（每张独立看自己的距离），
+            // 换场景（>1.6×）时重置到新距离的初值，避免继承上一场的功率。
+            if (externalTtlEnabled && externalFlashSync && !ttlHotOff &&
+                com.filmcam.app.flash.FlashProfile.isA2Device(com.filmcam.app.flash.FlashController.active?.currentLightName(), null)
+            ) {
+                val d = ttlSubjectDistanceM
+                if (d > 0f && TtlMeter.isSceneChange(lampLastDistanceM, d)) {
+                    lampPowerArg = TtlMeter.flashPowerForDistance(d)
+                    lampLastDistanceM = d
+                    val sent = onFlashPowerRequest?.invoke(lampPowerArg) == true
+                    android.util.Log.i("FlashTtl",
+                        "灯侧TTL 换场景 dist=${"%.2f".format(d)}m → 功率档重置 arg=$lampPowerArg sent=$sent")
+                } else if (d > 0f) {
+                    lampLastDistanceM = d
+                }
+            }
+            // 固定功率热调（独立于 TTL）：每次拍照前下发一次，扫值定位不过曝的功率档。
+            if (fixedPowerArg >= 0 && externalFlashSync) {
+                val sent = onFlashPowerRequest?.invoke(fixedPowerArg) == true
+                android.util.Log.w("FlashPwr",
+                    "固定功率下发 arg=$fixedPowerArg (≈1/${1 shl (fixedPowerArg / 10)}) sent=$sent")
             }
             submitStillCapture(captureBuilder, slow)
         } catch (_: Exception) {}
@@ -2000,8 +2831,9 @@ class Camera2Controller(private val context: Context) {
     /** 三段式序列是否已启动（防止 postDelayed 重入）。 */
     @Volatile private var stagedFlashStarted = false
 
-    fun setExternalFlashSync(enabled: Boolean, profileOffsetMs: Int? = null) {
+    fun setExternalFlashSync(enabled: Boolean, profileOffsetMs: Int? = null, orchestrated: Boolean = false) {
         profileFlashOffsetMs = profileOffsetMs
+        orchestratedFlashCapable = enabled && orchestrated
         if (!enabled) stagedFlashStarted = false
         if (externalFlashSync != enabled) {
             externalFlashSync = enabled
@@ -2054,17 +2886,53 @@ class Camera2Controller(private val context: Context) {
         // TTL 接管时补偿走目标偏移（externalTtlTargetEv），这里必须置 1，否则两处叠加
         val evGain = if (externalTtlEnabled) 1f
         else Math.pow(2.0, externalFlashCompEv.toDouble()).toFloat()
-        // 相机侧 TTL 的累积修正（每拍一张按实测偏差更新一次），与档位补偿相乘
-        val ttlGain = Math.pow(2.0, externalTtlEv.toDouble()).toFloat()
+        // 相机侧 TTL 的累积修正（每拍一张按实测偏差更新一次），与档位补偿相乘。
+        // 11-22 重开 TTL 后编排帧必须吃这个增益，否则闭环算出的 ISO 修正不起作用。
+        // 历史残留问题在 init 里统一清零（TTL 开启时丢弃旧 prefs 值，从 0 开始收敛），
+        // 避免旧版本死代码期写入的 +2EV 虚高基线把首张打成白板。
+        // 功率帧验证热调关闭 TTL 时，连残留的 externalTtlEv 一起忽略，
+        // 让 gain 回到纯标定值（否则上次收敛的 EV 会污染功率对比）。
+        // 灯侧 TTL（功率帧定稿）：闪光强弱由灯的功率档决定，相机 ISO 锁标定不动，
+        // 所以这里恒 1 —— 绝不能再用 externalTtlEv 调 ISO（旧相机侧 TTL 已废弃）。
+        // 保留 externalTtlEv 的读取只为兼容旧单测/诊断，不参与成像。
+        val ttlGain = 1f
         val gain = flashSyncGain * evGain * ttlGain
-        val solved = FlashExposure.solve(
-            baseIso = FLASH_SYNC_ISO_AT_100MS * gain,
-            baseShutterNs = FLASH_SYNC_SHUTTER_NS,
-            minIso = deviceIsoRange.first,
-            maxIso = deviceIsoRange.last,
-            minShutterNs = minShutterNs,
-            maxShutterNs = maxShutterNs,
-        )
+        // 🔴 外闪手动标定档（11-22）：用户要人工扫 ISO/快门/功率组合采样本，
+        // 这里必须尊重手动值——否则 gain 反算会把 manualIso 覆盖，拧了没反应。
+        // 用 FlashExposure.Solved 包装手动值，钳到设备区间防非法值；evGain/exposureComp
+        // 不再叠加（手动档就是用户说了算）。clamped=false 仅表示不走守恒补偿。
+        val manualActive = extFlashManualCalib && manualIso != null && manualExposure != null
+        val solved = if (manualActive) {
+            val iso = manualIso!!.coerceIn(deviceIsoRange.first, deviceIsoRange.last)
+            val shutter = manualExposure!!.coerceIn(minShutterNs, maxShutterNs)
+            android.util.Log.i(
+                "FlashSync",
+                "外闪手动标定档：iso=$iso t=${shutter / 1_000_000}ms（跳过 gain 反算）"
+            )
+            FlashExposure.Result(iso = iso, shutterNs = shutter, clamped = false, note = "manual")
+        } else if (orchestratedFlashSync) {
+            // 编排式同步（A2）：闪光是 ~1ms 瞬时脉冲，主体亮度只认 ISO，窗宽只影响
+            // 环境光。solve 守恒 ISO x t，ISO 越界时会改动窗口去补（脱离固定窗）—— 但 150ms
+            // 宽窗是覆盖「BLE 抖动 + 灯起辉」的硬需求，不能被守恒补偿侵蚀。改用
+            // solveFixedIso：钳 ISO 到设备区间、窗口固定不缩（官方慢速同步口径）。
+            FlashExposure.solveFixedIso(
+                fixedIso = FLASH_SYNC_ISO_AT_100MS * gain,
+                targetShutterNs = ORCHESTRATED_SYNC_SHUTTER_NS,
+                minIso = deviceIsoRange.first,
+                maxIso = deviceIsoRange.last,
+                minShutterNs = minShutterNs,
+                maxShutterNs = maxShutterNs,
+            )
+        } else {
+            FlashExposure.solve(
+                baseIso = FLASH_SYNC_ISO_AT_100MS * gain,
+                baseShutterNs = FLASH_SYNC_SHUTTER_NS,
+                minIso = deviceIsoRange.first,
+                maxIso = deviceIsoRange.last,
+                minShutterNs = minShutterNs,
+                maxShutterNs = maxShutterNs,
+            )
+        }
         builder.set(
             CaptureRequest.CONTROL_MODE,
             android.hardware.camera2.CameraMetadata.CONTROL_MODE_AUTO
@@ -2079,14 +2947,33 @@ class Camera2Controller(private val context: Context) {
             CaptureRequest.SENSOR_FRAME_DURATION,
             maxOf(solved.shutterNs, 33_000_000L)
         )
+        // 外闪帧白平衡：氙气灯 ≈5500K 日光，闪光 ~1ms 太快、AWB 来不及为它重测光。
+        // 若停在 AUTO，会套用闪光前暖光环境算出的"猛拉蓝"增益（CT≈3079K 时 B×2.524），
+        // 把中性闪光补偿成蓝青（11-22 实测成片 B−R=+28~+54）。与内置闪光的
+        // applyFlashCaptureTuning 对称：AUTO/null 时钉 DAYLIGHT；用户手动预设则尊重。
+        val awbDaylight = extFlashAwbDaylight &&
+            (currentAwbMode == null ||
+                currentAwbMode == android.hardware.camera2.CameraMetadata.CONTROL_AWB_MODE_AUTO)
+        if (awbDaylight) {
+            runCatching {
+                builder.set(
+                    CaptureRequest.CONTROL_AWB_MODE,
+                    android.hardware.camera2.CameraMetadata.CONTROL_AWB_MODE_DAYLIGHT
+                )
+            }
+        }
         // 随帧记录：EXT 帧的曝光量完全由我们决定，这里的值就是成片真实值，
         // 不必等 TotalCaptureResult（JPEG 可能先于 result 到货）。
         lastCaptureIso = solved.iso
         lastCaptureShutterNs = solved.shutterNs
+        // 触发时机模型的本帧输入（11-23）：scheduleFlashPreTrigger 在 request 构建
+        // 之后运行，读到的一定是这一帧的曝光。
+        pendingFlashExposureNs = solved.shutterNs
         android.util.Log.i(
             "FlashSync",
             "闪光固定曝光 iso=${solved.iso} t=${solved.shutterNs / 1_000_000}ms " +
                 "gain=$gain flashEv=$externalFlashCompEv ev=$exposureComp " +
+                "orchestrated=$orchestratedFlashSync awbDaylight=$awbDaylight " +
                 "快门上限=${maxShutterNs / 1_000_000}ms" +
                 (if (solved.clamped) " ⚠️ ${solved.note}" else "") +
                 " (环境基线 iso=$aeBaselineIso t=${(aeBaselineSec * 1000).toInt()}ms)"
@@ -2150,11 +3037,36 @@ class Camera2Controller(private val context: Context) {
      */
     private fun scheduleFlashPreTrigger(handler: Handler) {
         // 已在「快门前置」阶段发过指令（JPG 通路），这里不再补发
-        if (!externalFlashSync || flashTriggerOffsetMs >= 0 || flashTriggerPosted) return
-        val delay = flashTriggerDelayMs(flashHalLatencyMs, flashTriggerOffsetMs)
+        // 编排式同步：触发完全交给 onCaptureStarted，绝不再排预测触发（否则重复发灯）
+        if (!externalFlashSync || orchestratedFlashSync ||
+            flashTriggerOffsetMs >= 0 || flashTriggerPosted) return
+        val useModel = flashLatencyModel && pendingFlashExposureNs > 0L
+        val modelMs = predictFlashLatencyMs(pendingFlashExposureNs / 1_000_000L)
+        // 窗内瞄准（11-23）：把闪光瞄准窗口 1/3 处，而不是窗口开头——灯的起辉
+        // 在 80~200ms 间波动（本轮 6 档真机：名义 80ms，但 8/16/33ms 档指令
+        // 提前量 75~82ms 全黑，125ms 档靠窗宽兜住命中）。瞄准点内移后，起辉
+        // 波动 ±exp/3 都还在窗内。8/16/33ms 窄窗依旧危险，标定建议 ≥1/8。
+        val aimIntoWindowMs = pendingFlashExposureNs / 3_000_000L
+        val delay = if (useModel) {
+            flashTriggerDelayMs(modelMs + aimIntoWindowMs, flashTriggerOffsetMs)
+        } else {
+            flashTriggerDelayMs(flashHalLatencyMs, flashTriggerOffsetMs)
+        }
         android.util.Log.i(
             "FlashSync",
-            "预触发调度 delay=${delay}ms = halLatency ${flashHalLatencyMs}ms + offset ${flashTriggerOffsetMs}ms"
+            if (useModel) {
+                "预触发调度 delay=${delay}ms = 曝光模型 " +
+                    "max(${FLASH_LATENCY_BASE_MS},${FLASH_LATENCY_PER_EXP}×" +
+                    "${pendingFlashExposureNs / 1_000_000L})=${modelMs}ms" +
+                    " + 窗内瞄准 ${aimIntoWindowMs}ms" +
+                    " + offset ${flashTriggerOffsetMs}ms" +
+                    " (实测缓存=${flashHalLatencyMs}ms" +
+                    "${if (flashHalLatencyCalibrated) "上次实测校准" else "兜底未校准"} 仅供比对)"
+            } else {
+                "预触发调度 delay=${delay}ms = halLatency ${flashHalLatencyMs}ms" +
+                    "(${if (flashHalLatencyCalibrated) "上次实测校准" else "兜底未校准"})" +
+                    " + offset ${flashTriggerOffsetMs}ms"
+            }
         )
         handler.postDelayed({
             if (externalFlashSync) {
@@ -2182,7 +3094,53 @@ class Camera2Controller(private val context: Context) {
      * （提交后按实测延迟提前触发），行为不变。
      */
     private fun submitStillCapture(captureBuilder: CaptureRequest.Builder, slowShutter: Boolean = false) {
+        // 调研路②：FEC8 回电门控。灯回电中就等到就绪（或超时兜底）再走正常触发链路。
+        // 只在外闪档生效；readyGate 关闭 / 灯无回电通道时直接进入内部分支，零行为变化。
+        if (readyGate && externalFlashSync && !slowShutter) {
+            val startedAt = android.os.SystemClock.elapsedRealtime()
+            gateOnFlashReady(captureBuilder, slowShutter, startedAt)
+            return
+        }
+        submitStillCaptureInner(captureBuilder, slowShutter)
+    }
+
+    /** 调研路②：轮询等 FEC8 就绪，超时兜底放行，避免回电期间触发导致闪光偏弱。 */
+    private fun gateOnFlashReady(
+        captureBuilder: CaptureRequest.Builder,
+        slowShutter: Boolean,
+        startedAt: Long,
+    ) {
         val handler = backgroundHandler
+        val ready = isFlashReady?.invoke()
+        val elapsed = android.os.SystemClock.elapsedRealtime() - startedAt
+        if (ready == true || ready == null || elapsed >= READY_GATE_MAX_WAIT_MS) {
+            android.util.Log.w(
+                "FlashSync",
+                "调研路②回电门控放行：ready=$ready waited=${elapsed}ms" +
+                    if (elapsed >= READY_GATE_MAX_WAIT_MS) "(超时兜底)" else ""
+            )
+            submitStillCaptureInner(captureBuilder, slowShutter)
+            return
+        }
+        // 回电中：50ms 后再问一次。BLE 状态帧是异步到达的，轮询间隔足够密。
+        handler?.postDelayed({ gateOnFlashReady(captureBuilder, slowShutter, startedAt) }, 50L)
+    }
+
+    private fun submitStillCaptureInner(captureBuilder: CaptureRequest.Builder, slowShutter: Boolean = false) {
+        val handler = backgroundHandler
+        // 编排式同步（A2 / 对齐官方 iPhone）：不做 halLatency 预测的「先点灯、
+        // 延后快门」，也不补三段式 —— 直接提交宽窗拍照请求，把单发触发整个
+        // 交给 onCaptureStarted（HAL 实测「曝光真开始」事件）。宽窗覆盖灯起辉
+        // 与 BLE 抖动，删掉预测误差源 = 根治「快门遇不到闪光」。
+        if (orchestratedFlashSync && !slowShutter) {
+            android.util.Log.i(
+                "FlashSync",
+                "编排式：直接提交宽窗拍照，触发交给 onCaptureStarted" +
+                    "（不再预测 halLatency=${flashHalLatencyMs}ms / preRoll 弃用）"
+            )
+            submitStillCaptureNow(captureBuilder, slowShutter)
+            return
+        }
         // 三段式灯（A2）：先补前两段（LED / 氙气预闪），再把第 3 段交给原来的
         // 「先点灯、延后快门」逻辑 —— 这样第 3 发正好落在曝光窗口，拍的才是氙气主闪。
         if (externalFlashSync && !slowShutter && handler != null &&
@@ -2195,8 +3153,17 @@ class Camera2Controller(private val context: Context) {
                 "三段式 1/${flashStages}: 第1发(LED) 立即，第2发 +${STAGE2_MS}ms，" +
                     "第3发(主闪) +${STAGE3_MS}ms（preRoll=${preRoll}ms）"
             )
-            onExposureStarted?.invoke()
-            handler.postDelayed({ onExposureStarted?.invoke() }, STAGE2_MS)
+            // 调研路①：三段式前先复位到氙气档（0c=00）。11-19 实证「点复位后每次都是
+            // 氙气」，此前三段式失败（三下全 LED）正是因为缺这一步。复位是 4 帧 BLE
+            // 写入，等 RESET_SETTLE_MS 让灯切到氙气通道再发第 1 发。
+            if (researchStages >= 2) onBeforeStagedFlash?.invoke()
+            val stage1Delay = if (researchStages >= 2) RESET_SETTLE_MS else 0L
+            if (stage1Delay > 0L) {
+                handler.postDelayed({ onExposureStarted?.invoke() }, stage1Delay)
+            } else {
+                onExposureStarted?.invoke()
+            }
+            handler.postDelayed({ onExposureStarted?.invoke() }, stage1Delay + STAGE2_MS)
             // 第 3 发 = 主闪，这里**直接**发灯 + 提交拍照，绝不能再回 submitStillCapture ——
             // 13:55 真机事故：递归回入口会重新走三段式，于是每 1.4s 循环发 1、2 发，
             // 永远到不了主闪，照片也不提交（表现就是「一直只有 LED 在闪」）。
@@ -2213,7 +3180,14 @@ class Camera2Controller(private val context: Context) {
                     submitStillCaptureNow(captureBuilder, slowShutter)
                 }
                 stagedFlashStarted = false
-            }, STAGE3_MS)
+            }, stage1Delay + STAGE3_MS)
+            return
+        }
+        // 多帧覆盖：触发由 burst 分支自己延时发一次（不靠 halLatency 预测），
+        // 必须先于「快门前置」拦截——否则前置先置 flashTriggerPosted=true，
+        // burst 的 fireExternalFlashOnce 被防重吞掉，变成只发一次预测触发（命中不稳）。
+        if (burstFrames >= 2 && externalFlashSync && !slowShutter) {
+            submitStillCaptureNow(captureBuilder, slowShutter)
             return
         }
         if (externalFlashSync && !slowShutter && handler != null) {
@@ -2254,6 +3228,62 @@ class Camera2Controller(private val context: Context) {
             !slowShutter && manualIso == null && manualExposure == null
         ) {
             submitHalPrecaptureExperiment(session, handler, captureBuilder)
+            return
+        }
+        // 多帧覆盖验证（外闪档 + flash_burst.txt=N）：一次快门连拍 N 帧铺开覆盖带，
+        // 触发延时 [BURST_TRIGGER_DELAY_MS] 发一次（灯的预闪→主闪 440ms 序列落在带内），
+        // 成片在 imageReader 里选最亮帧。不依赖 halLatency 预测、不走预触发。
+        if (burstFrames >= 2 && externalFlashSync && !slowShutter) {
+            // 🔴 不用 captureBurst：三星 HAL 会把 burst 当连拍流强制重测 AE，把
+            // ISO228/100ms 覆盖成 iso=6945/41ms（实测），闪光信号被环境光淹没。
+            // 改用 N 次独立 session.capture（单帧能锁住手动曝光），每帧间隔约一个
+            // 窗宽提交，铺开覆盖带。第一帧提交时发触发，灯预闪→主闪落在带内。
+            burstActive = true
+            burstJpegCount = 0
+            burstBestP50 = -1
+            burstPickedTs = -1L
+            burstDelivered = false
+            burstMap.clear()
+            // 关掉上一次 burst 可能残留的 RAW（异常中断时）
+            bufferedRaw?.close()
+            bufferedRaw = null
+            val shutterNs = captureBuilder.get(android.hardware.camera2.CaptureRequest.SENSOR_EXPOSURE_TIME) ?: 100_000_000L
+            // 帧间隔固定 40ms（≤ AE 实际窗宽），不跟 shutterNs——请求写 100ms 但 HAL 压成 40ms。
+            val stepMs = BURST_STEP_MS
+            android.util.Log.i(
+                "BurstProbe",
+                "连拍 $burstFrames 帧（窗 ${shutterNs / 1_000_000}ms 请求/实际AE≈40ms / 间隔 ${stepMs}ms）" +
+                    " + 延时 ${BURST_TRIGGER_DELAY_MS}ms 发单次触发（独立 capture 锁曝光）"
+            )
+            for (i in 0 until burstFrames) {
+                val submit: () -> Unit = {
+                    flashSubmitRealtimeMs = android.os.SystemClock.elapsedRealtime()
+                    session.capture(captureBuilder.build(), stillCaptureCallback, handler)
+                    Unit
+                }
+                if (i == 0) submit() else handler.postDelayed(submit, i * stepMs)
+            }
+            handler.postDelayed({ fireExternalFlashOnce("多帧覆盖") }, BURST_TRIGGER_DELAY_MS)
+            // 超时兜底：三路没配齐也要交付，绝不让底片卡死（总时长 = 连拍 + RAW 等待）。
+            handler.postDelayed({
+                if (!burstDelivered && burstPickedTs >= 0) {
+                    val best = burstMap[burstPickedTs]
+                    if (best?.jpeg != null) {
+                        android.util.Log.w("BurstProbe", "三路配对超时，按纯 JPEG 交付 ts=$burstPickedTs")
+                        best.raw?.close()
+                        deliverBurstBest(BurstFrame().also {
+                            it.ts = best.ts; it.jpeg = best.jpeg; it.rotation = best.rotation; it.p50 = best.p50
+                        })
+                    }
+                }
+                // 收尾：关掉所有残余 RAW 再清 map、撤 active，避免迟到帧污染单槽
+                for (bf in burstMap.values) {
+                    bf.raw?.close()
+                    bf.raw = null
+                }
+                burstActive = false
+                burstMap.clear()
+            }, burstFrames * stepMs + RAW_WAIT_MS + 1500L)
             return
         }
         // 慢门已把 AE 关掉，HAL 不会闪，也不需要预闪测光 —— 直接开快门
@@ -2549,6 +3579,9 @@ class Camera2Controller(private val context: Context) {
         runCatching {
             com.filmcam.app.develop.DeviceGeometryReport.putAll(
                 "flash.extSync" to externalFlashSync,
+                "flash.orchestrated" to orchestratedFlashSync,
+                "flash.ttlHotOff" to ttlHotOff,
+                "flash.powerByte" to com.filmcam.app.flash.A2PowerProtocol.lastSentPowerByte,
                 "flash.extTriggers" to extTriggerCount,
                 "flash.extLastTriggerWhere" to extLastTriggerWhere,
                 "flash.extLastPreRollMs" to extLastPreRollMs,
@@ -3096,6 +4129,14 @@ class Camera2Controller(private val context: Context) {
         imageReader?.close()
         rawImageReader?.close()
         rawImageReader = null
+        // 调研路③：关 YUV reader + 清空环形缓冲（Image 必须关，防 HAL 缓冲泄漏）。
+        yuvRingActive = false
+        synchronized(yuvRing) {
+            yuvRing.forEach { it.jpeg = null }
+            yuvRing.clear()
+        }
+        yuvImageReader?.close()
+        yuvImageReader = null
         // 汇合中的碎片一并丢弃（Image 必须关，否则 HAL 缓冲泄漏）
         pendingShot?.rawImage?.close()
         pendingShot = null

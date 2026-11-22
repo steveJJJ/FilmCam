@@ -1,5 +1,7 @@
 package com.filmcam.app.flash
 
+import kotlin.math.roundToInt
+
 /**
  * 外闪「造型灯」控制通道（品牌无关能力，v2 档案新增）。
  *
@@ -136,6 +138,40 @@ object A2LampProtocol {
     /** 组一条带 CRC 的命令帧。arg 只取低字节（本协议 arg 全部 ≤ 0x64）。 */
     fun frame(cmd: Int, arg: Int): ByteArray {
         val body = byteArrayOf(0xA0.toByte(), cmd.toByte(), arg.toByte())
+        return body + CRC8Maxim.compute(body).toByte()
+    }
+}
+
+/**
+ * 🔴 A2 功率命令真值（2026-11-22 13:53 nRF 抓包实证，覆盖下面 A1 长帧的猜测）。
+ *
+ * iPhone 13 官方 Godox Camera App 手动档拨功率，抓包看到 FEC7 命令口
+ * （handle 0x0012）上发的是 **4 字节短帧 `A0 01 <powerByte> <CRC8>`**，
+ * 不是 A1 长帧、也不是 TC 增量帧。arg 值域与官方 manualPower 公式一致：
+ * 0 = 1/1 满功率、每 +10 减一档、70 = 1/128 最低。
+ * CRC8-Maxim 7/7 吻合抓包（a0 01 00 32 / 0a 4c / 14 ce / 1e b0 / 3c 2f / 46 a9）。
+ *
+ * 这解决了 11-22 「A2 不认功率帧」的误判——之前一直发错命令字。
+ */
+object A2ShortPower {
+    /** 功率命令字（FEC7 命令口，短帧族 `a0 cmd arg crc`）。 */
+    const val CMD_POWER = 0x01
+
+    /** 满功率 1/1（arg=0）到最低 1/128（arg=70）。 */
+    const val POWER_FULL = 0
+    const val POWER_MIN = 70
+
+    /** EV 量 → 功率 arg：每 1EV = 10（2 档 = 1/4）。 */
+    fun evToPowerByte(evBelowFull: Float): Int =
+        (evBelowFull * 10f).roundToInt().coerceIn(POWER_FULL, POWER_MIN)
+
+    /** 功率 arg → 距满功率的 EV 数。 */
+    fun powerByteToEv(powerByte: Int): Float = powerByte.coerceIn(POWER_FULL, POWER_MIN) / 10f
+
+    /** 组帧：`a0 01 <arg> <crc8-maxim>`。 */
+    fun frame(powerByte: Int): ByteArray {
+        val arg = powerByte.coerceIn(POWER_FULL, POWER_MIN)
+        val body = byteArrayOf(0xA0.toByte(), CMD_POWER.toByte(), arg.toByte())
         return body + CRC8Maxim.compute(body).toByte()
     }
 }

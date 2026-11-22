@@ -298,6 +298,38 @@ object UndevelopedFilmStore {
         loadAll().filter { RollRegistry.isEditable(it) }.map { it.toInfo() }
     }
 
+    /**
+     * 外闪手动标定样本扫描用（11-22）：直读磁盘登记，返回全部卷的全部帧。
+     *
+     * 为什么不用 [loadAll] 的进程内缓存：标定列表常常是「刚拍完就进暗房」，
+     * 而缓存只在拍摄进程里更新；直读一次 SharedPreferences（几十帧 JSON）
+     * 换来「拍完立刻能看见」的确定性，也不动冻结业务 API 的任何既有签名。
+     */
+    data class CalibFrame(
+        val rollId: String,
+        val index: Int,
+        val takenAtMs: Long,
+        val shotJson: String,
+        val handle: String,
+        val rollStatus: String,
+    )
+
+    fun allFrames(): List<CalibFrame> = synchronized(this) {
+        val raw = prefs().getString(KEY_REGISTRY, null)
+        RollRegistry.deserialize(raw).flatMap { roll ->
+            roll.frames.map { f ->
+                CalibFrame(
+                    rollId = roll.rollId,
+                    index = f.index,
+                    takenAtMs = f.takenAtMs,
+                    shotJson = f.shot,
+                    handle = f.handle,
+                    rollStatus = roll.status,
+                )
+            }
+        }
+    }
+
     fun markDeveloping(rollId: String) = synchronized(this) {
         val rolls = loadAll()
         val roll = findRec(rolls, rollId)

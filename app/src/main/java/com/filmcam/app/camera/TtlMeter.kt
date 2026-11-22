@@ -160,4 +160,186 @@ object TtlMeter {
         val iso = (meterIso * 2f.pow(clamped)).roundToInt().coerceIn(MIN_ISO, MAX_ISO)
         return Solution(meterIso, iso, clamped, note)
     }
+
+    // ========================================================================
+    // 外置闪光「每张独立」TTL（2026-11-22 重写，替代失败的跨张裸累积 ±2EV）
+    // ========================================================================
+    //
+    // 🔴 为什么推翻旧的跨张闭环：旧逻辑「用上一张偏差调下一张」在有 af 距离的场景
+    //    下完全失效 —— 用户移动拍摄时每张距离不同，上一张的偏差对下一张是噪声，
+    //    再加 flashMiss 死锁（暗帧被误判成漏闪、修正被封锁）⇒ 越拍越黑（11-22 真机
+    //    22 张：mean 238→8.6）。而神牛 A2 的 A1 功率帧真机证实不被接受 ⇒ 不能调灯，
+    //    只能调相机 ISO。
+    //
+    // 正确模型（11-19 原始三件套设计，从没被完整实现）：
+    //   P0 距离先验：A2 固定功率，闪光主体曝光 ∝ ISO / d² ⇒ 正确 ISO ∝ d²。
+    //     **每张独立**从 AF 屈光度读距离算初值，绝不继承上一张。
+    //   P1 拍后微调：量本张成片中心亮度，只在「同一距离」内累积一个小修正
+    //     （反射率补偿：白墙 vs 黑衣），步长 ±0.5EV、死区 ±0.4EV。
+    //   P2 换场景检测：距离变化 > 1.6× ⇒ 判定换场景，清掉 P1 累积修正，
+    //     只用新距离的 P0 初值 —— 根治「移动拍摄越拍越黑」。
+
+    /** 距离先验的标定基准 ISO（gain=4 × 57），在 [EXT_REF_DISTANCE_M] 距离曝光正确。 */
+    const val FLASH_BASE_ISO = 228
+
+    /** 距离先验的标定参考距离（m）：gain=4 / ISO=228 在此距离曝光正确。需真机标定微调。 */
+    const val EXT_REF_DISTANCE_M = 1.0f
+
+    /** 距离先验可信范围：AF 距离小于 0.2m 或大于 4m 时闪光灯物理上不可靠，回退固定曝光。 */
+    const val EXT_MIN_DISTANCE_M = 0.2f
+    const val EXT_MAX_DISTANCE_M = 4.0f
+
+    /** 换场景判定：距离变化超过这个倍数就丢弃拍后累积修正。 */
+    const val SCENE_CHANGE_RATIO = 1.6f
+
+    /** 拍后微调步长（EV）——保守，避免单帧误判甩飞整卷（旧版 ±2EV 是灾难）。 */
+    const val EXT_STEP_EV = 0.5f
+
+    /** 拍后微调死区（EV）：目标附近来回抖就停手。 */
+    const val EXT_DEADZONE_EV = 0.4f
+
+    /** 拍后累积修正的绝对上限（EV）。 */
+    const val EXT_CORR_LIMIT_EV = 2.0f
+
+    /**
+     * P0 距离先验：由 AF 距离给出这张该用的 ISO 增益倍率（相对标定 gain=4）。
+     *
+     * 闪光主体曝光 ∝ ISO/d²（A2 固定功率）：要维持恒定曝光，ISO ∝ d²。
+     * 返回 `gainFactor = (d / REF)²`，调用侧 `gain = 4 × gainFactor`。
+     * 距离无效（≤0 或超范围）返回 1f —— 退回标定 gain=4，不做猜测。
+     *
+     * 定量校验：d=0.5m → 0.25×（ISO 57，近距不白板）；
+     *          d=2.0m → 4×（ISO 912，远距不黑片）；钳制交给调用侧设备 ISO 上限。
+     */
+    fun distanceGainFactor(distanceM: Float): Float {
+        if (distanceM < EXT_MIN_DISTANCE_M || distanceM > EXT_MAX_DISTANCE_M) return 1f
+        return (distanceM / EXT_REF_DISTANCE_M).pow(2f)
+    }
+
+    /**
+     * P1 拍后微调：由本张成片中心亮度给出 EV 修正增量（施加到 corrEv）。
+     *
+     * 只在「同一距离」内调用（P2 判定换场景时调用侧先清 corrEv）。
+     * 目标用 [TARGET_P50]，线性光域算比值，避免 sRGB gamma 在中高调失真。
+     * 饱和 / 近黑的量级不可信 —— 只在死区内微调，不一次跳 2 档。
+     *
+     * @return 本张应累加的 EV（已含死区与步长钳制），调用侧 `corrEv = (corrEv + 返回值).coerceIn(±2)`
+     */
+    fun postShotCorrectionEv(reading: Reading, currentCorrEv: Float): Float {
+        // 饱和（p50≥246）或近黑（p50≤25）的量级不可信：不做大修正，但允许一个保守步长
+        // 缓慢爬回 —— 与旧版 flashMiss 死锁（完全封锁修正）不同，这里永远能恢复。
+        val target = srgbToLinear(TARGET_P50)
+        val measured = srgbToLinear(reading.p50.toFloat().coerceIn(0f, 255f))
+        val raw = if (measured <= 0f) EXT_STEP_EV else log2(target / measured)
+        val clamped = raw.coerceIn(-EXT_STEP_EV, EXT_STEP_EV)
+        // 死区：已经很接近目标就别动
+        val applied = if (kotlin.math.abs(clamped) < EXT_DEADZONE_EV) 0f else clamped
+        // 已经到累积上限就别再同向加
+        if (applied > 0f && currentCorrEv >= EXT_CORR_LIMIT_EV) return 0f
+        if (applied < 0f && currentCorrEv <= -EXT_CORR_LIMIT_EV) return 0f
+        return applied
+    }
+
+    /**
+     * P2 换场景检测：新距离相对上一次是否发生场景切换（>1.6×）。
+     * @param lastDistanceM 上一张的有效距离（0 = 无历史）
+     */
+    fun isSceneChange(lastDistanceM: Float, newDistanceM: Float): Boolean {
+        if (lastDistanceM < EXT_MIN_DISTANCE_M || newDistanceM < EXT_MIN_DISTANCE_M) return false
+        val ratio = maxOf(lastDistanceM, newDistanceM) / minOf(lastDistanceM, newDistanceM)
+        return ratio > SCENE_CHANGE_RATIO
+    }
+
+    /**
+     * 三件套一次性求解：给定本张 AF 距离、历史距离/修正、本张成片读数，
+     * 返回这张应使用的 `gainFactor`（乘到标定 gain=4 上）与更新后的 corrEv / 距离。
+     *
+     * 调用侧（Camera2Controller）拍前用 AF 距离算 gain 初值、拍后喂本张读数更新 corrEv，
+     * 下一张再用。每张独立看自己的距离，corrEv 只在同一场景内累积。
+     */
+    data class ExtResult(
+        val gainFactor: Float,
+        val corrEv: Float,
+        val distanceM: Float,
+        val sceneChanged: Boolean,
+        val correctionAppliedEv: Float,
+        /** 换场景清零后的修正基线（没换场景则 = 传入的 corrEv）。测试与诊断用。 */
+        val baseCorrAfterSceneChange: Float
+    )
+
+    fun solveExternal(
+        distanceM: Float,
+        lastDistanceM: Float,
+        corrEv: Float,
+        reading: Reading?
+    ): ExtResult {
+        val changed = isSceneChange(lastDistanceM, distanceM)
+        val baseCorr = if (changed) 0f else corrEv
+        val applied = if (reading == null) 0f else postShotCorrectionEv(reading, baseCorr)
+        val newCorr = (baseCorr + applied).coerceIn(-EXT_CORR_LIMIT_EV, EXT_CORR_LIMIT_EV)
+        val distFactor = distanceGainFactor(distanceM)
+        val corrFactor = 2f.pow(newCorr)
+        return ExtResult(distFactor * corrFactor, newCorr, distanceM, changed, applied, baseCorr)
+    }
+
+    // ========================================================================
+    // 灯侧 TTL（2026-11-22 抓到 A2 功率帧 `a0 01 arg crc` 后定稿，首选方案）
+    // ========================================================================
+    //
+    // 相机 ISO 锁标定 228 不动，靠调灯的功率档适配距离 —— 背景曝光稳定、零延迟、
+    // 对齐官方。功率档 arg：0=1/1 满功率，每 +10 减一档，70=1/128（抓包真值）。
+    //
+    // P0 距离初值：闪光 ∝ 1/d²，要维持曝光，功率 ∝ d² ⇒ 每远 1.4 倍（d²=2）升 1 档。
+    //   arg(d) = clamp(10 × log2(d² / dRef²), 0, 70)，dRef=1m 时 arg=10（1/2 档留余量）。
+    // P1 拍后微调：量本张成片 p50，偏亮→降功率（arg+10），偏暗→升功率（arg-10）。
+    // P2 换场景：距离变 >1.6× 用新距离的 P0 初值，不继承旧修正。
+
+    /** 灯侧 TTL 的功率参考距离（m）：此距离用 [FLASH_POWER_REF_ARG] 档。 */
+    const val FLASH_POWER_REF_DISTANCE_M = 1.0f
+
+    /** 参考距离的基础功率档（arg=10 = 1/2）：留上下调整余量，避免贴着满功率无法再升。 */
+    const val FLASH_POWER_REF_ARG = 10
+
+    /** A2 功率 arg 范围（抓包真值）。 */
+    const val POWER_ARG_MIN = 0     // 1/1 满功率
+    const val POWER_ARG_MAX = 70    // 1/128
+    const val POWER_ARG_STEP = 10   // 每档 1EV
+
+    /**
+     * P0 灯侧功率初值：由 AF 距离给出功率档 arg。
+     * 功率 ∝ d²（闪光平方反比），每远 √2 倍升 1 档（arg -10）。
+     * 距离无效（≤0/超范围）返回 [FLASH_POWER_REF_ARG] 兜底。
+     *
+     * 定量（dRef=1m、refArg=10）：
+     *   d=0.5m → arg=10+10=20（1/4，近距降功率防白板）
+     *   d=1.0m → arg=10（1/2）
+     *   d=2.0m → arg=0（1/1 满功率，远距不能再升）
+     */
+    fun flashPowerForDistance(distanceM: Float): Int {
+        if (distanceM < EXT_MIN_DISTANCE_M || distanceM > EXT_MAX_DISTANCE_M) {
+            return FLASH_POWER_REF_ARG
+        }
+        // 功率 ∝ d² ⇒ arg 随 d 增大而减小（档位升高）
+        val evFromRef = 2f * kotlin.math.log2(distanceM / FLASH_POWER_REF_DISTANCE_M)
+        val arg = FLASH_POWER_REF_ARG - (evFromRef * POWER_ARG_STEP).roundToInt()
+        return arg.coerceIn(POWER_ARG_MIN, POWER_ARG_MAX)
+    }
+
+    /**
+     * P1 拍后功率微调：由本张成片 p50 给出功率档增量。
+     * 偏亮（p50 高）→ 需要降功率 → arg 增大（正）；偏暗 → arg 减小（负）。
+     * 每次只走 1 档（±10），死区内不动，避免离散档位来回跳。
+     *
+     * @return 功率档增量（±10 或 0），调用侧 `arg = (arg + 返回值).coerceIn(0,70)`
+     */
+    fun flashPowerAdjust(p50: Int): Int {
+        // 目标 [TARGET_P50]=195。线性光域算亮度比，转 EV，再转档位（1EV=1档=10）。
+        val measured = srgbToLinear(p50.toFloat().coerceIn(0f, 255f))
+        val target = srgbToLinear(TARGET_P50)
+        val rawEv = if (measured <= 0f) -2f else kotlin.math.log2(measured / target)
+        // rawEv>0 = 偏亮 = 降功率 = arg 增大。每满 1EV 走一档（±10），不足 1 档不动，
+        // 避免离散档位在低偏差时来回跳（死区效果）。
+        val evSteps = rawEv.roundToInt().coerceIn(-1, 1)
+        return (evSteps * POWER_ARG_STEP)
+    }
 }

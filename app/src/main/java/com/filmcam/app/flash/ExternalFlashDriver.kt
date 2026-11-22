@@ -39,6 +39,23 @@ interface ExternalFlashDriver {
     /** 拍摄后是否提示「回电中」（氙气灯 true，COB 常亮灯 false）。 */
     val needsRecycleHint: Boolean get() = true
 
+    /**
+     * 调研路②：查询灯当前是否回电就绪（FEC8 特征 `F0 E0 …` 的 value[3]==0）。
+     * null = 本灯没有回电状态通道 / 尚未收到任何状态帧（调用方不做门控）。
+     * 默认 null = 零行为变化。
+     */
+    fun isFlashReady(): Boolean? = null
+
+    /**
+     * 是否走「编排式同步」（宽窗等灯，对齐神牛官方 iPhone Godox Camera 方案）：
+     * 把 BLE 触发绑到 HAL 实测的「曝光真开始」(onCaptureStarted)，删掉
+     * halLatency 中位数预测的抖动误差源；曝光窗放宽覆盖灯起辉 + BLE 抖动。
+     *
+     * 只有起辉快但链路抖动大的氙气灯（A2）返回 true；COB 常亮灯起辉 ~200ms
+     * 且脉冲长，保持原「先点灯、延后快门」预测逻辑。默认 false = 零行为变化。
+     */
+    val orchestratedSync: Boolean get() = false
+
     /** 当前灯的可读名字（工程控制台按灯型启用面板用；null = 未知）。 */
     val displayName: String? get() = null
 

@@ -181,6 +181,7 @@ App 版本：%1$s (%2$d)
     <string name="main_roll_finished_body">这一卷 36 张已拍完，去暗房冲洗出片</string>
     <string name="main_roll_finished_develop">去冲洗</string>
     <string name="main_roll_finished_later">稍后</string>
+    <string name="main_roll_finished_code">ROLL FULL</string>
 
     <!-- 冲洗参数弹窗 -->
     <string name="main_dev_reset">恢复该款默认</string>
@@ -215,6 +216,8 @@ App 版本：%1$s (%2$d)
     <string name="main_flash_external">闪: 外置</string>
     <!-- 氙气灯回电提示：闪光后电容需要数秒充满，期间再拍会偏弱 -->
     <string name="main_flash_recharging">回电中</string>
+    <!-- 外闪档黑片侦测（11-22）：灯没电/失联拍出黑片时 LCD 提示，照常落卷由用户决定删留 -->
+    <string name="main_flash_miss_notice">闪光未触发 查电量</string>
     <string name="main_external_status">外置闪光: %1$s</string>
     <string name="main_flash_pair_needed">尚未配对外置灯，开始配对</string>
     <string name="main_flash_pair_cancel">未完成配对，闪光灯已切回关闭</string>
@@ -235,6 +238,22 @@ App 版本：%1$s (%2$d)
     <string name="main_cd_film_icon">胶卷图标</string>
     <string name="main_darkroom">暗房</string>
     <string name="gallery_import">导入照片冲洗</string>
+    <string name="gallery_calib_list">标定样本</string>
+    <string name="calib_list_title">外闪标定样本</string>
+    <string name="calib_list_hint">拍完即刻记录，无需冲洗。每行是外置闪光档的一张：功率 / ISO / 快门 / 距离 / 亮度。直接在这一行标「好」或「差」，归纳 TTL 时按标记筛。</string>
+    <string name="calib_list_empty">还没有外闪标定样本。请切到「外置闪光」档（建议同时进 Pro 模式）拍一张，回到这里就能看到，不用冲洗。</string>
+    <string name="calib_list_no_ext">卷里已有照片，但没有一张是「外置闪光」档（标定只在 EXT 档记录）。请把机身闪光档切到 EXT、连上 A2 再拍一张。</string>
+    <string name="calib_list_count">%1$d 个样本</string>
+    <string name="calib_mark_none">未标记</string>
+    <string name="calib_row_good">✓ 好</string>
+    <string name="calib_row_bad">✗ 差</string>
+    <string name="calib_row_clear">清除</string>
+    <string name="calib_frame_raw">未冲洗底片</string>
+    <string name="calib_frame_developed">已冲洗成片</string>
+    <string name="eng_calib_scope">标定记录范围</string>
+    <string name="eng_calib_scope_hint">标定样本（样本库/好差标记）默认只在「外置闪光」档记录；切到所有照片后任何档都会发样本 id（功率/距离仍为闪光专属）。</string>
+    <string name="calib_scope_ext">仅外置闪光档</string>
+    <string name="calib_scope_all">所有照片</string>
     <string name="gallery_import_pick_film">装哪卷胶卷？</string>
     <string name="gallery_import_too_many">一卷最多 36 张，只取了前 36 张</string>
     <string name="gallery_import_busy">当前还有没冲洗的胶卷，先冲完再导入</string>
@@ -283,6 +302,12 @@ App 版本：%1$s (%2$d)
     <!-- ===== 布局：成片查看 ===== -->
     <string name="main_shoot_same">拍摄同款</string>
     <string name="viewer_share">分享</string>
+    <!-- 外闪手动标定样本的事后标记（11-22） -->
+    <string name="viewer_calib_title">外闪标定样本</string>
+    <string name="viewer_calib_mark_good">标为好样本</string>
+    <string name="viewer_calib_mark_bad">标为差样本</string>
+    <string name="viewer_calib_mark_clear">清除标记</string>
+    <string name="viewer_calib_none">这张不是外闪标定样本</string>
 
     <!-- ===== 关于页铭牌：规格表 ===== -->
     <string name="about_spec_model">型号 MODEL</string>
@@ -510,15 +535,23 @@ App 版本：%1$s (%2$d)
     <string name="lcd_notice_flash_ev_fine">外闪补偿 0.5 EV/档</string>
 
     <!-- ===== 腰平取景（P0 骨架）：设置行 + 半屏控件条 ===== -->
-    <string name="eng_a2_title">A2 造型灯（Godox A2）</string>
-    <string name="eng_a2_ready">命令通道已就绪（FEC7）</string>
-    <string name="eng_a2_not_ready">未就绪：外置闪光档连上 A2 后可用</string>
-    <string name="eng_a2_led">造型灯</string>
-    <string name="eng_a2_brightness">造型灯亮度（0–100，0 = 关）</string>
-    <string name="eng_a2_cct">色温（1–100，100 = 白光）</string>
-    <string name="eng_a2_power">输出功率（M 档 1/1 – 1/128）</string>
-    <string name="eng_a2_reset">复位闪光模式（灯只闪 LED 时点这里）</string>
-    <string name="eng_a2_hint">与官方 App 同一套时序：亮度 = 0x06（拖到 0 自动退出造型灯模式）、色温 = 0x07（0–32，白光在顶）。0x05 是模式开关、0x0c 是拍摄侧参数，都不该由用户直接调。⚠️ 造型灯常亮会影响氙气连拍，拍照前拖到 0。</string>
+    <string name="a2_lamp_code">A2 LAMP</string>
+    <string name="a2_lamp_ready">命令通道已就绪（FEC7）</string>
+    <string name="a2_lamp_not_ready">未就绪：外置闪光档连上 A2 后可用</string>
+    <string name="a2_lamp_brightness">造型灯亮度（0–100，0 = 关）</string>
+    <string name="a2_lamp_cct">色温（1–100，100 = 白光）</string>
+    <string name="a2_lamp_reset">复位闪光模式</string>
+    <string name="a2_lamp_reset_done">已重放复位序列（06 01 → 05 00 → 0c 00 → 03 00）</string>
+    <string name="a2_lamp_hint">亮度 = 0x06（拖到 0 自动退出造型灯模式）、色温 = 0x07。造型灯常亮会影响氙气连拍（第二张起只剩 LED），拍照前拖回 0。⚠️ 灯只闪 LED 不出氙气时点「复位闪光模式」。</string>
+    <string name="a2_lamp_close">关闭</string>
+    <string name="a2_lamp_pwr_title">闪光灯功率（8 档标定）</string>
+    <string name="a2_lamp_pwr_slider">功率档</string>
+    <string name="a2_lamp_pwr_full">满功率 1/1</string>
+    <string name="a2_lamp_pwr_min">最低 1/128</string>
+    <string name="a2_lamp_pwr_restore">恢复 TTL</string>
+    <string name="a2_lamp_pwr_hint">滑杆选 1/1~1/128 共 8 档，松手下发光功率并用于下一张；配合 Pro 手动 ISO/快门采标定样本。</string>
+    <string name="a2_lamp_pwr_sent">已下发功率帧：%1$s</string>
+    <string name="a2_lamp_pwr_no_support">当前灯不支持功率帧</string>
     <string name="eng_waist">腰平取景（折叠屏彩蛋）</string>
     <string name="eng_waist_hint">关＝永不触发；自动＝只有折叠屏折到半开才出现（直板机看不到）；模拟＝直板机也按半屏切分，仅调试用</string>
     <string name="eng_waist_off">关</string>

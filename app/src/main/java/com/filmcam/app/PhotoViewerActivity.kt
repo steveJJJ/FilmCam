@@ -31,9 +31,12 @@ class PhotoViewerActivity : AppCompatActivity() {
     companion object {
         const val EXTRA_URIS = "extra_uris"
         const val EXTRA_POSITION = "extra_position"
+        /** 标定列表传入的逐帧 ShotMeta JSON：未冲洗底片没有 UserComment.shot，靠它照常显示标定行。 */
+        const val EXTRA_CALIB_SHOTS = "extra_calib_shots"
     }
 
     private lateinit var uris: List<String>
+    private var calibShots: List<String> = emptyList()
     private lateinit var panelInfo: View
     private lateinit var viewPager: ViewPager2
 
@@ -47,6 +50,7 @@ class PhotoViewerActivity : AppCompatActivity() {
         com.filmcam.app.ui.EdgeToEdge.setup(this, null, findViewById(R.id.panelInfo))
 
         uris = intent.getStringArrayListExtra(EXTRA_URIS) ?: arrayListOf()
+        calibShots = intent.getStringArrayListExtra(EXTRA_CALIB_SHOTS) ?: arrayListOf()
         val position = intent.getIntExtra(EXTRA_POSITION, 0)
 
         viewPager = findViewById(R.id.viewPager)
@@ -68,6 +72,28 @@ class PhotoViewerActivity : AppCompatActivity() {
         // 与拍摄同款同一档确认触感。
         val btnShare = findViewById<View>(R.id.btnShare)
         btnShare.hapticClick(ms = 30, amp = 210) { shareCurrent() }
+
+        // 外闪标定样本：事后标记好/差/清除（11-22）。只写独立标记文件，不改成片 EXIF。
+        findViewById<View>(R.id.btnCalibGood).hapticClick(ms = 24, amp = 180) {
+            if (currentCalibId > 0L) {
+                com.filmcam.app.film.FlashCalibStore.write(
+                    this, currentCalibId, com.filmcam.app.film.FlashCalibStore.GOOD)
+                renderPanel(viewPager.currentItem)
+            }
+        }
+        findViewById<View>(R.id.btnCalibBad).hapticClick(ms = 24, amp = 180) {
+            if (currentCalibId > 0L) {
+                com.filmcam.app.film.FlashCalibStore.write(
+                    this, currentCalibId, com.filmcam.app.film.FlashCalibStore.BAD)
+                renderPanel(viewPager.currentItem)
+            }
+        }
+        findViewById<View>(R.id.btnCalibClear).hapticClick(ms = 24, amp = 180) {
+            if (currentCalibId > 0L) {
+                com.filmcam.app.film.FlashCalibStore.write(this, currentCalibId, null)
+                renderPanel(viewPager.currentItem)
+            }
+        }
 
         // 切换照片时同步刷新面板内容；顺手给一记轻 tick ——
         // 左右拨片是看片的核心动作，纯视觉滑动会觉得「这页没反应」。
@@ -207,6 +233,10 @@ class PhotoViewerActivity : AppCompatActivity() {
         }
     }
 
+    /** 列表带进来的标定快照（未冲洗底片 EXIF 里没有 shot 时的回落）。 */
+    private fun calibShotAt(position: Int): com.filmcam.app.film.ShotMeta? =
+        calibShots.getOrNull(position)?.let { com.filmcam.app.film.ShotMeta.fromJson(it) }
+
     /** 读取当前照片的 EXIF 并填充面板。 */
     private fun renderPanel(position: Int) {
         if (position !in uris.indices) return
@@ -235,6 +265,8 @@ class PhotoViewerActivity : AppCompatActivity() {
             tvDevParams.text = ""
             tvEngine.text = ""
             tvDims.text = ""
+            // 未冲洗底片没有成片 EXIF，但列表已带进来标定快照 → 标定行照常可显示/标记。
+            renderCalibRow(calibShotAt(position))
             return
         }
 
@@ -253,6 +285,7 @@ class PhotoViewerActivity : AppCompatActivity() {
             tvDevParams.text = ""
             tvEngine.text = ""
             tvDims.text = ""
+            renderCalibRow(calibShotAt(position))
             return
         }
 
@@ -357,6 +390,56 @@ class PhotoViewerActivity : AppCompatActivity() {
             if (info.filmStockId.isNotBlank()) append(" · ${info.filmStockId}")
         }
         tvDims.text = info.dimensions
+
+        // 外闪手动标定样本（11-22）：有 calibId 就显示特征 + 标记按钮；
+        // 成片 EXIF 没带 shot 时回落到列表传入的逐帧快照（未冲洗底片）。
+        val exifShot = info.shot
+        renderCalibRow(
+            if (exifShot != null && exifShot.calibId > 0L) exifShot else calibShotAt(position)
+        )
+    }
+
+    /** 当前面板展示的标定样本 id（0=非标定帧），按钮点击时据此写标记。 */
+    private var currentCalibId: Long = 0L
+
+    /** 外闪标定行：显示功率/距离/环境/p50，回显已存标记。 */
+    private fun renderCalibRow(shot: com.filmcam.app.film.ShotMeta?) {
+        val tvCalib = panelInfo.findViewById<android.widget.TextView>(R.id.tvCalibInfo)
+        val row = panelInfo.findViewById<android.view.View>(R.id.calibMarkRow)
+        val s = shot ?: run {
+            currentCalibId = 0L
+            tvCalib.visibility = android.view.View.GONE
+            row.visibility = android.view.View.GONE
+            return
+        }
+        val id = s.calibId
+        currentCalibId = id
+        if (id <= 0L) {
+            tvCalib.visibility = android.view.View.GONE
+            row.visibility = android.view.View.GONE
+            return
+        }
+        tvCalib.visibility = android.view.View.VISIBLE
+        row.visibility = android.view.View.VISIBLE
+        val denom = if (s.calibPwr >= 0) {
+            com.filmcam.app.flash.A2PowerProtocol.denominator(s.calibPwr)
+        } else 0
+        val parts = mutableListOf<String>()
+        parts += "标定 #$id"
+        if (denom > 0) parts += "功率 1/$denom"
+        if (s.calibDist > 0f) parts += String.format(java.util.Locale.US, "%.2fm", s.calibDist)
+        if (s.calibAmbIso > 0) parts += "环境 ISO ${s.calibAmbIso}"
+        if (s.calibP50 > 0) parts += "p50=${s.calibP50}"
+        parts += if (s.calibManual) "手动档" else "自动档"
+        val mark = com.filmcam.app.film.FlashCalibStore.read(this, id)
+        if (mark != null) {
+            parts += when (mark) {
+                com.filmcam.app.film.FlashCalibStore.GOOD -> "✓好样本"
+                com.filmcam.app.film.FlashCalibStore.BAD -> "✗差样本"
+                else -> mark
+            }
+        }
+        tvCalib.text = parts.joinToString(" · ")
     }
 
     inner class PhotoPagerAdapter(

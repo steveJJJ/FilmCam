@@ -642,6 +642,9 @@ class MainActivity : AppCompatActivity() {
         binding.lcdDisplay.setOnClickListener {
             com.filmcam.app.ui.Haptics.vibrate(this, 14, 130)
             binding.lcdDisplay.pulseBacklight()
+            // 2026-11-22：外闪会话是 Godox A2 时，点 LCD 顺带调出造型灯控制弹层
+            //（从工程控制台迁出）；背光自检动画照常先播，弹层再叠上来。
+            maybeShowA2Lamp()
         }
         binding.btnShutter.hapticClick(ms = 32, amp = 235) { triggerShutter() }
         binding.btnShutter.attachPressFeedback(0.94f)   // 机械按压：按下沉、抬手弹（11-21）
@@ -772,6 +775,189 @@ class MainActivity : AppCompatActivity() {
             // 只在取景器页隐藏系统栏：拍摄更沉浸，其余 4 页保留时间与通知
             immersive = true,
         )
+    }
+
+    /**
+     * 点 LCD 时若外闪会话是 Godox A2，调出造型灯控制弹层（2026-11-22 从工程
+     * 控制台迁出，用户拍板）。没有 A2 会话时只播背光自检，行为不变。
+     */
+    private fun maybeShowA2Lamp() {
+        val name = com.filmcam.app.flash.FlashController.active?.currentLightName() ?: return
+        if (!com.filmcam.app.flash.FlashProfile.isA2Device(name, null)) return
+        showA2LampPanel()
+    }
+
+    /**
+     * A2 造型灯控制弹层（dialog_a2_lamp.xml）。接线照抄工程控制台 A2 卡片并修两处：
+     * 复位提示改用 a2_lamp_reset_done（写实际下发的 0c 00，纠正老控制台错文案）；就绪轮询不设上限
+     * （GATT 服务发现异步，连接可能晚于打开弹层）。拖动只在松手时下发 ——
+     * BLE 命令口没有流控，拖动过程逐帧写会堆队列。
+     */
+    private fun showA2LampPanel() {
+        val theme = com.filmcam.app.ui.BodyTheme
+        theme.load(this)
+        val view = layoutInflater.inflate(R.layout.dialog_a2_lamp, null)
+        theme.applyToViewTree(view)
+        view.findViewById<android.widget.ImageView>(R.id.ivA2LampLogo).setImageResource(
+            if (theme.isTitan) R.drawable.ic_t3_logo_ink else R.drawable.ic_t3_logo
+        )
+        val tvStatus = view.findViewById<android.widget.TextView>(R.id.tvA2LampStatus)
+        val sbBright = view.findViewById<android.widget.SeekBar>(R.id.sbA2Bright)
+        val tvBright = view.findViewById<android.widget.TextView>(R.id.tvA2Bright)
+        val sbCct = view.findViewById<android.widget.SeekBar>(R.id.sbA2Cct)
+        val tvCct = view.findViewById<android.widget.TextView>(R.id.tvA2Cct)
+        val btnReset = view.findViewById<android.view.View>(R.id.btnA2LampReset)
+        val btnPwrFull = view.findViewById<android.view.View>(R.id.btnA2PwrFull)
+        val btnPwrMin = view.findViewById<android.view.View>(R.id.btnA2PwrMin)
+        val btnPwrRestore = view.findViewById<android.view.View>(R.id.btnA2PwrRestore)
+        val sbPower = view.findViewById<android.widget.SeekBar>(R.id.sbA2Power)
+        val tvPower = view.findViewById<android.widget.TextView>(R.id.tvA2Power)
+        val a2Tick = com.filmcam.app.ui.SliderTick(this)
+        var bound = false
+
+        // 就绪判定可重入：服务发现是异步的，面板可能在 cmdChar 还没解析出来时就打开
+        fun bindLampIfReady() {
+            val lamp = com.filmcam.app.flash.FlashController.active?.lampControl()
+            val lampReady = lamp != null && lamp.ready
+            tvStatus.setText(if (lampReady) R.string.a2_lamp_ready else R.string.a2_lamp_not_ready)
+            listOf(sbBright, sbCct, sbPower).forEach { it.isEnabled = lampReady }
+            btnReset.isEnabled = lampReady
+            btnReset.alpha = if (lampReady) 1f else 0.4f
+            listOf(btnPwrFull, btnPwrMin, btnPwrRestore).forEach {
+                it.isEnabled = lampReady
+                it.alpha = if (lampReady) 1f else 0.4f
+            }
+            if (lampReady) btnReset.setOnClickListener {
+                a2Tick.onUserProgress()
+                lamp?.resetFlashMode()
+                com.filmcam.app.ui.RelicToast.show(this, getString(R.string.a2_lamp_reset_done))
+            }
+            if (lampReady) {
+                fun reportPower(label: String, byte: Int, sent: Boolean, frame: ByteArray) {
+                    android.util.Log.i("A2PowerTest",
+                        "下发功率帧 $label byte=$byte ${frame.joinToString(" ") { "%02X".format(it.toInt() and 0xFF) }} sent=$sent")
+                    com.filmcam.app.ui.RelicToast.show(this,
+                        if (sent) getString(R.string.a2_lamp_pwr_sent, label)
+                        else getString(R.string.a2_lamp_pwr_no_support))
+                }
+                val pwr = com.filmcam.app.flash.A2PowerProtocol
+                // 用 setFlashPowerLevel 而非 sendRawFrame：前者会更新 lastSentPowerByte，
+                // 让 FlashSync 触发日志能打出真实功率字节（否则永远是 -1 无法取证）。
+                btnPwrFull.hapticClick {
+                    a2Tick.onUserProgress()
+                    val sent = lamp?.setFlashPowerLevel(pwr.POWER_FULL) == true
+                    reportPower(getString(R.string.a2_lamp_pwr_full), pwr.POWER_FULL, sent, pwr.manualFrame(pwr.POWER_FULL))
+                }
+                btnPwrMin.hapticClick {
+                    a2Tick.onUserProgress()
+                    val sent = lamp?.setFlashPowerLevel(pwr.POWER_MIN) == true
+                    reportPower(getString(R.string.a2_lamp_pwr_min), pwr.POWER_MIN, sent, pwr.manualFrame(pwr.POWER_MIN))
+                }
+                // 恢复 TTL = 删热调文件 + 下发官方 TTL 帧（A1 mode=00 功率字段 0x32）
+                btnPwrRestore.hapticClick {
+                    a2Tick.onUserProgress()
+                    runCatching {
+                        java.io.File(getExternalFilesDir(null), "flash_ttl_off.txt").delete()
+                    }
+                    val frame = pwr.ttlFrame(0)
+                    val sent = lamp?.sendRawFrame(frame) == true
+                    pwr.lastSentPowerByte = pwr.TTL_POWER_SENTINEL
+                    reportPower(getString(R.string.a2_lamp_pwr_restore), pwr.TTL_POWER_SENTINEL, sent, frame)
+                }
+            }
+            if (lampReady && !bound) {
+                bound = true
+                // 进面板先把造型灯归零（0 = 关）：常亮会让氙气连拍退化成 LED（11-19 实测：
+                // 第一张氙气+LED 全亮，第二张只剩 LED）。官方 App 也是靠滑杆归零关灯。
+                sbBright.progress = 0
+                tvBright.text = "0%"
+                // 只发 05 00 退出造型灯模式；0x0c 由驱动在服务发现时恢复官方默认 50，
+                // 这里绝不再碰（11-19 把它压到 0 导致「第二张起只闪 LED」）
+                lamp.setLed(false)
+                sbBright.setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
+                    override fun onProgressChanged(sb: android.widget.SeekBar?, progress: Int, fromUser: Boolean) {
+                        if (!fromUser) return
+                        a2Tick.onUserProgress()
+                        tvBright.text = "$progress%"
+                    }
+
+                    override fun onStartTrackingTouch(sb: android.widget.SeekBar?) {}
+                    override fun onStopTrackingTouch(sb: android.widget.SeekBar?) {
+                        // 0 = 关灯（驱动内部会退出造型灯模式），不做下限钳位
+                        lamp.setBrightnessPercent(sbBright.progress)
+                    }
+                })
+                sbCct.progress = 50
+                tvCct.text = "50"
+                sbCct.setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
+                    override fun onProgressChanged(sb: android.widget.SeekBar?, progress: Int, fromUser: Boolean) {
+                        if (!fromUser) return
+                        a2Tick.onUserProgress()
+                        tvCct.text = "$progress"
+                    }
+
+                    override fun onStartTrackingTouch(sb: android.widget.SeekBar?) {}
+                    override fun onStopTrackingTouch(sb: android.widget.SeekBar?) {
+                        lamp.setColorTemp(sbCct.progress)
+                    }
+                })
+                // 8 档功率滑杆（11-22 人工标定）：index 0..7 → arg 0..70 → 1/1..1/128。
+                fun powerLabel(arg: Int): String = "1/${com.filmcam.app.flash.A2PowerProtocol.denominator(arg)}"
+                // 初始档位反映当前热调功率（flash_pwr.txt），缺省 arg=10（1/2）。
+                val dir = getExternalFilesDir(null)
+                val curArg = runCatching {
+                    java.io.File(dir, "flash_pwr.txt").takeIf { it.exists() }
+                        ?.readText()?.trim()?.toIntOrNull()
+                }.getOrNull()?.coerceIn(0, 70) ?: 10
+                sbPower.progress = (curArg / 10).coerceIn(0, 7)
+                tvPower.text = powerLabel(curArg)
+                sbPower.setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
+                    override fun onProgressChanged(sb: android.widget.SeekBar?, progress: Int, fromUser: Boolean) {
+                        if (!fromUser) return
+                        a2Tick.onUserProgress()
+                        tvPower.text = powerLabel(progress * 10)
+                    }
+                    override fun onStartTrackingTouch(sb: android.widget.SeekBar?) {}
+                    override fun onStopTrackingTouch(sb: android.widget.SeekBar?) {
+                        val arg = (sbPower.progress * 10).coerceIn(0, 70)
+                        val sent = lamp.setFlashPowerLevel(arg)
+                        // 写热调文件：拍照时 fixedPowerArg 每帧重读它，确保选档作用到下一张。
+                        runCatching { java.io.File(dir, "flash_pwr.txt").writeText(arg.toString()) }
+                        android.util.Log.i("A2PowerTest",
+                            "滑杆选功率 index=${sbPower.progress} arg=$arg sent=$sent label=${powerLabel(arg)}")
+                        com.filmcam.app.ui.RelicToast.show(this@MainActivity,
+                            "${getString(R.string.a2_lamp_pwr_slider)} ${powerLabel(arg)}")
+                    }
+                })
+            }
+        }
+
+        val dm = resources.displayMetrics
+        val w = (dm.widthPixels * 0.78f).toInt().coerceAtMost((400 * dm.density).toInt())
+        val dialog = androidx.appcompat.app.AlertDialog.Builder(this, theme.dialogTheme)
+            .setView(view)
+            .create()
+        val win = dialog.window
+        win?.decorView
+        win?.setLayout(w, android.view.ViewGroup.LayoutParams.WRAP_CONTENT)
+        win?.setBackgroundDrawable(theme.panelDrawable())
+        view.findViewById<android.view.View>(R.id.tvA2LampClose).hapticClick {
+            dialog.dismissPanel(view)
+        }
+        dialog.guardDialog()
+        dialog.show()
+        view.animatePanelIn()
+        // show() 之后再挂：点外部 / 返回键统一走退场动画（Motion 契约）
+        dialog.attachOutsideDismiss(view)
+        val poll = object : Runnable {
+            override fun run() {
+                if (!view.isAttachedToWindow || bound) return
+                bindLampIfReady()
+                if (!bound) view.postDelayed(this, 500)
+            }
+        }
+        bindLampIfReady()
+        if (!bound) view.postDelayed(poll, 500)
     }
 
     /** 旋转 / 分辨率 / 显示大小变化后重新量一次（值不变时不写，不会自激循环）。 */
@@ -1641,18 +1827,54 @@ class MainActivity : AppCompatActivity() {
         else -> getString(R.string.lang_system)
     }
 
-    /** 胶卷拍满：引导去暗房冲洗 */
+    /**
+     * 胶卷拍满：引导去暗房冲洗。11-22 从系统 AlertDialog 换成机身铭牌弹窗
+     * （dialog_roll_finished.xml）：T3 字标 + ROLL FULL 蚀刻码 + 36 格曝光条 +
+     * pill 按钮；入场 animatePanelIn，「稍后」/点外部/返回键走 dismissPanel 退场；
+     * 「去冲洗」是跳转型（立刻进 DevelopmentActivity），按 Motion 契约保持硬切。
+     * 宽度口径照抄放弃修改确认：create() 后先取 decorView 触发 installDecor，
+     * 再 setLayout(0.78×屏宽≤400dp)，否则 show() 会重置成 wrap_content。
+     */
     private fun promptDevelopFullRoll() {
-        androidx.appcompat.app.AlertDialog.Builder(this, com.filmcam.app.ui.BodyTheme.dialogTheme)
-            .setTitle(getString(R.string.main_roll_finished_title))
-            .setMessage(getString(R.string.main_roll_finished_body))
-            .setPositiveButton(getString(R.string.main_roll_finished_develop)) { _, _ ->
-                activeRollId()?.let { DevelopController.startDevelopment(this, it) }
-            }
-            .setNegativeButton(getString(R.string.main_roll_finished_later), null)
+        val theme = com.filmcam.app.ui.BodyTheme
+        theme.load(this)
+        val view = layoutInflater.inflate(R.layout.dialog_roll_finished, null)
+        theme.applyToViewTree(view)
+        view.findViewById<android.widget.ImageView>(R.id.ivRollFullLogo).setImageResource(
+            if (theme.isTitan) R.drawable.ic_t3_logo_ink else R.drawable.ic_t3_logo
+        )
+        // 胶卷条 36 格曝光窗全部「已曝光」（暖琥珀实心）：整卷拍完待冲的物证
+        val strip = view.findViewById<android.view.ViewGroup>(R.id.rollStripFrames)
+        repeat(36) {
+            val cell = android.view.View(this)
+            cell.layoutParams = android.widget.LinearLayout.LayoutParams(
+                0, android.view.ViewGroup.LayoutParams.MATCH_PARENT, 1f
+            ).apply { marginEnd = 1 }
+            cell.setBackgroundColor(0xFF6B4A2A.toInt())
+            strip.addView(cell)
+        }
+
+        val dm = resources.displayMetrics
+        val w = (dm.widthPixels * 0.78f).toInt().coerceAtMost((400 * dm.density).toInt())
+        val dialog = androidx.appcompat.app.AlertDialog.Builder(this, theme.dialogTheme)
+            .setView(view)
             .create()
-            .guardDialog()
-            .show()
+        val win = dialog.window
+        win?.decorView
+        win?.setLayout(w, android.view.ViewGroup.LayoutParams.WRAP_CONTENT)
+        win?.setBackgroundDrawable(theme.panelDrawable())
+        view.findViewById<android.view.View>(R.id.tvRollDevelop).hapticClick(ms = 28, amp = 200) {
+            dialog.dismiss()
+            activeRollId()?.let { DevelopController.startDevelopment(this, it) }
+        }
+        view.findViewById<android.view.View>(R.id.tvRollLater).hapticClick {
+            dialog.dismissPanel(view)
+        }
+        dialog.guardDialog()
+        dialog.show()
+        view.animatePanelIn()
+        // show() 之后再挂：点外部 / 返回键统一走退场动画（Motion 契约）
+        dialog.attachOutsideDismiss(view)
     }
 
     /**
@@ -1926,12 +2148,32 @@ class MainActivity : AppCompatActivity() {
             ?: com.filmcam.app.film.ShotMeta()
         val iso = cameraController?.lastCaptureIso ?: 0
         val ns = cameraController?.lastCaptureShutterNs ?: 0L
-        return base.copy(
-            sensorIso = iso,
-            sensorShutterSec = if (ns > 0L) ns / 1_000_000_000f else 0f,
-            aperture = cameraController?.lastCaptureAperture ?: 0f,
-            focalMm = cameraController?.lastCaptureFocalMm ?: 0f,
-        ).toJson()
+        // 外闪标定样本：把这一帧的功率/距离/环境基线补进快照（11-22）。
+        // 只在有 calibId（外闪档拍摄时分配）时补，普通帧字段全留默认，不污染。
+        // 11-23 记录范围开关：非 EXT 帧开了「所有照片」也会有 calibId，但功率/距离/
+        // 环境基线是闪光专属量（非 EXT 没下发过功率，填了就是陈旧值）——只补 p50。
+        val snap = cameraController?.flashCalibSnapshot
+        val isExtFrame = flash.mode == FlashMode.EXTERNAL
+        return if (base.calibId > 0L && snap != null) {
+            base.copy(
+                sensorIso = iso,
+                sensorShutterSec = if (ns > 0L) ns / 1_000_000_000f else 0f,
+                aperture = cameraController?.lastCaptureAperture ?: 0f,
+                focalMm = cameraController?.lastCaptureFocalMm ?: 0f,
+                calibPwr = if (isExtFrame) snap.powerArg else -1,
+                calibDist = if (isExtFrame) snap.distM else 0f,
+                calibAmbIso = if (isExtFrame) snap.ambIso else 0,
+                calibAmbSec = if (isExtFrame) snap.ambSec else 0f,
+                calibP50 = snap.p50,
+            ).toJson()
+        } else {
+            base.copy(
+                sensorIso = iso,
+                sensorShutterSec = if (ns > 0L) ns / 1_000_000_000f else 0f,
+                aperture = cameraController?.lastCaptureAperture ?: 0f,
+                focalMm = cameraController?.lastCaptureFocalMm ?: 0f,
+            ).toJson()
+        }
     }
 
     /**
@@ -2042,16 +2284,30 @@ class MainActivity : AppCompatActivity() {
      */
     private fun applyExposure() {
         try {
-            cameraController?.setManualIso(null)
-            cameraController?.setManualExposure(null)
+            // 🔴 11-22 外闪手动标定档：applyExposure 会被切档/改 EV 反复调用，
+            // 旧逻辑无条件 setManualIso(null) 把 Pro 手动值冲掉，导致手动档判据
+            // (manualIso!=null) 失效、拍照又回到 gain 反算（拧了没反应）。
+            // 修法：Pro 档把手动值原样设回，非 Pro 才交回 AE。
+            val manualHere = proMode
+            cameraController?.setManualIso(if (manualHere) proManualIso() else null)
+            cameraController?.setManualExposure(if (manualHere) shutterSteps[shutterIdx] else null)
             cameraController?.setExposureComp(exposureComp)
             cameraController?.setExternalFlashComp(flashCompEv)
             // 按灯取同步偏移：氙气灯(A2 -80) 与 COB 灯(-200) 起辉不同；
             // 热调文件 flash_sync_offset.txt 仍可覆盖它（adb 扫参用）。
+            val isExt = flash.mode == FlashMode.EXTERNAL
             cameraController?.setExternalFlashSync(
-                flash.mode == FlashMode.EXTERNAL,
+                isExt,
                 flash.currentSyncOffsetMs(),
+                flash.useOrchestratedSync(),
             )
+            // 11-22 外闪手动标定档：标志与「Pro + 外闪」状态保持一致。
+            // 切档/旋转都会走这里，保证不会残留上一个模式的手动覆盖。
+            val manualCalib = proMode && isExt
+            cameraController?.extFlashManualCalib = manualCalib
+            // TTL 闭环分闸：手动标定档要关掉灯侧 TTL（免得乱改用户拧的功率），
+            // 其余 EXT 档统一打开（Pro/普通一致口径）。非 EXT 档关掉。
+            cameraController?.externalTtlEnabled = isExt && !manualCalib
             // A2 是三段式（LED → 氙气预闪 → 氙气主闪）：一张照片发 3 次触发，
             // 第 3 发才是主闪。其他灯给 1，行为完全不变。
             cameraController?.setExternalFlashStages(flash.triggerStages())
@@ -2093,8 +2349,9 @@ class MainActivity : AppCompatActivity() {
     /** 更新 LCD 显示屏（张数 / ISO / 曝光 / 闪光灯状态） */
     private fun updateLcd() {
         try {
-            // Pro 模式下手动 ISO 才是真正生效值；外置闪光档 ISO 由 TTL 反算，如实显示 A
-            val iso = if (proMode && !isExternalFlash) {
+            // 11-22 外闪手动标定档：Pro + 外闪时 ISO/快门由用户拧，如实显示手动值。
+            // 旧逻辑把外闪档一律显示 A/隐藏快门（那时同步模型接管曝光），解锁后必须放开。
+            val iso = if (proMode) {
                 isoSteps[isoIdx]?.toString() ?: "A"
             } else {
                 isoValues[isoValue]?.toString() ?: "A"
@@ -2118,9 +2375,8 @@ class MainActivity : AppCompatActivity() {
                     else exposureComp.toFloat(),
                     flashLabel = flashLabel,
                     battery = batteryIconLevel(),
-                    // 快门：Pro 模式且非外置闪光时显示手动档；
-                    // 外置闪光被同步模型锁死在 100ms 窗口，不显示免得误读成 1/100
-                    shutterLabel = if (proMode && !isExternalFlash)
+                    // 11-22 外闪手动标定档：Pro 模式（含外闪）显示手动快门档。
+                    shutterLabel = if (proMode)
                         (if (shutterSteps[shutterIdx] != null) shutterLabels[shutterIdx] else "")
                     else ""
                 )
@@ -2169,7 +2425,8 @@ class MainActivity : AppCompatActivity() {
         // 🔴 单位：shutterSteps 里是**纳秒**，必须除 1e9 才是「秒」。
         // 之前写成 1e9/ns（算出来是 1/秒 的倒数，1/125 秒会变成 125），
         // shutterTagsFor 于是永远落在 LT 档，刻度一个都不亮（11-19 真机复现）。
-        val shownSec = if (proMode && !isExternalFlash) {
+        // 11-22 外闪手动标定档：Pro（含外闪）用手动快门档，取景刻度才跟着拧。
+        val shownSec = if (proMode) {
             shutterSteps[shutterIdx]?.let { it / 1_000_000_000f } ?: lastExposureSec
         } else {
             lastExposureSec
@@ -2177,7 +2434,7 @@ class MainActivity : AppCompatActivity() {
         // Pro 模式：按**手动档**映射到取景窗那列刻度（500/125/30/LT）。
         // 手动档有 7 档（1/8~1/500），刻度只有 4 个，所以速度落在两档之间时
         // 两档都亮（真机语义）。液晶屏另按实际速度显示，两边不冲突。
-        val lit = if (proMode && !isExternalFlash) {
+        val lit = if (proMode) {
             proShutterLit.getOrElse(shutterIdx) { setOf("125") }
         } else {
             shutterTagsFor(shownSec)
@@ -2186,7 +2443,7 @@ class MainActivity : AppCompatActivity() {
         // 慢门警告（T3 手册里快门档位闪烁 = 当心手抖）：按胶卷算出来的快门已经慢到会抖
         // 🔴 Pro 模式下必须以**手动快门**为准：手动选了 1/125 还拿胶卷的慢门档闪"当心手抖"，
         // 那是吓唬人，而且刻度每 350ms 一明一灭，根本看不明白当前在哪一档（11-19 真机）。
-        val slowWarn = if (proMode && !isExternalFlash) {
+        val slowWarn = if (proMode) {
             shownSec >= 1f / 45f
         } else {
             val slowSec = filmShutterPreviewSec()
@@ -2215,8 +2472,8 @@ class MainActivity : AppCompatActivity() {
                 wbOn = wbVisible || wbIndex != 0,
                 wbIndex = wbIndex,
                 wbCount = wbPresets.size,
-                // Pro 模式：取景窗内直接显示当前 ISO，手指在铭牌上左右滑时眼睛不用离开取景器
-                isoText = if (proMode && !isExternalFlash) {
+                // 11-22 外闪手动档：Pro（含外闪）取景窗内直接显示当前手动 ISO
+                isoText = if (proMode) {
                     val v = isoLabels[isoIdx]
                     if (v == "A") "ISO AUTO" else "ISO $v"
                 } else null
@@ -2227,6 +2484,14 @@ class MainActivity : AppCompatActivity() {
     /** 胶卷档位（用户手动选了 ISO 就用用户的，否则按卷名里的 DX 感光度） */
     private fun effectiveFilmIso(): Int =
         isoValues[isoValue] ?: FilmExposure.isoFromRollName(currentRoll.name)
+
+    /**
+     * 11-22 外闪手动标定档的 ISO：用户拨到 A 档时，手动分支需要一个确定的 ISO
+     * （manualIso=null 会让 Camera2Controller 退回 gain 反算＝拧了没反应）。
+     * A 档回落到当前胶卷 DX 感光度，作为「手动档的自动挡」——仍是我方锁定值，
+     * 判定为手动帧、写进标定样本，只是数值跟随胶卷。
+     */
+    private fun proManualIso(): Int = isoSteps[isoIdx] ?: effectiveFilmIso()
 
     /** 按胶卷算出来的这张「真机快门」（秒）；取景器用它决定要不要闪慢门警告 */
     private fun filmShutterPreviewSec(): Float? {
@@ -2406,10 +2671,12 @@ class MainActivity : AppCompatActivity() {
     // 比灰着更糟。闪光亮度的唯一手动杠杆是机顶 EV 键（±3EV，落到 TTL 目标偏移上）。
     private var proMode = false
 
-    // 🔴 快门档位：T3 全 7 档（1/8 ~ 1/500），比取景窗上那 4 个刻度细。
+    // 🔴 快门档位：T3 七档（1/8 ~ 1/500）+ 1/5 标定档（11-23 用户拍板）。
     // 取景窗刻度只有 500 / 125 / 30 / LT 四档，**不代表可选档位只有 4 个**：
-    // 手动档给的是 7 档，液晶屏如实显示当前速度（125 / 250 / 60 …），
+    // 手动档给的是 8 档，液晶屏如实显示当前速度（125 / 250 / 60 …），
     // 取景窗那列刻度则按"当前速度落在哪两档之间"点亮（11-19 用户要求档位分细点）。
+    // 第 8 档 1/5 是外闪标定用：S25U HAL 上限 176ms，请求 200ms 会被钳到 176ms，
+    // 比 1/8 的 125ms 窗口宽 41%，落取景窗 LT 区（慢于 1/15 即 LT，真机同语义）。
     // 顺序：index 越小 = 越快（1/500 最快）。
     private val shutterSteps = listOf<Long?>(
         2_000_000L,       // 1/500
@@ -2419,8 +2686,9 @@ class MainActivity : AppCompatActivity() {
         33_333_333L,      // 1/30
         66_666_667L,      // 1/15
         125_000_000L,     // 1/8
+        200_000_000L,     // 1/5（HAL 钳到 176ms 设备上限）
     )
-    private val shutterLabels = listOf("500", "250", "125", "60", "30", "15", "8")
+    private val shutterLabels = listOf("500", "250", "125", "60", "30", "15", "8", "5")
     /** 每个手动档在取景窗那列刻度上该点亮哪几个（真机语义：速度落在两档之间就两档都亮） */
     private val proShutterLit = listOf(
         setOf("500"),           // 1/500
@@ -2430,6 +2698,7 @@ class MainActivity : AppCompatActivity() {
         setOf("30"),            // 1/30
         setOf("30", "LT"),      // 1/15
         setOf("30", "LT"),      // 1/8
+        setOf("LT"),            // 1/5：慢于 1/15，落 LT 区
     )
     private val isoSteps = listOf<Int?>(null, 100, 200, 400, 800, 1600, 3200)
     private val isoLabels = listOf("A", "100", "200", "400", "800", "1600", "3200")
@@ -2471,11 +2740,8 @@ class MainActivity : AppCompatActivity() {
      */
     private fun onShutterDrag(dy: Float) {
         if (!proMode) return
-        if (isExternalFlash) {
-            // 锁着：给一记短震表示「这个拨盘现在不动」
-            if (kotlin.math.abs(dy) > 6f) vibrate(12, 70)
-            return
-        }
+        // 11-22 用户拍板：外闪档解锁手动快门（人工标定需要 ISO/快门/功率都可拧）。
+        // 外闪手动档下 applyExternalFlashSync 会尊重手动值，不再被 gain 反算覆盖。
         if (shutterStepped) return
         shutterDragAcc += dy
         val step = knobStepPx
@@ -2507,10 +2773,7 @@ class MainActivity : AppCompatActivity() {
     /** ISO：右滑 = 变大，撞到两端同样停住（不循环）。 */
     private fun stepIso(delta: Int) {
         if (!proMode) return
-        if (isExternalFlash) {
-            if (delta != 0) vibrate(12, 70)
-            return
-        }
+        // 11-22 外闪档解锁手动 ISO（人工标定样本需要记录不同 ISO 下的成片）。
         val next = (isoIdx + delta).coerceIn(0, isoSteps.size - 1)
         if (next == isoIdx) return
         isoIdx = next
@@ -2529,10 +2792,7 @@ class MainActivity : AppCompatActivity() {
      */
     private fun onIsoDrag(dy: Float) {
         if (!proMode) return
-        if (isExternalFlash) {
-            if (kotlin.math.abs(dy) > 6f) vibrate(12, 70)
-            return
-        }
+        // 11-22 外闪档解锁手动 ISO（横屏手势带同样放开）。
         if (isoStepped) return
         isoDragAcc += dy
         val step = knobStepPx
@@ -2647,6 +2907,7 @@ class MainActivity : AppCompatActivity() {
             isoIdx = 3
             shutterIdx = 2
             cameraController?.externalTtlEnabled = false
+            cameraController?.extFlashManualCalib = false
             applyAutoExposure()
         }
         updateLcd()
@@ -2679,11 +2940,15 @@ class MainActivity : AppCompatActivity() {
         try {
             val c = cameraController ?: return
             if (isExternalFlash) {
-                // 外置闪光：曝光由同步模型接管，转盘锁着；这里只保证 TTL 与手动值一致
-                c.setManualIso(isoSteps[isoIdx])
+                // 11-22 外闪手动标定档：进 Pro 后 ISO/快门由用户拧，
+                // applyExternalFlashSync 用手动值而非 gain 反算；关灯侧 TTL 免得乱改功率。
+                // ISO=A 档用胶卷 DX 感光度兜底，保证 manualIso 非 null（否则退回 gain 反算）。
+                c.setManualIso(proManualIso())
                 c.setManualExposure(shutterSteps[shutterIdx])
-                c.externalTtlEnabled = true
+                c.extFlashManualCalib = true
+                c.externalTtlEnabled = false
             } else {
+                c.extFlashManualCalib = false
                 // 任一轴 AUTO ⇒ 整体交回 AE，杜绝「半锁」
                 // （AE 一旦被关掉，另一轴留空会取相机默认，常常是极短曝光）
                 c.setManualIso(isoSteps[isoIdx])
@@ -2863,6 +3128,26 @@ class MainActivity : AppCompatActivity() {
                 binding.lcdDisplay.showMessage("TTL $meterIso→$finalIso", 1800L)
             }
         }
+        // 外闪黑片侦测（11-22）：灯没电/失联拍出黑片时 LCD 提示，照常落卷由用户决定删留。
+        // 显示时长给 3s（比 TTL 反馈长）——这是需要用户察觉并处理（充电/重拍）的异常。
+        cameraController?.onFlashMissDetected = { centerP50, _ ->
+            android.util.Log.i("FlashMiss", "UI 提示：闪光未触发 centerP50=$centerP50")
+            runOnUiThread {
+                binding.lcdDisplay.showMessage(getString(R.string.main_flash_miss_notice), 3000L)
+            }
+        }
+        // 灯侧 TTL（11-22 抓到 a0 01 功率帧）：控制器算出功率档 → 经这里下发到 A2。
+        // 只有 A2 连着且命令口就绪才返回 true；写失败时控制器不改状态，避免漂移。
+        cameraController?.onFlashPowerRequest = { arg ->
+            val lamp = com.filmcam.app.flash.FlashController.active?.lampControl()
+            val ok = lamp?.setFlashPowerLevel(arg) == true
+            if (ok) {
+                runOnUiThread {
+                    binding.lcdDisplay.showMessage("PWR ${com.filmcam.app.flash.A2ShortPower.powerByteToEv(arg).toInt()}EV↓", 1200L)
+                }
+            }
+            ok
+        }
         // RAW 负片开关在这里补挂：onResume 传开关时控制器还不存在（时序是
         // onResume → surface 就绪 → startCamera），冷启动开的开关传了个空
         android.util.Log.i("FilmCam", "startCamera: rawNegativeEnabled=$rawNegativeEnabled")
@@ -2901,6 +3186,16 @@ class MainActivity : AppCompatActivity() {
             // 不 post 回主线程：BLE 写入本身是异步提交，多一次队列就多几十毫秒，
             // 而曝光窗口只有 100ms。这里只发字节，不碰任何 View。
             if (flash.mode == FlashMode.EXTERNAL) flash.trigger()
+        }
+        // 调研路①：三段式启动前复位到氙气档（0c=00）。11-19 实证「点复位后每次
+        // 都是氙气」，历史三段式失败正因缺这一步。只在热调开三段式时被调用。
+        cameraController?.onBeforeStagedFlash = {
+            com.filmcam.app.flash.FlashController.active?.lampControl()?.resetFlashMode()
+            android.util.Log.w("FlashSync", "调研路①：三段式前复位氙气档(0c=00)已下发")
+        }
+        // 调研路②：把 FEC8 回电状态接到相机，拍照前门控用。
+        cameraController?.isFlashReady = {
+            com.filmcam.app.flash.FlashController.active?.isFlashReady()
         }
         // 全分辨率拍照回调：后台把原帧 JPEG 存入未冲洗胶卷（零处理，不做 LUT/日期戳/EXIF——那些在冲洗侧做）
         cameraController?.onPhotoCaptured = { bytes, rotation, rawDng ->
@@ -3230,6 +3525,16 @@ class MainActivity : AppCompatActivity() {
                     } else {
                         app.spektralab.engine.FilmStockMapper.FilmGate.F135.key
                     },
+                    // 外闪标定样本：分配唯一 id（拍摄 epoch ms），记下是否 Pro 手动档。
+                    // 功率/距离/环境基线在 shotJsonWithCapture() 落卷时补，成片 p50 冲洗前补。
+                    // 记录范围（11-23）：默认只标外置闪光档（标定是为外闪 TTL 归纳服务的）；
+                    // 工程控制台「标定记录范围」切到「所有照片」后，任何档都发样本 id
+                    // （功率/距离仍是闪光专属，非 EXT 帧不填），用于以后归纳别的模式。
+                    calibId = if (flash.mode == FlashMode.EXTERNAL ||
+                        getSharedPreferences("filmcam", MODE_PRIVATE)
+                            .getString("calibScope", "ext") == "all"
+                    ) System.currentTimeMillis() else 0L,
+                    calibManual = proMode && flash.mode == FlashMode.EXTERNAL,
                 ).toJson()
                 cameraController?.takePicture(defocus, slowNs, slowIso)
                 android.util.Log.i(

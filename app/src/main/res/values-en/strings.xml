@@ -173,6 +173,7 @@ Memory available: %10$d MB / %11$d MB total
     <string name="main_roll_finished_body">All 36 frames are shot. Develop the roll for prints.</string>
     <string name="main_roll_finished_develop">Develop</string>
     <string name="main_roll_finished_later">Later</string>
+    <string name="main_roll_finished_code">ROLL FULL</string>
 
     <!-- Development params dialog -->
     <string name="main_dev_reset">Reset stock defaults</string>
@@ -227,6 +228,22 @@ Memory available: %10$d MB / %11$d MB total
     <string name="main_cd_film_icon">Film icon</string>
     <string name="main_darkroom">Darkroom</string>
     <string name="gallery_import">Import photos</string>
+    <string name="gallery_calib_list">Calibration samples</string>
+    <string name="calib_list_title">Flash calibration samples</string>
+    <string name="calib_list_hint">Logged right after each shot — no developing needed. Each row is one external-flash frame with power / ISO / shutter / distance / brightness. Mark it good or bad here, then filter by marks when deriving TTL.</string>
+    <string name="calib_list_empty">No external-flash calibration samples yet. Switch to the external flash mode (Pro mode recommended), take one shot, and come back — no developing needed.</string>
+    <string name="calib_list_no_ext">The roll has frames, but none were shot in external flash mode (calibration is only logged in EXT). Switch the body flash dial to EXT, connect the A2, and take another shot.</string>
+    <string name="calib_list_count">%1$d samples</string>
+    <string name="calib_mark_none">Unmarked</string>
+    <string name="calib_row_good">✓ Good</string>
+    <string name="calib_row_bad">✗ Bad</string>
+    <string name="calib_row_clear">Clear</string>
+    <string name="calib_frame_raw">Undeveloped frame</string>
+    <string name="calib_frame_developed">Developed photo</string>
+    <string name="eng_calib_scope">Calibration scope</string>
+    <string name="eng_calib_scope_hint">Samples (sample list / good-bad marks) are logged in external flash mode only by default; switch to all photos to issue sample ids for every frame (power/distance remain flash-only).</string>
+    <string name="calib_scope_ext">External flash only</string>
+    <string name="calib_scope_all">All photos</string>
     <string name="gallery_import_pick_film">Load which film?</string>
     <string name="gallery_import_too_many">A roll holds 36 frames; only the first 36 were taken</string>
     <string name="gallery_import_busy">Develop the current roll before importing</string>
@@ -275,6 +292,12 @@ Memory available: %10$d MB / %11$d MB total
     <!-- ===== Layout: print viewer ===== -->
     <string name="main_shoot_same">Shoot the same</string>
     <string name="viewer_share">Share</string>
+    <!-- Manual flash calibration sample marking (11-22) -->
+    <string name="viewer_calib_title">Flash calibration sample</string>
+    <string name="viewer_calib_mark_good">Mark good</string>
+    <string name="viewer_calib_mark_bad">Mark bad</string>
+    <string name="viewer_calib_mark_clear">Clear mark</string>
+    <string name="viewer_calib_none">Not a flash calibration sample</string>
 
     <!-- ===== About screen nameplate: spec table ===== -->
     <string name="about_spec_model">MODEL</string>
@@ -497,15 +520,23 @@ Memory available: %10$d MB / %11$d MB total
     <string name="lcd_notice_flash_ev_fine">EXT flash 0.5 EV/step</string>
 
     <!-- ===== Waist-level finder (P0 skeleton): settings row + half-screen bar ===== -->
-    <string name="eng_a2_title">A2 modeling lamp (Godox A2)</string>
-    <string name="eng_a2_ready">Command channel ready (FEC7)</string>
-    <string name="eng_a2_not_ready">Not ready: connect the A2 in external-flash mode first</string>
-    <string name="eng_a2_led">Modeling lamp</string>
-    <string name="eng_a2_brightness">Modeling lamp (0–100, 0 = off)</string>
-    <string name="eng_a2_cct">Color temp (1–100, 100 = white)</string>
-    <string name="eng_a2_power">Flash power (M, 1/1 – 1/128)</string>
-    <string name="eng_a2_reset">Reset flash mode (tap when the lamp only fires LED)</string>
-    <string name="eng_a2_hint">Matches the write order of the official app: brightness = 0x06 (dragging to 0 exits modeling-lamp mode), color temp = 0x07 (0–32, white at top). 0x05 is the mode switch and 0x0c is a capture-side parameter — neither should be driven from the UI. Warning: leaving the lamp on degrades xenon burst shooting; return it to 0 before shooting.</string>
+    <string name="a2_lamp_code">A2 LAMP</string>
+    <string name="a2_lamp_ready">Command channel ready (FEC7)</string>
+    <string name="a2_lamp_not_ready">Not ready: connect the A2 in external-flash mode first</string>
+    <string name="a2_lamp_brightness">Modeling lamp (0–100, 0 = off)</string>
+    <string name="a2_lamp_cct">Color temp (1–100, 100 = white)</string>
+    <string name="a2_lamp_reset">Reset flash mode</string>
+    <string name="a2_lamp_reset_done">Reset sequence replayed (06 01 → 05 00 → 0c 00 → 03 00)</string>
+    <string name="a2_lamp_hint">Brightness = 0x06 (drag to 0 exits modeling mode), color temp = 0x07. Leaving the lamp on degrades xenon burst shooting (only LED from the 2nd shot) — return to 0 before shooting. Tap "Reset flash mode" when the lamp only fires LED.</string>
+    <string name="a2_lamp_close">Close</string>
+    <string name="a2_lamp_pwr_title">Flash power (8-step calibration)</string>
+    <string name="a2_lamp_pwr_slider">Power step</string>
+    <string name="a2_lamp_pwr_full">Full 1/1</string>
+    <string name="a2_lamp_pwr_min">Min 1/128</string>
+    <string name="a2_lamp_pwr_restore">Restore TTL</string>
+    <string name="a2_lamp_pwr_hint">Slider picks 1/1 to 1/128 in 8 steps; applied to the lamp on release and used for the next shot. Pair with Pro manual ISO/shutter to collect calibration samples.</string>
+    <string name="a2_lamp_pwr_sent">Power frame sent: %1$s</string>
+    <string name="a2_lamp_pwr_no_support">Current light has no power-frame support</string>
     <!-- FotorGear 03/04 config (reverse-engineered from JiYing/FotorCam on 2026-11-21; shooting path 05 00 untouched) -->
     <string name="eng_waist">Waist-level finder (foldable easter egg)</string>
     <string name="eng_waist_hint">Off = never; Auto = only when a foldable is half-open (invisible on flat phones); Simulate = split half-screen on flat phones, debug only</string>

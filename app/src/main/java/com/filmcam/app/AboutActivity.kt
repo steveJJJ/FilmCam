@@ -595,6 +595,7 @@ class AboutActivity : AppCompatActivity() {
         val rowJpeg = view.findViewById<View>(R.id.rowEngJpeg)
         val rowWaist = view.findViewById<View>(R.id.rowEngWaist)
         val rowDarkroomV2 = view.findViewById<View>(R.id.rowEngDarkroomV2)
+        val rowCalib = view.findViewById<View>(R.id.rowEngCalib)
 
         /** 绑定一行「名称 + 说明」，返回右侧读数 TextView */
         fun bindRow(row: View, labelRes: Int, hintRes: Int): TextView {
@@ -617,6 +618,16 @@ class AboutActivity : AppCompatActivity() {
         // 11-18 起全量默认开：控制台这一行只做状态展示，不再提供关闭入口
         val tvDarkroomV2 = bindRow(rowDarkroomV2, R.string.eng_darkroom_v2, R.string.eng_darkroom_v2_hint)
         tvDarkroomV2.text = getString(R.string.eng_darkroom_v2_on)
+        val tvCalib = bindRow(rowCalib, R.string.eng_calib_scope, R.string.eng_calib_scope_hint)
+
+        // 标定样本记录范围（11-23）：仅外置闪光档（默认，标定为外闪 TTL 服务）/ 所有照片
+        fun calibScope(): String = prefs.getString("calibScope", "ext") ?: "ext"
+        fun saveCalibScope(scope: String) {
+            prefs.edit().putString("calibScope", scope).apply()
+            tvCalib.text = if (scope == "all") getString(R.string.calib_scope_all)
+            else getString(R.string.calib_scope_ext)
+        }
+        saveCalibScope(calibScope())
 
         fun slowMode(): com.filmcam.app.camera.FilmExposure.Mode =
             com.filmcam.app.camera.FilmExposure.Mode.fromPrefs(
@@ -739,114 +750,6 @@ class AboutActivity : AppCompatActivity() {
             tick(20, 160)
             saveWaistEgg(com.filmcam.app.ui.FoldPosture.nextEgg(waistEgg()))
         }
-        // A2 造型灯控制：走活着的 FlashController 会话（FEC7 命令通道 + CRC8-Maxim）。
-        // 会话在 MainActivity 手里；主界面在返回栈里，FlashController.active 即有效。
-        // 拖动滑条只在松手时下发 —— BLE 命令口没有流控，拖动过程逐帧写会堆队列。
-        run {
-            val tvStatus = view.findViewById<TextView>(R.id.tvA2Status)
-            val sbBright = view.findViewById<SeekBar>(R.id.sbA2Bright)
-            val tvBright = view.findViewById<TextView>(R.id.tvA2Bright)
-            val sbCct = view.findViewById<SeekBar>(R.id.sbA2Cct)
-            val sbPower = view.findViewById<SeekBar>(R.id.sbA2Power)
-            val tvPower = view.findViewById<TextView>(R.id.tvA2Power)
-            val tvCct = view.findViewById<TextView>(R.id.tvA2Cct)
-            val a2Tick = com.filmcam.app.ui.SliderTick(this)
-            var bound = false
-
-            // 就绪判定必须可重入：GATT 服务发现是异步的，面板可能在 cmdChar 还没解析出来
-            // 时就打开了（真机就是这样一直显示「未就绪」）。绑定成功一次后不再重复挂监听。
-            fun bindLampIfReady() {
-                val lamp = com.filmcam.app.flash.FlashController.active?.lampControl()
-                val lampReady = lamp != null && lamp.ready
-                tvStatus.setText(
-                    if (lampReady) R.string.eng_a2_ready else R.string.eng_a2_not_ready
-                )
-                listOf(sbBright, sbCct, sbPower).forEach { it.isEnabled = lampReady }
-                view.findViewById<TextView>(R.id.btnA2Reset).apply {
-                    isEnabled = lampReady
-                    alpha = if (lampReady) 1f else 0.4f
-                    if (lampReady) setOnClickListener {
-                        tick(20, 160)
-                        lamp?.resetFlashMode()
-                        Toast.makeText(
-                            this@AboutActivity,
-                            "已重放复位序列（06 01 → 05 00 → 0c 50 → 03 00）",
-                            Toast.LENGTH_SHORT
-                        ).show()
-                    }
-                }
-                if (lampReady && !bound) {
-                    bound = true
-                    // 进卡先把造型灯归零（滑杆拖到 0 = 关）：A2 的造型灯是「常亮补光」，
-                    // 开着会让连拍退化成 LED 闪（11-19 实测：第一张氙气+LED 全亮，
-                    // 第二张只剩 LED 闪）。官方 App 也是靠滑杆归零关灯，没有单独开关。
-                    sbBright.progress = 0
-                    tvBright.text = "0%"
-                    // 只发 05 00 退出造型灯模式；0x0c 由驱动在服务发现时恢复成官方默认 50，
-                    // 这里绝不再碰（11-19 把它压到 0 导致「第二张起只闪 LED」）
-                    lamp.setLed(false)
-                    sbBright.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                        override fun onProgressChanged(sb: SeekBar?, progress: Int, fromUser: Boolean) {
-                            if (!fromUser) return
-                            a2Tick.onUserProgress()
-                            tvBright.text = "$progress%"
-                        }
-
-                        override fun onStartTrackingTouch(sb: SeekBar?) {}
-                        override fun onStopTrackingTouch(sb: SeekBar?) {
-                            // 0 = 关灯（驱动内部会退出造型灯模式），不做下限钳位
-                            lamp.setBrightnessPercent(sbBright.progress)
-                        }
-                    })
-                    sbCct.progress = 50
-                    tvCct.text = "50"
-                    sbCct.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                        override fun onProgressChanged(sb: SeekBar?, progress: Int, fromUser: Boolean) {
-                            if (!fromUser) return
-                            a2Tick.onUserProgress()
-                            tvCct.text = "$progress"
-                        }
-
-                        override fun onStartTrackingTouch(sb: SeekBar?) {}
-                        override fun onStopTrackingTouch(sb: SeekBar?) {
-                            lamp.setColorTemp(sbCct.progress)
-                        }
-                    })
-                    // A1 长帧功率（实验）：0 = 1/1、70 = 1/128，松手下发一帧
-                    sbPower.max = com.filmcam.app.flash.A2PowerProtocol.POWER_MIN
-                    sbPower.progress = 0
-                    tvPower.text = "1/1"
-                    sbPower.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                        override fun onProgressChanged(sb: SeekBar?, progress: Int, fromUser: Boolean) {
-                            if (!fromUser) return
-                            a2Tick.onUserProgress()
-                            val den = com.filmcam.app.flash.A2PowerProtocol.denominator(progress)
-                            tvPower.text = "1/$den"
-                        }
-
-                        override fun onStartTrackingTouch(sb: SeekBar?) {}
-                        override fun onStopTrackingTouch(sb: SeekBar?) {
-                            lamp.setFlashPowerLevel(sbPower.progress)
-                        }
-                    })
-                }
-            }
-
-            bindLampIfReady()
-            if (!bound) {
-                // 最多补查 8 秒（16 × 500ms）：服务发现 / 重连完成后自动点亮卡片。
-                var tries = 0
-                val poll = object : Runnable {
-                    override fun run() {
-                        if (!view.isAttachedToWindow) return
-                        bindLampIfReady()
-                        if (!bound && ++tries <= 16) view.postDelayed(this, 500)
-                    }
-                }
-                view.postDelayed(poll, 500)
-            }
-        }
-
         // v2 暗房编辑流程：11-18 起全量默认开启（DarkroomV2.isEnabled 恒 true）。
         // 这里只保留状态展示 + 说明，不再翻转 —— 否则会出现「面板显示关、冲洗却仍走母片」的矛盾。
         rowDarkroomV2.setOnClickListener {
@@ -854,6 +757,11 @@ class AboutActivity : AppCompatActivity() {
             Toast.makeText(this,
                 "暗房编辑 v2 已默认开启（冲洗只出母片，编辑保存才入相册）",
                 Toast.LENGTH_LONG).show()
+        }
+        // 标定样本记录范围：两态循环 仅外置闪光档 ↔ 所有照片（即时生效，拍下一帧就按新范围）
+        rowCalib.setOnClickListener {
+            tick(20, 160)
+            saveCalibScope(if (calibScope() == "all") "ext" else "all")
         }
 
         // 工程师模式开关：关掉 = 这些旋钮重新藏起来，入口回到"连点 10 次"
