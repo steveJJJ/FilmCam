@@ -145,15 +145,15 @@ Memory available: %10$d MB / %11$d MB total
     <string name="main_cancel">Cancel</string>
 
     <!-- First-run guide -->
-    <string name="main_guide_start">Start shooting</string>
+    <string name="main_guide_start">Start guided tour</string>
 
     <!-- v82 Quick start card (stage 1, three pages) -->
-    <string name="qs_title_1">Pick a film first</string>
-    <string name="qs_body_1">Like real film, load a roll before you shoot. PORTRA 400 (warm portrait tones) is already loaded — you can shoot right away.\n\n· Tap the film icon, bottom left: change roll\n· Each film shapes the final look — portrait, landscape, B&amp;W, slide all differ\n· 36 frames per roll, developed only when it is full</string>
-    <string name="qs_title_2">Then off to the darkroom</string>
-    <string name="qs_body_2">When a roll is full the body prompts to rewind. Open the darkroom and develop — finished frames land in the gallery.\n\nAn empty gallery before developing isn\'t a bug: the negatives are still in the roll. The first roll comes with reminders.</string>
-    <string name="qs_title_3">Framing and controls</string>
-    <string name="qs_body_3">· Tap the viewfinder: focus\n· Swipe up or down inside the frame: exposure\n· Press the shutter: film advances\n\nShutter bar cycles the flash. Settings panel (side key): white balance, RAW negative, colour strength, develop quality, film border. The look is fixed in development.</string>
+    <string name="qs_title_1">This is a film camera</string>
+    <string name="qs_body_1">Like real film: load a roll, shoot, then develop it in the darkroom before you can see the prints.\n\n· PORTRA 400 is already loaded — shoot right away\n· Tap the film icon, bottom left, to change rolls: portraits, landscapes, B&amp;W and slide all look different\n· 36 frames per roll</string>
+    <string name="qs_title_2">Develop in the darkroom</string>
+    <string name="qs_body_2">Do not look in the gallery right after shooting: the negatives are still in the roll, so it stays empty until developed.\n\n· Tap DARKROOM, bottom right\n· Tap Develop on the undeveloped roll — prints land in the gallery\n· After the first frame the camera points out the darkroom for you</string>
+    <string name="qs_title_3">Let us walk through it together</string>
+    <string name="qs_body_3">Do each step once and you know the camera:\n\n1. Tap the film icon to pick a roll\n2. Tap the nameplate for Pro, swipe ISO, drag the shutter\n3. Tap it again back to auto\n4. Tap the viewfinder to focus, swipe to adjust exposure\n5. Press the shutter for the first frame\n6. Develop it in the darkroom</string>
     <string name="qs_next">Next</string>
     <string name="about_spec_quickstart">Quick start</string>
     <string name="about_quickstart_action">Replay</string>

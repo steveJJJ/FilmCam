@@ -153,15 +153,15 @@ App 版本：%1$s (%2$d)
     <string name="main_cancel">取消</string>
 
     <!-- 首次进入引导 -->
-    <string name="main_guide_start">开拍</string>
+    <string name="main_guide_start">开始引导</string>
 
     <!-- v82 快速上手卡（段1，三屏翻页） -->
-    <string name="qs_title_1">先选一支胶卷</string>
-    <string name="qs_body_1">和真胶卷一样，先装卷再拍。已经替你装好 PORTRA 400（暖调人像），现在就能拍。\n\n· 点左下角胶卷图标：换卷\n· 不同卷决定成片风格——人像、风光、黑白、反转片各不一样\n· 一支卷 36 张，拍满才送去冲洗</string>
+    <string name="qs_title_1">这是一台胶片相机</string>
+    <string name="qs_body_1">和真胶卷一样：先装卷、再拍摄、最后去暗房冲洗，才看得到成片。\n\n· 已替你装好 PORTRA 400，直接就能拍\n· 点左下角胶卷图标换卷——人像、风光、黑白、反转片风格各不同\n· 一支卷 36 张</string>
     <string name="qs_title_2">拍完去暗房冲洗</string>
-    <string name="qs_body_2">一卷拍满后机身提示回卷，打开暗房页冲洗，出片自动进相册。\n\n冲洗前相册里空空的不是坏了——底片都还卷在胶卷里。首卷相机会提醒你去冲洗。</string>
-    <string name="qs_title_3">取景与可调项</string>
-    <string name="qs_body_3">· 点一下取景框：对焦\n· 取景框内上下滑：调曝光\n· 按快门：过片进卷\n\n快门条循环：闪光灯 / 外置闪光。设置面板（机身右侧键）：白平衡、RAW 底片、色彩浓度、冲洗画质、胶片相框。成片风格都在冲洗里定。</string>
+    <string name="qs_body_2">拍完别急着找相册：底片还卷在胶卷里，冲洗前相册里空空的不是坏了。\n\n· 点右下角 DARKROOM 进暗房\n· 未冲洗卡片上点「冲洗」，成片自动进相册\n· 拍完第一张，相机会直接框出暗房入口</string>
+    <string name="qs_title_3">接下来手把手带你走一遍</string>
+    <string name="qs_body_3">按顺序做一遍，就会用这台相机了：\n\n① 点胶卷图标选卷\n② 点铭牌进 Pro，滑 ISO、推快门\n③ 再点铭牌回自动档\n④ 点取景框对焦、上下滑调曝光\n⑤ 按快门拍第一张\n⑥ 去暗房冲洗看成片</string>
     <string name="qs_next">下一页</string>
     <string name="about_spec_quickstart">快速上手</string>
     <string name="about_quickstart_action">重玩</string>

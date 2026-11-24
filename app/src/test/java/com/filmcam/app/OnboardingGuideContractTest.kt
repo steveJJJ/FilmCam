@@ -68,16 +68,18 @@ class OnboardingGuideContractTest {
     }
 
     @Test
-    fun `首启直接进八步实操 不弹说明书卡 老用户不重播`() {
+    fun `首启先弹玩法卡 关掉后接八步 重玩不弹卡 老用户不重播`() {
         val s = main() ?: return
+        // 函数里有多个嵌套 if 块，不能截到第一个 }；截到段 2 分区注释才是完整函数体
         val fn = s.substringAfter("private fun maybeShowFirstRunGuide()", "")
-            .substringBefore("\n    }", "")
+            .substringBefore("// ===== v82 段 2", "")
         assertTrue("maybeShowFirstRunGuide 要在", fn.isNotBlank())
         assertTrue("老用户 guide_shown 守卫保留", fn.contains("guide_shown"))
+        assertTrue("首启要弹玩法说明书卡（11-25 二版恢复）", fn.contains("QuickStartCard.show"))
+        assertTrue("关卡后才进八步实操",
+            fn.contains("onDismissed =") && fn.contains("showOnboardingHint()"))
+        assertTrue("重玩分支只重播八步、不再弹卡", fn.contains("if (replay)"))
         assertTrue("段2启动 = stage 0→1", fn.contains("OnboardingGuide.setStage(this, 1)"))
-        assertTrue("LCD 立即出第一条", fn.contains("showOnboardingHint()"))
-        assertFalse("首启不得再弹说明书卡（11-25 用户拍板去掉）",
-            fn.contains("QuickStartCard.show"))
     }
 
     @Test
@@ -98,9 +100,11 @@ class OnboardingGuideContractTest {
         val evBlock = s.substringAfter("setEv(newEv, persist = false)", "")
             .substringBefore("android.view.MotionEvent.ACTION_UP", "")
         assertTrue("EV 手势要挂段2检测", evBlock.contains("OnboardingGuide.onEvChanged(this)"))
-        val shot = s.substringAfter("if (OnboardingGuide.onShotTaken(this))", "")
+        val shot = s.substringAfter("if (OnboardingGuide.onShotTaken(this)) {", "")
             .substringBefore("if (count >= FILM_MAX)", "")
         assertTrue("首张落卷要停超时轮转", shot.contains("stopOnboardingTimeout()"))
+        assertTrue("引导最后一拍直接接力暗房指引（不依赖帧号）",
+            shot.contains("showDarkroomGuide()"))
         assertTrue("段3护栏提示要在落卷处", shot.contains("guardFrameHit"))
         val hint = s.substringAfter("private fun showOnboardingHint()", "")
             .substringBefore("\n    }", "")
@@ -221,6 +225,7 @@ class OnboardingGuideContractTest {
         val shot = main.substringAfter("val forceDarkroomGuide =", "")
             .substringBefore("if (count >= FILM_MAX)", "")
         assertTrue("第 1 张要框暗房字牌带去冲洗", shot.contains("showDarkroomGuide()"))
+        assertTrue("引导最后一拍已挂过就不重复重置", shot.contains("if (!darkroomGuideActive)"))
         assertTrue("第 12 张保留普通提示", shot.contains("R.string.guide_third_frame"))
         val galleryClick = main.substringAfter("binding.btnGallery.hapticClick {", "")
             .substringBefore("binding.btnGallery.attachPressFeedback", "")

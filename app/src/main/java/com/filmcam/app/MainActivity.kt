@@ -1937,10 +1937,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * 首次进入引导：11-25 用户拍板去掉开头说明书卡，首启直接进机顶 LCD
-     * 八步实操引导（见 [showOnboardingHint]）——上手就是做，不再先读三屏文字。
-     * 说明书卡改为纯「关于页重看」入口，想看说明的人仍可主动看。
-     * 老用户（guide_shown 已置）不重播。
+     * 首次进入引导：11-25 二版用户拍板**恢复开头玩法弹窗**——先用三页说明书讲清
+     * 「选卷 → 拍摄 → 暗房冲洗」的产品玩法和接下来要做的动作，关掉卡片后
+     * LCD 接力手把手八步实操（见 [showOnboardingHint]）。
+     *
+     * 关于页「重玩」仍只重播八步、不再弹卡（看过说明的人不用再读一遍）。
+     * 老用户（guide_shown 已置）两者都不重播。
      */
     private fun maybeShowFirstRunGuide() {
         val prefs = getSharedPreferences("filmcam", MODE_PRIVATE)
@@ -1958,11 +1960,34 @@ class MainActivity : AppCompatActivity() {
             prefs.edit().putBoolean("guide_shown", false).apply()
             OnboardingGuide.setStage(this, 0)
         }
+        // 工程验证热调：私有目录写 onboarding_first_force.txt → 按「首次」重演（含玩法弹窗）。
+        // 默认无文件，正式行为零改变；用完删除即可。
+        val forceFirst = runCatching {
+            java.io.File(getExternalFilesDir(null), "onboarding_first_force.txt").exists()
+        }.getOrDefault(false)
+        if (forceFirst) {
+            prefs.edit().putBoolean("guide_shown", false).apply()
+            OnboardingGuide.setStage(this, 0)
+        }
         if (prefs.getBoolean("guide_shown", false)) return
         prefs.edit().putBoolean("guide_shown", true).apply()
-        // 不弹说明书卡，直接进八步实操：LCD 立即出第一条「点胶卷图标 · 选卷」。
-        if (OnboardingGuide.stage(this) == 0) OnboardingGuide.setStage(this, 1)
-        showOnboardingHint()
+        // 重玩：只重播八步，不弹说明书卡（关于页入口的既有约定）
+        if (replay) {
+            if (OnboardingGuide.stage(this) == 0) OnboardingGuide.setStage(this, 1)
+            showOnboardingHint()
+            return
+        }
+        // 首次：先讲玩法。卡片在前台时 LCD 不抢戏，dismiss 之后才进八步实操。
+        com.filmcam.app.ui.QuickStartCard.show(
+            activity = this,
+            guard = { d, onDismissed -> d.guardDialog(onDismissed) },
+            onDismissed = {
+                if (OnboardingGuide.stage(this@MainActivity) == 0) {
+                    OnboardingGuide.setStage(this@MainActivity, 1)
+                }
+                showOnboardingHint()
+            },
+        )
     }
 
     // ===== v82 段 2：机顶 LCD 实操引导（做对自动前进，15s 超时跳过） =====
@@ -3380,7 +3405,13 @@ class MainActivity : AppCompatActivity() {
                     runOnUiThread {
                         // v82 段 2 检测点：首张落卷 = 三步实操走完，停掉超时轮转，
                         // 「拍第一张」提示由段 3 的 1/36 提醒接力（不两条连着刷屏）
-                        if (OnboardingGuide.onShotTaken(this)) stopOnboardingTimeout()
+                        if (OnboardingGuide.onShotTaken(this)) {
+                            stopOnboardingTimeout()
+                            // 八步引导的最后一拍：无论这一卷已经拍到第几张，都直接接力
+                            // 暗房指引。原来只靠 guardFrameHit 的 1/12 帧判定，卷里已有
+                            // 几张时引导拍完就什么也不出（用户实测「最后还是没提醒」）。
+                            showDarkroomGuide()
+                        }
                         // v82 段 3 首卷护栏：第 1 / 12 张各提醒一次去暗房
                         val forceDarkroomGuide = darkroomGuideForce()
                         android.util.Log.w(
@@ -3391,8 +3422,9 @@ class MainActivity : AppCompatActivity() {
                             (forceDarkroomGuide && count > OnboardingGuide.GUARD_FRAME_FIRST)
                         ) {
                             if (count == OnboardingGuide.GUARD_FRAME_FIRST || forceDarkroomGuide) {
-                                // 第一张：框出暗房字牌 + 常驻 LCD，带用户走完「拍→洗」闭环
-                                showDarkroomGuide()
+                                // 第一张：框出暗房字牌 + 常驻 LCD，带用户走完「拍→洗」闭环。
+                                // 引导最后一拍刚挂过就不重复重置 60s 计时。
+                                if (!darkroomGuideActive) showDarkroomGuide()
                             } else {
                                 // 第 12 张：旧提示照旧，顺手收掉可能还挂着的暗房框
                                 clearDarkroomGuide()
