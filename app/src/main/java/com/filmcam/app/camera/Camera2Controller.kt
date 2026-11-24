@@ -65,6 +65,17 @@ class Camera2Controller(private val context: Context) {
         private const val FLASH_LATENCY_MODEL_HOTFILE = "flash_latency_model.txt"
 
         /**
+         * 内置闪光人像肤色 A/B（11-23 真机定量）：闪光帧被锁到 ISO~166-250/25ms
+         * + 线性 tonemap，脸又暗又黄（亮度 0.37 vs 系统相机 0.64、色相 18~22° vs 13°）。
+         * 换 Portra 400 仍黄 → 与胶卷无关，是闪光帧参数组合。这里给一组**默认关**的热调：
+         *  - `flash_portrait_ev.txt` = 浮点 EV 倍率（如 0.7 = 曝光量×2^0.7 提亮），0/缺=关；
+         *  - `flash_portrait_tonemap.txt` = 1 关掉线性 tonemap（让肤色不再被线性曲线压灰）；
+         * 只作用于内置闪光自动档拍照帧，其他场景与胶卷风格一律不动。定稿行为零改变。
+         */
+        private const val FLASH_PORTRAIT_EV_HOTFILE = "flash_portrait_ev.txt"
+        private const val FLASH_PORTRAIT_TONEMAP_HOTFILE = "flash_portrait_tonemap.txt"
+
+        /**
          * 外闪黑片侦测阈值（11-22 真机定量）：灯没电那批直出中心 p50=1/1/1/1，
          * 所有正常张 p50≥91，中间有巨大分界。p50≤5 判「灯没闪」，误伤极低——
          * 暗调主体只要被闪光照到，中心 p50 也远高于 5。
@@ -1239,6 +1250,10 @@ class Camera2Controller(private val context: Context) {
     @Volatile private var flashSyncGain: Float = FLASH_SYNC_GAIN_DEFAULT
     /** 外闪帧 AWB 是否钉日光（默认开，热调 flash_awb_daylight.txt=0 关）。 */
     @Volatile private var extFlashAwbDaylight: Boolean = true
+    /** 内置闪光人像 A/B：曝光倍率 EV（0=保持定稿），热调 flash_portrait_ev.txt。 */
+    @Volatile private var flashPortraitEv: Float = 0f
+    /** 内置闪光人像 A/B：是否关线性 tonemap（false=保持定稿的线性），热调 flash_portrait_tonemap.txt=1。 */
+    @Volatile private var flashPortraitNoLinearTonemap: Boolean = false
     /**
      * 外置闪光档的细档补偿（EV，0.5 一档，−3…+3）。切到 EXT 后机顶 EV 拨盘
      * 只改这个值；常规档的 [exposureComp] 原样保留，切回 OFF / INT 时拨盘
@@ -1423,6 +1438,17 @@ class Camera2Controller(private val context: Context) {
         // 预闪测光探针：只读日志、不改行为；写 1 开启，缺文件默认关。
         meterProbe = if (dir == null) false else runCatching {
             val f = java.io.File(dir, METER_PROBE_HOTFILE)
+            f.exists() && f.readText().substringBefore("//").trim() == "1"
+        }.getOrDefault(false)
+        // 内置闪光人像 A/B：曝光倍率 EV（缺文件/非法=0 保持定稿），范围 -2..+2。
+        flashPortraitEv = if (dir == null) 0f else runCatching {
+            val f = java.io.File(dir, FLASH_PORTRAIT_EV_HOTFILE)
+            if (!f.exists()) 0f
+            else f.readText().substringBefore("//").trim().toFloatOrNull() ?: 0f
+        }.getOrDefault(0f).coerceIn(-2f, 2f)
+        // 内置闪光人像 A/B：写 1 关掉线性 tonemap（缺文件=保持定稿线性）。
+        flashPortraitNoLinearTonemap = if (dir == null) false else runCatching {
+            val f = java.io.File(dir, FLASH_PORTRAIT_TONEMAP_HOTFILE)
             f.exists() && f.readText().substringBefore("//").trim() == "1"
         }.getOrDefault(false)
         // 多帧覆盖验证帧数：缺文件/非法/0/1 = 关（0），2~8 生效。
@@ -2696,7 +2722,9 @@ class Camera2Controller(private val context: Context) {
             }.isSuccess
         }
 
-        val tonemapLinear = if (canLinearTonemap) {
+        // 人像 A/B：写 1 时跳过线性 tonemap（要走就走 HAL 默认曲线，肤色不再被压灰）。
+        // 默认 false = 保持 11-04 定稿的线性曲线，定稿行为零改变。
+        val tonemapLinear = if (canLinearTonemap && !flashPortraitNoLinearTonemap) {
             runCatching {
                 // (in, out) 点对：(0,0) 与 (1,1) 两点画一条对角线 = 单位直线
                 val linear = android.hardware.camera2.params.TonemapCurve(
@@ -2750,6 +2778,15 @@ class Camera2Controller(private val context: Context) {
         val isoScale = Math.pow(2.0, FLASH_LOCK_EV_BIAS.toDouble()).toFloat()
         var adjIso = Math.min(Math.round(lockIso * isoScale), FLASH_MAX_FLASH_ISO)
             .coerceAtLeast(1)
+        // 人像 A/B（默认 ev=0 = 完全不动上面的定稿值）：闪光是 1ms 脉冲、亮度∝ISO，
+        // 抬 ISO 只让被闪光照亮的人脸变亮；背景曝光量 product 不变（下面 targetProduct
+        // 照样钳 3600）、快门随 ISO 反算自动缩短 → T3「背景压暗/冷暖分离」签名原样保留。
+        if (flashPortraitEv != 0f) {
+            val portraitIsoMul = Math.pow(2.0, flashPortraitEv.toDouble()).toFloat()
+            adjIso = Math.round(adjIso * portraitIsoMul)
+                .coerceAtMost(Math.round(FLASH_MAX_FLASH_ISO * portraitIsoMul))
+                .coerceAtLeast(1)
+        }
         val unclamp = FLASH_UNCLAMP_EXPERIMENT && !FLASH_HAL_PRECAPTURE_EXPERIMENT
         // 方案A：反馈回路只乘在总曝光量安全帽上（与 unclamp 互斥，不叠加）。
         // updates=0 时 scale=1.0，首张永远是无修正的 vc83 基线。
@@ -2791,7 +2828,8 @@ class Camera2Controller(private val context: Context) {
         }
         android.util.Log.i(
             "FlashTuning",
-            "capture awbDaylight=$awbDaylight tonemapLinear=$tonemapLinear " +
+                "capture awbDaylight=$awbDaylight tonemapLinear=$tonemapLinear " +
+                "portraitEv=$flashPortraitEv portraitNoLinearTonemap=$flashPortraitNoLinearTonemap " +
                 "evBiasSteps=$evBiasSteps zslOff=$zslOff " +
                 "lockAe=$lockAe lockIso=$lockIso lockExpNs=$lockExpNs " +
                 "lockEvBias=$FLASH_LOCK_EV_BIAS isoScale=$isoScale lockIsoAdj=$adjIso " +

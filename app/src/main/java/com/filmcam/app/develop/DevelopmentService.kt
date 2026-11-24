@@ -641,29 +641,37 @@ class DevelopmentService : Service() {
     }
 
     /**
-     * v81：这台设备的内置直闪 RAW 底片是否「不吃光」（黑底片）。
+     * 内置直闪 RAW 底片这一帧是否「不吃光」（黑底片）。
      *
-     * 机型无关判定（11-14 复盘：不能按 BUILT_IN 写死全跳，别的机型 RAW 多半
-     * 正常吃光，全跳=画质降级）：
-     * 1. 设备缓存（prefs `flash_raw_blind`）一旦实锤为盲 → 直接过；
-     * 2. 否则读 DNG 中心区净信号（[TiffRawFlashStat]，~10ms）：低于
-     *    白电平 5% 判黑底片 → 写缓存（HAL 行为是设备级属性，帧间稳定）；
-     * 3. 解析失败 / 净信号正常 → 不跳：正常机型每帧复检的成本可忽略，
-     *    误判方向永远朝「多走一次 RAW」，绝不误降级画质。
+     * 机型无关、逐帧判定（不能按 BUILT_IN 写死全跳，别的机型 RAW 多半正常吃光）：
+     * 读当前 DNG 中心区净信号（[TiffRawFlashStat]，~10ms），低于白电平 5% 判黑，
+     * 否则照走 RAW。解析失败不跳——误判方向永远朝「多走一次 RAW」，绝不误降级。
+     *
+     * 🔴 11-24 二次修复：去掉设备级 sticky 缓存（`flash_raw_blind` / `_v2` 全部废弃）。
+     * 两处致命错误：
+     * 1. **口径错**：历史「黑底片 3%」用全帧均值算的（dng_stat.py），但闪光照片背景
+     *    本就贴黑（T3 平方反比签名，p50=1、87~97% 像素在地板），全帧均值被背景拉低；
+     *    判定器量的是中心 128²——真机复算 7/8 帧达 0.05~0.38 正常吃光，主体信息完好。
+     * 2. **缓存错**：一度改 v2 键后，一张欠曝帧（净信号 0.048 卡门限下）写死缓存，
+     *    之后所有帧（含净信号 0.237/0.380 的正常帧）被连坐跳过——净信号是帧间波动量
+     *    （距离/角度/场景），不是设备级常量，sticky 缓存从根上不成立。
+     * 现在每帧真实判定：~10ms 相对冲洗一帧 5s 可忽略；旧键顺手清掉避免混淆。
      */
     private fun isBuiltInFlashRawBlind(dng: File, index: Int): Boolean {
         val prefs = getSharedPreferences("filmcam", MODE_PRIVATE)
-        if (prefs.getBoolean("flash_raw_blind", false)) return true
+        // 一次性清理历史误判缓存（旧键 + v2 键），避免残留键今后被误读。
+        if (prefs.contains("flash_raw_blind") || prefs.contains("flash_raw_blind_v2")) {
+            prefs.edit().remove("flash_raw_blind").remove("flash_raw_blind_v2").apply()
+            Log.i(TAG, "[RAW] 清除历史误判缓存（全帧3%口径/sticky），改为逐帧真实判定")
+        }
         val net = TiffRawFlashStat.netSignalRatio(dng)
         if (net == null) {
             Log.i(TAG, "帧 $index [RAW] 直闪底片结构未识别（不跳 RAW，保持原通路）")
             return false
         }
         return if (net < TiffRawFlashStat.BLIND_NET_RATIO) {
-            prefs.edit().putBoolean("flash_raw_blind", true).apply()
             Log.i(TAG, "帧 $index [RAW] 直闪底片净信号 ${"%.3f".format(net)} 低于门限" +
-                "${TiffRawFlashStat.BLIND_NET_RATIO}，判定本机闪光 RAW 不吃光" +
-                "（已缓存，后续直闪帧直接回落 JPEG）")
+                "${TiffRawFlashStat.BLIND_NET_RATIO}，本帧回落 JPEG（逐帧判定，不影响后续帧）")
             true
         } else {
             Log.i(TAG, "帧 $index [RAW] 直闪底片净信号 ${"%.3f".format(net)}，RAW 正常吃光，照走 RAW 会话")

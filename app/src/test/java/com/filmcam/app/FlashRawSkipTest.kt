@@ -18,7 +18,8 @@ import java.io.File
  * 契约：
  *  - BUILT_IN 是先决条件，但**跳过必须再过 [TiffRawFlashStat] 净信号判定**；
  *  - 解析失败 / 净信号正常 → 不跳（误判方向只能「多走 RAW」，不能误降级）；
- *  - 「盲」判定按设备缓存（HAL 行为是设备级属性），正常机型每帧轻量复检；
+ *  - 🔴 11-24：**逐帧判定、无设备级 sticky 缓存**——净信号是帧间波动量，一张
+ *    欠曝帧写死缓存会连坐跳过后续所有正常帧（真机实测 0.048 误杀 0.237/0.380）；
  *  - EXTERNAL / 普通帧不受影响。
  */
 class FlashRawSkipTest {
@@ -65,16 +66,20 @@ class FlashRawSkipTest {
     }
 
     @Test
-    fun `动态判定的保守方向 解析失败不跳 只缓存盲判定`() {
+    fun `逐帧判定无缓存 解析失败不跳 只清历史误判键`() {
         val s = dev() ?: return
         val fn = s.substringAfter("private fun isBuiltInFlashRawBlind", "")
             .substringBefore("private fun processOneFrame", "")
-        assertTrue("设备缓存键 flash_raw_blind 必须存在",
-            fn.contains("\"flash_raw_blind\""))
-        assertTrue("缓存命中直接返回（盲判定按设备记）",
-            fn.contains("getBoolean(\"flash_raw_blind\", false)"))
-        assertFalse("只允许写 true 进缓存，正常机型必须每帧复检",
-            fn.contains("putBoolean(\"flash_raw_blind\", false)"))
+        assertFalse("不得再写设备级盲缓存（净信号帧间波动，缓存会连坐误杀正常帧）",
+            fn.contains("putBoolean("))
+        assertFalse("不得再读缓存命中提前返回（每帧必须真实判定）",
+            fn.contains("getBoolean("))
+        assertTrue("必须每帧读 DNG 中心区净信号",
+            fn.contains("TiffRawFlashStat.netSignalRatio(dng)"))
+        assertTrue("旧缓存键（全帧3%口径）必须清除",
+            fn.contains("remove(\"flash_raw_blind\")"))
+        assertTrue("v2 缓存键也必须清除（sticky 误杀已废）",
+            fn.contains("remove(\"flash_raw_blind_v2\")"))
         assertTrue("解析失败必须走「不跳」分支（不误降级）",
             fn.contains("不跳 RAW，保持原通路"))
     }
