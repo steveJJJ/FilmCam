@@ -370,6 +370,9 @@ class MainActivity : AppCompatActivity() {
                     binding.viewfinderFrame.notifyActivity()
                     // 只有落在预览内容矩形内才对焦：letterbox 黑边、预览窗之外一律忽略
                     if (!binding.viewfinderFrame.contentRect().contains(fx, fy)) return true
+                    // 首次引导：点一下取景窗就算完成「对焦」这一步。不能等 onFocused
+                    // 回调——暗光/近景合不上焦时它压根不来，用户会以为引导卡死了。
+                    if (OnboardingGuide.onFocusDone(this@MainActivity)) showOnboardingHint()
                     // 点屏对焦：不做任何视觉标记，合焦后仅给一次短震动。
                     // 腰平态传画幅比：预览是裁切填充（不是 letterbox），对焦映射走同一套裁切公式。
                     cameraController?.focusAt(
@@ -497,6 +500,10 @@ class MainActivity : AppCompatActivity() {
                     if (flash.mode == FlashMode.EXTERNAL) {
                         if (flashCompEv != touchStartFlashEv) saveSettings()
                     } else if (exposureComp != touchStartEv) saveSettings()
+                    // 首次引导：做了上下滑就算认识曝光，不等满 100px/档。
+                    if (event.action == android.view.MotionEvent.ACTION_UP && touchMoved &&
+                        OnboardingGuide.onEvChanged(this)
+                    ) showOnboardingHint()
                     // 点按对焦已交给 tapDetector（只在完整手势序列上触发）
                 }
             }
@@ -627,6 +634,8 @@ class MainActivity : AppCompatActivity() {
             )
             DeviceGeometryReportIo.flush(this)
         }
+        // 段 3 暗房引导：换 chrome 后 btnGallery 是新 View，旧框坐标作废，重套一次
+        if (darkroomGuideActive) showDarkroomGuide()
     }
 
     /** 机身控件监听；冷启动与换 chrome 后各调一次，全是 setOnClickListener 覆盖，幂等。 */
@@ -664,7 +673,13 @@ class MainActivity : AppCompatActivity() {
             true
         }
         binding.btnGallery.hapticClick {
-            startActivity(android.content.Intent(this, GalleryActivity::class.java))
+            // 引导带进来的这一次，暗房页再补一句「点这一卷的冲洗」；自己进来则不打扰
+            val fromGuide = darkroomGuideActive
+            clearDarkroomGuide()
+            startActivity(
+                android.content.Intent(this, GalleryActivity::class.java)
+                    .putExtra(OnboardingGuide.EXTRA_FIRST_ROLL_GUIDE, fromGuide)
+            )
         }
         binding.btnGallery.attachPressFeedback(0.92f)   // 暗房字牌（11-21 用户反馈漏挂）
         binding.settingsKey.hapticClick { showSettings() }
@@ -719,7 +734,13 @@ class MainActivity : AppCompatActivity() {
             shutterStepped = false       // 新手势：允许再调一档
             binding.viewfinderFrame.notifyActivity()
         }
-        binding.viewfinderFrame.onShutterDragEnd = { }
+        binding.viewfinderFrame.onShutterDragEnd = {
+            // 快门推到 1/500 或 1/8 边界时 stepShutter 不产生新值；
+            // 引导只教动作，推过就算完成，不能让用户反复推来推去。
+            if (shutterStepped && OnboardingGuide.onShutterChanged(this@MainActivity)) {
+                showOnboardingHint()
+            }
+        }
         // 横屏 ISO 手势带：取景窗右缘与快门键之间那条缝，上下推拉调 ISO。
         binding.viewfinderFrame.onIsoDrag = { dy -> onIsoDrag(dy) }
         binding.viewfinderFrame.onIsoDragStart = {
@@ -1916,23 +1937,32 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * 首次进入引导（v82 三段式）：段 1 说明书卡「快速上手」三屏翻页，
-     * 播完 dismiss 后机顶 LCD 接力段 2 实操引导（见 [showOnboardingHint]）。
-     * 老用户（guide_shown 已置）不重播；「关于」页有重看入口。
+     * 首次进入引导：11-25 用户拍板去掉开头说明书卡，首启直接进机顶 LCD
+     * 八步实操引导（见 [showOnboardingHint]）——上手就是做，不再先读三屏文字。
+     * 说明书卡改为纯「关于页重看」入口，想看说明的人仍可主动看。
+     * 老用户（guide_shown 已置）不重播。
      */
     private fun maybeShowFirstRunGuide() {
         val prefs = getSharedPreferences("filmcam", MODE_PRIVATE)
+        // 验证热调：私有目录写 onboarding_replay.txt=1 → 重置进度重播完整引导（一次性消费）。
+        // 默认缺文件=老用户不重播，正式行为零改变。
+        val replay = runCatching {
+            val f = java.io.File(getExternalFilesDir(null), "onboarding_replay.txt")
+            if (f.exists()) {
+                val on = f.readText().substringBefore("//").trim() == "1"
+                f.delete()
+                on
+            } else false
+        }.getOrDefault(false)
+        if (replay) {
+            prefs.edit().putBoolean("guide_shown", false).apply()
+            OnboardingGuide.setStage(this, 0)
+        }
         if (prefs.getBoolean("guide_shown", false)) return
         prefs.edit().putBoolean("guide_shown", true).apply()
-        com.filmcam.app.ui.QuickStartCard.show(
-            activity = this,
-            guard = { d, afterDismiss -> d.guardDialog(afterDismiss) },
-            onDismissed = {
-                // 段 1 结束 → 段 2 启动：说明书讲完，LCD 接力第一条实操提示
-                if (OnboardingGuide.stage(this) == 0) OnboardingGuide.setStage(this, 1)
-                showOnboardingHint()
-            },
-        )
+        // 不弹说明书卡，直接进八步实操：LCD 立即出第一条「点胶卷图标 · 选卷」。
+        if (OnboardingGuide.stage(this) == 0) OnboardingGuide.setStage(this, 1)
+        showOnboardingHint()
     }
 
     // ===== v82 段 2：机顶 LCD 实操引导（做对自动前进，15s 超时跳过） =====
@@ -1940,15 +1970,84 @@ class MainActivity : AppCompatActivity() {
     private val guideHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private var guideTimeoutRunnable: Runnable? = null
 
+    /** 引导点击位置框：盖在机身最上层、不拦触摸，把当前步骤要点控件圈出来。 */
+    private var guideHighlight: com.filmcam.app.ui.GuideHighlightView? = null
+
+    private fun ensureGuideHighlight(): com.filmcam.app.ui.GuideHighlightView {
+        guideHighlight?.let { return it }
+        val v = com.filmcam.app.ui.GuideHighlightView(this).apply {
+            layoutParams = android.widget.FrameLayout.LayoutParams(
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+            )
+            // 不拦截触摸：事件穿透到被框出的控件，用户照常操作
+            isClickable = false
+            binding.root.addView(this)
+        }
+        guideHighlight = v
+        return v
+    }
+
+    /** 当前步骤该框出哪个控件（与 LCD 文案同步）。 */
+    private fun highlightTargetForStage(stage: Int): android.view.View? = when (stage) {
+        OnboardingGuide.STAGE_PICK_ROLL ->
+            if (chromeLandscape) binding.filmInfoText else binding.tvFilmName
+        // 铭牌步骤只框 CONTAX T3 字牌，不框整条 proBrandRow——
+        // 那一条是 match_parent，会横跨底部把胶卷和暗房字牌一起盖住（11-25 用户实测）。
+        // 字牌在铭牌正中间，点它仍由父 LinearLayout 的 onTouchListener 收到，进出 Pro 不变。
+        OnboardingGuide.STAGE_ENTER_PRO, OnboardingGuide.STAGE_ISO,
+        OnboardingGuide.STAGE_EXIT_PRO -> binding.brandLogo
+        OnboardingGuide.STAGE_SHUTTER, OnboardingGuide.STAGE_FOCUS,
+        OnboardingGuide.STAGE_EV -> binding.viewfinderFrame
+        OnboardingGuide.STAGE_SHOT -> binding.btnShutter
+        else -> null
+    }
+
     /** 当前段位该出哪条 LCD 提示；重新挂超时（超时自动前进不卡人） */
     private fun showOnboardingHint() {
         val s = OnboardingGuide.stage(this)
-        if (s !in 1 until OnboardingGuide.STAGE_DONE) return
-        showLcdNotice(
+        if (s !in 1 until OnboardingGuide.STAGE_DONE) {
+            // 引导已走完（含全部超时跳过）：撤掉点击框和常驻 LCD 提示，别留残影
+            guideHighlight?.clear()
+            binding.lcdDisplay.clearGuideMessage()
+            return
+        }
+        // 框出当前步骤要点位置：只框不拦，用户照常点。
+        // 11-25 二版：框上直接写「第几步 · 做什么」，LCD 提示改成常驻不闪——
+        // 原来 LCD 3.2s 就收回、闪烁还吃掉一半可见时间，用户做完动作以为没进下一步。
+        val tag = getString(
+            when (s) {
+                OnboardingGuide.STAGE_PICK_ROLL -> R.string.guide_tag_roll
+                OnboardingGuide.STAGE_ENTER_PRO -> R.string.guide_tag_pro_enter
+                OnboardingGuide.STAGE_ISO -> R.string.guide_tag_iso
+                OnboardingGuide.STAGE_SHUTTER -> R.string.guide_tag_shutter
+                OnboardingGuide.STAGE_EXIT_PRO -> R.string.guide_tag_pro_exit
+                OnboardingGuide.STAGE_FOCUS -> R.string.guide_tag_focus
+                OnboardingGuide.STAGE_EV -> R.string.guide_tag_ev
+                else -> R.string.guide_tag_shoot
+            }
+        )
+        val total = OnboardingGuide.STAGE_DONE - 1
+        if (s == OnboardingGuide.STAGE_SHUTTER) {
+            // 快门这一小条在取景窗右缘：框整个取景窗等于没框
+            ensureGuideHighlight().setRegionLater(
+                binding.viewfinderFrame,
+                { binding.viewfinderFrame.shutterScaleHitRect() },
+                s, total, tag,
+            )
+        } else {
+            ensureGuideHighlight().setTargetLater(highlightTargetForStage(s), s, total, tag)
+        }
+        binding.lcdDisplay.showGuideMessage(
             getString(
                 when (s) {
-                    1 -> R.string.guide_focus
-                    2 -> R.string.guide_ev
+                    OnboardingGuide.STAGE_PICK_ROLL -> R.string.guide_roll
+                    OnboardingGuide.STAGE_ENTER_PRO -> R.string.guide_pro_enter
+                    OnboardingGuide.STAGE_ISO -> R.string.guide_iso
+                    OnboardingGuide.STAGE_SHUTTER -> R.string.guide_shutter_speed
+                    OnboardingGuide.STAGE_EXIT_PRO -> R.string.guide_pro_exit
+                    OnboardingGuide.STAGE_FOCUS -> R.string.guide_focus
+                    OnboardingGuide.STAGE_EV -> R.string.guide_ev
                     else -> R.string.guide_shoot
                 }
             )
@@ -1966,16 +2065,55 @@ class MainActivity : AppCompatActivity() {
         guideHandler.postDelayed(r, OnboardingGuide.HINT_TIMEOUT_MS)
     }
 
-    /** 段 2 完成时停掉超时轮转（第三步「拍第一张」的提示交给段 3 的 1/36 提示接力） */
+    /** 段 2 完成时停掉超时轮转、撤掉点击框（首张提示交给段 3 护栏接力） */
     private fun stopOnboardingTimeout() {
         guideTimeoutRunnable?.let { guideHandler.removeCallbacks(it) }
         guideTimeoutRunnable = null
+        guideHighlight?.clear()
+        binding.lcdDisplay.clearGuideMessage()
+    }
+
+    // ===== 段 3 接力：首张落卷 → 框出暗房字牌，带用户去冲洗 =====
+    // 八步到这里已经走完，但「拍完去哪看」是新手最容易断掉的一环：
+    // 原来只有 3.2s 的一句 LCD 文字，既没指位置也没跟到暗房里的冲洗按钮。
+
+    private var darkroomGuideActive = false
+    private var darkroomTimeoutRunnable: Runnable? = null
+
+    /** 工程验证热调：私有目录写 darkroom_guide_force.txt → 第 2 张也走段 3（默认无文件） */
+    private fun darkroomGuideForce(): Boolean = runCatching {
+        java.io.File(getExternalFilesDir(null), "darkroom_guide_force.txt").exists()
+    }.getOrDefault(false)
+
+    private fun showDarkroomGuide() {
+        darkroomGuideActive = true
+        binding.lcdDisplay.showGuideMessage(getString(R.string.guide_darkroom))
+        ensureGuideHighlight().setTargetLater(
+            binding.btnGallery, 0, 0, getString(R.string.guide_tag_darkroom),
+        )
+        darkroomTimeoutRunnable?.let { guideHandler.removeCallbacks(it) }
+        val r = Runnable { clearDarkroomGuide() }
+        darkroomTimeoutRunnable = r
+        guideHandler.postDelayed(r, OnboardingGuide.DARKROOM_GUIDE_TIMEOUT_MS)
+    }
+
+    private fun clearDarkroomGuide() {
+        if (!darkroomGuideActive) return
+        darkroomGuideActive = false
+        darkroomTimeoutRunnable?.let { guideHandler.removeCallbacks(it) }
+        darkroomTimeoutRunnable = null
+        guideHighlight?.clear()
+        binding.lcdDisplay.clearGuideMessage()
     }
 
 
     /** 打开胶卷选择器（底部弹层） */
     /** 换卷弹层只负责「选哪支、排序、触感」，实现已挪到 ui/FilmRollPicker。 */
     private fun showFilmRollPicker() {
+        // 首次引导：打开换卷弹层就算「认识入口」这一步完成。
+        // 不能等真的换一支卷——默认已装机一支，当前卷有未冲洗帧还会被拦，
+        // 用户照提示点开又关掉就会以为引导卡住（11-25 真机反馈）。
+        if (OnboardingGuide.onRollPicked(this)) showOnboardingHint()
         com.filmcam.app.ui.FilmRollPicker.show(
             activity = this,
             currentName = currentRoll.name,
@@ -2768,6 +2906,8 @@ class MainActivity : AppCompatActivity() {
         shutterIdx = next
         applyProSettings()
         vibrate(10, 90)
+        // 首次引导：Pro 档调了一次快门 → 进下一步
+        if (OnboardingGuide.onShutterChanged(this)) showOnboardingHint()
     }
 
     /** ISO：右滑 = 变大，撞到两端同样停住（不循环）。 */
@@ -2779,6 +2919,8 @@ class MainActivity : AppCompatActivity() {
         isoIdx = next
         applyProSettings()
         vibrate(10, 90)
+        // 首次引导：Pro 档调了一次 ISO → 进下一步
+        if (OnboardingGuide.onIsoChanged(this)) showOnboardingHint()
     }
 
     private var isoDragAcc = 0f
@@ -2890,6 +3032,9 @@ class MainActivity : AppCompatActivity() {
                 if (!brandDragging) {
                     vibrate(24, 185)
                     toggleProMode()
+                } else if (brandIsoStepped && OnboardingGuide.onIsoChanged(this)) {
+                    // ISO 已在边界时 stepIso 会提前 return；滑过就算认识这一步
+                    showOnboardingHint()
                 }
                 return true
             }
@@ -2913,6 +3058,10 @@ class MainActivity : AppCompatActivity() {
         updateLcd()
         // 进出 Pro 都要让取景器刻度重画一次：进 Pro 走手动档、出 Pro 回到 AE 档
         runCatching { updateViewfinderIndicators(lastAfState, lastExposureSec, lastAeIso) }
+        // 首次引导：进 / 出 Pro 各是一个检测点（带用户认识手动档，随后退回自动档拍第一张）
+        if (if (proMode) OnboardingGuide.onProEntered(this) else OnboardingGuide.onProExited(this)) {
+            showOnboardingHint()
+        }
     }
 
     /**
@@ -3233,14 +3382,22 @@ class MainActivity : AppCompatActivity() {
                         // 「拍第一张」提示由段 3 的 1/36 提醒接力（不两条连着刷屏）
                         if (OnboardingGuide.onShotTaken(this)) stopOnboardingTimeout()
                         // v82 段 3 首卷护栏：第 1 / 12 张各提醒一次去暗房
-                        if (OnboardingGuide.guardFrameHit(this, count)) {
-                            showLcdNotice(
-                                getString(
-                                    if (count == OnboardingGuide.GUARD_FRAME_FIRST)
-                                        R.string.guide_first_frame
-                                    else R.string.guide_third_frame
-                                )
-                            )
+                        val forceDarkroomGuide = darkroomGuideForce()
+                        android.util.Log.w(
+                            "OnboardingGuide",
+                            "落卷 count=$count force=$forceDarkroomGuide hit=${OnboardingGuide.guardFrameHit(this, count)}",
+                        )
+                        if (OnboardingGuide.guardFrameHit(this, count) ||
+                            (forceDarkroomGuide && count > OnboardingGuide.GUARD_FRAME_FIRST)
+                        ) {
+                            if (count == OnboardingGuide.GUARD_FRAME_FIRST || forceDarkroomGuide) {
+                                // 第一张：框出暗房字牌 + 常驻 LCD，带用户走完「拍→洗」闭环
+                                showDarkroomGuide()
+                            } else {
+                                // 第 12 张：旧提示照旧，顺手收掉可能还挂着的暗房框
+                                clearDarkroomGuide()
+                                showLcdNotice(getString(R.string.guide_third_frame))
+                            }
                         }
                         if (count >= FILM_MAX) {
                             promptDevelopFullRoll()

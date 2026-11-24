@@ -92,6 +92,18 @@ class GalleryActivity : AppCompatActivity() {
         pbDevProgress = findViewById(R.id.pbDevProgress)
         paintEmptyHint()
 
+        // 段 3 接力：从首张落卷的引导点进来时，告诉用户这一卷上「冲洗」在哪。
+        // 自己点进暗房不带这个 extra，完全不打扰。
+        if (intent.getBooleanExtra(OnboardingGuide.EXTRA_FIRST_ROLL_GUIDE, false)) {
+            gRoot?.postDelayed({
+                if (!isFinishing && !isDestroyed) {
+                    Toast.makeText(
+                        this, getString(R.string.gallery_first_develop_hint), Toast.LENGTH_LONG,
+                    ).show()
+                }
+            }, 500L)
+        }
+
         // 列数按屏宽自适应：每格最小约 104dp，手机 3 列、大屏/折叠屏展开可到 6 列。
         // 原来固定 3 列 + 400px 行高，在 2K 屏上是细扁条，在折叠屏上又过大。
         val dm = resources.displayMetrics

@@ -65,7 +65,10 @@ class T3LcdView @JvmOverloads constructor(
         val now = SystemClock.uptimeMillis()
         // 背光淡出、机身提示未到期、或滚字未完成时继续走帧
         val rolling = now < isoRollAt + rollBaseMs || now < tvRollAt + rollBaseMs
-        if (now < backlightUntil + BACKLIGHT_FADE || now < messageUntil || rolling) scheduleTick()
+        // 引导提示常驻（guideMessage），不能让它把 tick 永久钉在 80ms 轮询上
+        if (now < backlightUntil + BACKLIGHT_FADE ||
+            (!guideMessage && now < messageUntil) || rolling
+        ) scheduleTick()
     }
 
     private fun scheduleTick() {
@@ -78,6 +81,13 @@ class T3LcdView @JvmOverloads constructor(
     private var messageUntil = 0L
 
     /**
+     * 引导提示：常驻到下一步，且**不闪**。
+     * 闪烁是互锁报警的语汇，用来提示「有件事等你做完」会让人以为屏幕坏了；
+     * 机身提示默认 3.2s 自动收回，而引导一步要给人十几秒去动手，必须另开常驻口径。
+     */
+    private var guideMessage = false
+
+    /**
      * 在液晶屏上显示一句机身提示，到时自动恢复常规内容。
      *
      * 放在 LCD 里而不是另做一个浮层：这块屏本来就是机身的状态输出口，
@@ -85,6 +95,7 @@ class T3LcdView @JvmOverloads constructor(
      * 也不会额外引入一套与机身质感竞争的颜色。
      */
     fun showMessage(text: String, durationMs: Long = 3200L) {
+        guideMessage = false          // 普通机身提示一律回到「到时收回」口径
         message = text
         messageUntil = SystemClock.uptimeMillis() + durationMs
         pulseBacklight(durationMs.coerceAtMost(BACKLIGHT_MS))
@@ -95,6 +106,27 @@ class T3LcdView @JvmOverloads constructor(
     /** 从字符串资源取文案显示（机身提示一律走资源，跟随 App 语言）。 */
     fun showMessage(resId: Int, vararg args: Any?, durationMs: Long = 3200L) {
         showMessage(resources.getString(resId, *args), durationMs)
+    }
+
+    /**
+     * 首次使用引导专用：整屏常驻、不闪烁，直到 [clearGuideMessage] 或被普通提示顶掉。
+     * 用户要照着提示动手，3.2s 的机身提示还没读完就消失了，等于没说。
+     */
+    fun showGuideMessage(text: String) {
+        guideMessage = true
+        message = text
+        messageUntil = Long.MAX_VALUE
+        pulseBacklight(BACKLIGHT_MS)
+        invalidate()
+        scheduleTick()
+    }
+
+    fun clearGuideMessage() {
+        if (!guideMessage && message == null) return
+        guideMessage = false
+        message = null
+        messageUntil = 0L
+        invalidate()
     }
 
     fun setState(s: State) {
@@ -252,7 +284,7 @@ class T3LcdView @JvmOverloads constructor(
 
         // 机身提示优先：占用整屏（比如换卷互锁），到时自动回到常规内容
         if (message != null) {
-            if (SystemClock.uptimeMillis() < messageUntil) {
+            if (guideMessage || SystemClock.uptimeMillis() < messageUntil) {
                 drawMessage(canvas, rect, onColor)
                 return
             }
@@ -390,7 +422,8 @@ class T3LcdView @JvmOverloads constructor(
      * （试过内嵌像素字体包，GitHub 下载反复中断，这条零依赖路径效果等价且不加体积。）
      */
     private fun drawMessage(canvas: Canvas, rect: RectF, onColor: Int) {
-        if ((SystemClock.uptimeMillis() / 350L) % 2L == 1L) return
+        // 互锁提示才闪；引导是「照着做」的常驻提示，闪会让人以为屏幕坏了
+        if (!guideMessage && (SystemClock.uptimeMillis() / 350L) % 2L == 1L) return
         val msg = message ?: return
 
         val padY = 5f * density
@@ -402,12 +435,15 @@ class T3LcdView @JvmOverloads constructor(
             typeface = Typeface.MONOSPACE
             isAntiAlias = false                        // 关抗锯齿 = 硬边 = 点阵感
             color = onColor
-            textSize = (ch * 0.38f / scale).coerceAtLeast(9f)
+            // 11-25 用户反馈引导提示太小看不清：起步字号 9f→12f、下限 8f→10.5f。
+            // 引导文案已同步压到 ≤10 字（点阵屏可用逻辑宽仅 ~78dp），常规提示清晰可读；
+            // 极长的动态文案（如换卷拦截原因）仍按宽度缩到下限，宁可略挤也别糊成一团。
+            textSize = (ch * 0.38f / scale).coerceAtLeast(12f)
             isFakeBoldText = true
-            letterSpacing = 0.08f                      // 字距拉开，液晶段之间本就有间隙
+            letterSpacing = 0.06f                      // 略收字距（配合更大字号保住一行放得下）
         }
         // 文案长短差异大，按可用宽度自动缩字号，保证一句放得下
-        while (src.measureText(msg) > maxW && src.textSize > 8f) src.textSize -= 0.5f
+        while (src.measureText(msg) > maxW && src.textSize > 10.5f) src.textSize -= 0.5f
 
         val bmp = messageBitmap(msg, src)
         val dw = bmp.width * scale.toFloat()

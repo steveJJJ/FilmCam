@@ -122,10 +122,18 @@ class AboutActivity : AppCompatActivity() {
     /** v65 检查更新：Play 安装走应用内更新，侧载包跳下载页（零新增权限） */
     private fun bindUpdateCheck() {
         findViewById<View>(R.id.rowCheckUpdate).setOnClickListener { tick(); updateChecker.check() }
-        // v82：快速上手重看 —— 重播说明书卡，纯展示不碰 onboarding 进度
+        // 快速上手「重玩」——不再弹说明书卡，直接回主页重播八步实操引导。
+        // 写一次性 replay 文件，CLEAR_TOP 回 MainActivity 时 onCreate 读到它重置进度。
         findViewById<View>(R.id.rowQuickStart).setOnClickListener {
             tick()
-            com.filmcam.app.ui.QuickStartCard.show(this, guard = { d, _ -> d })
+            runCatching {
+                java.io.File(getExternalFilesDir(null), "onboarding_replay.txt").writeText("1")
+            }
+            val intent = Intent(this, com.filmcam.app.MainActivity::class.java).addFlags(
+                Intent.FLAG_ACTIVITY_CLEAR_TOP
+            )
+            startActivity(intent)
+            finish()
         }
     }
 

@@ -7,11 +7,11 @@ import org.junit.Test
 import java.io.File
 
 /**
- * v82 首次使用引导（三段式）接线契约。
+ * 首次使用引导接线契约。
  *
- * 段 1 说明书卡 [com.filmcam.app.ui.QuickStartCard]（三屏翻页，show 前定尺寸）；
- * 段 2 LCD 实操引导：对焦 / EV / 首张落卷三个检测点做对自动前进，15s 超时跳过；
- * 段 3 首卷护栏：第 1 / 12 张提醒冲洗，首卷冲洗完成出贺词后归档。
+ * 首启直接进 LCD 八步实操（11-25 去掉开头说明书卡，卡片改为关于页「重看」入口）：
+ * 选卷 / 进Pro / ISO / 快门 / 退Pro / 对焦 / EV / 首张落卷，各检测点做对自动前进，
+ * 15s 超时跳过不卡人。段 3 首卷护栏：第 1 / 12 张提醒冲洗，首卷冲洗完成出贺词后归档。
  * 状态机 [OnboardingGuide] 持久化进 prefs，重进 App 不回退、老用户不重播。
  */
 class OnboardingGuideContractTest {
@@ -39,32 +39,60 @@ class OnboardingGuideContractTest {
         val s = read("java/com/filmcam/app/OnboardingGuide.kt") ?: return
         assertEquals("stage 键", "onboarding_stage", Regex("\"(onboarding_stage)\"").find(s)?.groupValues?.get(1))
         assertEquals("首卷护栏键", "first_roll_guarded", Regex("\"(first_roll_guarded)\"").find(s)?.groupValues?.get(1))
-        assertEquals("段2完成档位", 4, Regex("STAGE_DONE = (\\d+)").find(s)?.groupValues?.get(1)?.toInt())
+        assertEquals("段2完成档位(八步→9)", 9, Regex("STAGE_DONE = (\\d+)").find(s)?.groupValues?.get(1)?.toInt())
         assertEquals("超时15s", "15_000L", Regex("HINT_TIMEOUT_MS = ([0-9_L]+)").find(s)?.groupValues?.get(1))
         assertEquals("护栏点1", 1, Regex("GUARD_FRAME_FIRST = (\\d+)").find(s)?.groupValues?.get(1)?.toInt())
         assertEquals("护栏点12", 12, Regex("GUARD_FRAME_THIRD = (\\d+)").find(s)?.groupValues?.get(1)?.toInt())
+        assertEquals("暗房引导60s自收", "60_000L",
+            Regex("DARKROOM_GUIDE_TIMEOUT_MS = ([0-9_L]+)").find(s)?.groupValues?.get(1))
+        assertTrue("跨页接力 extra", s.contains("EXTRA_FIRST_ROLL_GUIDE"))
+        // 八步检测点：选卷 / 进Pro / ISO / 快门 / 退Pro / 对焦 / 曝光 / 落卷
+        assertTrue("选卷检测点", s.contains("fun onRollPicked"))
+        assertTrue("进Pro检测点", s.contains("fun onProEntered"))
+        assertTrue("ISO检测点", s.contains("fun onIsoChanged"))
+        assertTrue("快门检测点", s.contains("fun onShutterChanged"))
+        assertTrue("退Pro检测点", s.contains("fun onProExited"))
         assertTrue("对焦检测点要在", s.contains("fun onFocusDone"))
         assertTrue("EV 检测点要在", s.contains("fun onEvChanged"))
         assertTrue("落卷检测点要在", s.contains("fun onShotTaken"))
         assertTrue("护栏命中要在", s.contains("fun guardFrameHit"))
+        // 八步 stage 常量顺序锁死
+        assertEquals("选卷=1", 1, Regex("STAGE_PICK_ROLL = (\\d+)").find(s)?.groupValues?.get(1)?.toInt())
+        assertEquals("进Pro=2", 2, Regex("STAGE_ENTER_PRO = (\\d+)").find(s)?.groupValues?.get(1)?.toInt())
+        assertEquals("ISO=3", 3, Regex("STAGE_ISO = (\\d+)").find(s)?.groupValues?.get(1)?.toInt())
+        assertEquals("快门=4", 4, Regex("STAGE_SHUTTER = (\\d+)").find(s)?.groupValues?.get(1)?.toInt())
+        assertEquals("退Pro=5", 5, Regex("STAGE_EXIT_PRO = (\\d+)").find(s)?.groupValues?.get(1)?.toInt())
+        assertEquals("对焦=6", 6, Regex("STAGE_FOCUS = (\\d+)").find(s)?.groupValues?.get(1)?.toInt())
+        assertEquals("曝光=7", 7, Regex("STAGE_EV = (\\d+)").find(s)?.groupValues?.get(1)?.toInt())
+        assertEquals("快门=8", 8, Regex("STAGE_SHOT = (\\d+)").find(s)?.groupValues?.get(1)?.toInt())
     }
 
     @Test
-    fun `段1 说明书卡老用户不重播 播完进段2`() {
+    fun `首启直接进八步实操 不弹说明书卡 老用户不重播`() {
         val s = main() ?: return
         val fn = s.substringAfter("private fun maybeShowFirstRunGuide()", "")
             .substringBefore("\n    }", "")
         assertTrue("maybeShowFirstRunGuide 要在", fn.isNotBlank())
         assertTrue("老用户 guide_shown 守卫保留", fn.contains("guide_shown"))
-        assertTrue("说明书卡走 QuickStartCard", fn.contains("QuickStartCard.show"))
         assertTrue("段2启动 = stage 0→1", fn.contains("OnboardingGuide.setStage(this, 1)"))
-        assertTrue("播完 LCD 接力第一条", fn.contains("showOnboardingHint()"))
+        assertTrue("LCD 立即出第一条", fn.contains("showOnboardingHint()"))
+        assertFalse("首启不得再弹说明书卡（11-25 用户拍板去掉）",
+            fn.contains("QuickStartCard.show"))
     }
 
     @Test
-    fun `段2 三个检测点接线且超时可跳过`() {
+    fun `段2 八步检测点接线且超时可跳过`() {
         val s = main() ?: return
         // 单行断言（MainActivity.kt 是 CRLF 行尾，跨行锚会因 \r 对不上）
+        val picker = s.substringAfter("private fun showFilmRollPicker()", "")
+            .substringBefore("\n    }", "")
+        assertTrue("打开换卷弹层即推进首步（不能等真的换卷）",
+            picker.contains("OnboardingGuide.onRollPicked(this)") &&
+                picker.contains("showOnboardingHint()"))
+        assertTrue("进/出Pro要挂段2检测",
+            s.contains("OnboardingGuide.onProEntered(this)") && s.contains("OnboardingGuide.onProExited(this)"))
+        assertTrue("ISO调节要挂段2检测", s.contains("OnboardingGuide.onIsoChanged(this)"))
+        assertTrue("快门调节要挂段2检测", s.contains("OnboardingGuide.onShutterChanged(this)"))
         assertTrue("对焦回调要挂段2检测",
             s.contains("if (OnboardingGuide.onFocusDone(this@MainActivity)) showOnboardingHint()"))
         val evBlock = s.substringAfter("setEv(newEv, persist = false)", "")
@@ -80,6 +108,26 @@ class OnboardingGuideContractTest {
         assertTrue("超时跳过不卡人", hint.contains("OnboardingGuide.setStage(this, cur + 1)"))
         assertTrue("onResume 要续播当前段位",
             s.contains("OnboardingGuide.stage(this) in 1 until OnboardingGuide.STAGE_DONE"))
+    }
+
+    @Test
+    fun `段2 八步LCD文案映射中英齐`() {
+        val s = main() ?: return
+        val hint = s.substringAfter("private fun showOnboardingHint()", "")
+            .substringBefore("\n    }", "")
+        listOf("guide_roll", "guide_pro_enter", "guide_iso", "guide_shutter_speed",
+            "guide_pro_exit", "guide_focus", "guide_ev", "guide_shoot",
+            "guide_tag_roll", "guide_tag_pro_enter", "guide_tag_iso", "guide_tag_shutter",
+            "guide_tag_pro_exit", "guide_tag_focus", "guide_tag_ev", "guide_tag_shoot").forEach { key ->
+            assertTrue("LCD/胶囊映射缺 $key", hint.contains("R.string.$key"))
+        }
+        val zh = read("res/values/strings.xml") ?: return
+        val en = read("res/values-en/strings.xml") ?: return
+        listOf("guide_roll", "guide_pro_enter", "guide_iso", "guide_shutter_speed",
+            "guide_pro_exit", "guide_focus", "guide_ev", "guide_shoot").forEach { key ->
+            assertTrue("中文缺 $key", zh.contains("name=\"$key\""))
+            assertTrue("英文缺 $key", en.contains("name=\"$key\""))
+        }
     }
 
     @Test
@@ -112,15 +160,92 @@ class OnboardingGuideContractTest {
     }
 
     @Test
-    fun `关于页重看入口与中英文案齐`() {
+    fun `关于页重玩入口重播实操引导 不再弹说明书卡`() {
         val about = read("java/com/filmcam/app/AboutActivity.kt") ?: return
         assertTrue("关于页要绑 rowQuickStart", about.contains("rowQuickStart"))
-        assertTrue("重看走 QuickStartCard", about.contains("QuickStartCard.show"))
+        assertTrue("重玩写 replay 文件", about.contains("onboarding_replay.txt"))
+        assertTrue("重玩 CLEAR_TOP 回主页重播", about.contains("FLAG_ACTIVITY_CLEAR_TOP"))
+        assertFalse("重玩不得再弹说明书卡", about.contains("QuickStartCard.show"))
+    }
+
+    @Test
+    fun `点击位置高亮框只框不拦 且引导结束清除`() {
+        val main = main() ?: return
+        assertTrue("引导要挂点击框 View", main.contains("GuideHighlightView"))
+        assertTrue("高亮框不拦触摸", main.contains("isClickable = false"))
+        val hint = main.substringAfter("private fun showOnboardingHint()", "")
+            .substringBefore("\n    }", "")
+        assertTrue("每步要框出对应控件并带步骤胶囊",
+            hint.contains("setTargetLater(highlightTargetForStage(s), s, total, tag)"))
+        assertTrue("铭牌只框 CONTAX T3 字牌，不框 match_parent 整条（会盖住胶卷/暗房）",
+            main.contains("OnboardingGuide.STAGE_EXIT_PRO -> binding.brandLogo"))
+        val stop = main.substringAfter("private fun stopOnboardingTimeout()", "")
+            .substringBefore("\n    }", "")
+        assertTrue("引导完成要撤框", stop.contains("guideHighlight?.clear()"))
+        // 高亮 View 自身：不 consume 触摸、有脉冲、相对 root 定位
+        val hv = read("java/com/filmcam/app/ui/GuideHighlightView.kt") ?: return
+        assertTrue("框用 getLocationOnScreen 相对定位", hv.contains("getLocationOnScreen"))
+        assertTrue("框有呼吸脉冲引起注意", hv.contains("ValueAnimator"))
+        assertFalse("框不得拦截触摸事件", hv.contains("onTouchEvent"))
+    }
+
+    @Test
+    fun `引导提示常驻不闪 高亮框聚光且带步骤`() {
+        val main = main() ?: return
+        val hint = main.substringAfter("private fun showOnboardingHint()", "")
+            .substringBefore("\n    }", "")
+        assertTrue("引导 LCD 必须走常驻口径（3.2s 机身提示用户来不及看）",
+            hint.contains("binding.lcdDisplay.showGuideMessage("))
+        assertFalse("引导不得再走会自收回的普通机身提示",
+            hint.contains("showLcdNotice("))
+        assertTrue("快门步骤要精确框刻度列，不是整个取景窗",
+            hint.contains("shutterScaleHitRect()"))
+        val stop = main.substringAfter("private fun stopOnboardingTimeout()", "")
+            .substringBefore("\n    }", "")
+        assertTrue("引导完成要清常驻 LCD 提示", stop.contains("clearGuideMessage()"))
+
+        val lcd = read("java/com/filmcam/app/ui/T3LcdView.kt") ?: return
+        assertTrue("LCD 要有引导常驻方法", lcd.contains("fun showGuideMessage"))
+        assertTrue("引导提示不闪烁", lcd.contains("!guideMessage && (SystemClock.uptimeMillis() / 350L)"))
+        assertTrue("常驻提示不能把 tick 钉死在 80ms", lcd.contains("(!guideMessage && now < messageUntil)"))
+
+        val hv = read("java/com/filmcam/app/ui/GuideHighlightView.kt") ?: return
+        assertTrue("聚光：四周压暗 + 目标挖空", hv.contains("Path.Op.DIFFERENCE"))
+        assertTrue("步骤胶囊要画在框上", hv.contains("drawText(caption"))
+        assertTrue("支持框控件内部子区域（快门刻度列）", hv.contains("fun setTargetRegion"))
+    }
+
+    @Test
+    fun `首张落卷引导去暗房冲洗 并跨页接力`() {
+        val main = main() ?: return
+        val shot = main.substringAfter("val forceDarkroomGuide =", "")
+            .substringBefore("if (count >= FILM_MAX)", "")
+        assertTrue("第 1 张要框暗房字牌带去冲洗", shot.contains("showDarkroomGuide()"))
+        assertTrue("第 12 张保留普通提示", shot.contains("R.string.guide_third_frame"))
+        val galleryClick = main.substringAfter("binding.btnGallery.hapticClick {", "")
+            .substringBefore("binding.btnGallery.attachPressFeedback", "")
+        assertTrue("点暗房要收引导并带一次性 extra",
+            galleryClick.contains("clearDarkroomGuide()") &&
+                galleryClick.contains("EXTRA_FIRST_ROLL_GUIDE"))
+        val hv = read("java/com/filmcam/app/ui/GuideHighlightView.kt") ?: return
+        assertTrue("无序号的跨页引导胶囊只显示动作短句", hv.contains("step <= 0 -> label"))
+        val gal = read("java/com/filmcam/app/GalleryActivity.kt") ?: return
+        assertTrue("暗房页要接一句「点冲洗」",
+            gal.contains("EXTRA_FIRST_ROLL_GUIDE") && gal.contains("gallery_first_develop_hint"))
+    }
+
+    @Test
+    fun `关于页入口与中英文案齐`() {
         val zh = read("res/values/strings.xml") ?: return
         val en = read("res/values-en/strings.xml") ?: return
         listOf("qs_title_1", "qs_body_1", "qs_title_2", "qs_body_2", "qs_title_3", "qs_body_3",
-            "guide_focus", "guide_ev", "guide_shoot", "guide_first_frame", "guide_third_frame",
-            "lcd_notice_first_dev_done", "about_spec_quickstart").forEach { key ->
+            "guide_roll", "guide_pro_enter", "guide_iso", "guide_shutter_speed",
+            "guide_pro_exit", "guide_focus", "guide_ev", "guide_shoot",
+            "guide_tag_roll", "guide_tag_pro_enter", "guide_tag_iso", "guide_tag_shutter",
+            "guide_tag_pro_exit", "guide_tag_focus", "guide_tag_ev", "guide_tag_shoot",
+            "guide_darkroom", "guide_tag_darkroom", "gallery_first_develop_hint",
+            "guide_first_frame", "guide_third_frame", "about_spec_quickstart",
+            "about_quickstart_action").forEach { key ->
             assertTrue("中文缺 $key", zh.contains("name=\"$key\""))
             assertTrue("英文缺 $key", en.contains("name=\"$key\""))
         }

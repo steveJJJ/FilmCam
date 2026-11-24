@@ -156,20 +156,39 @@ App 版本：%1$s (%2$d)
     <string name="main_guide_start">开拍</string>
 
     <!-- v82 快速上手卡（段1，三屏翻页） -->
-    <string name="qs_title_1">这是一台胶片相机</string>
-    <string name="qs_body_1">装卷、过片、按快门，和真胶卷一样。36 张拍满一卷，冲洗之前看不到任何成片——惊喜留在暗房。\n\n· 点一下取景框：对焦\n· 取景框内上下滑：调曝光\n· 按快门：过片进卷</string>
+    <string name="qs_title_1">先选一支胶卷</string>
+    <string name="qs_body_1">和真胶卷一样，先装卷再拍。已经替你装好 PORTRA 400（暖调人像），现在就能拍。\n\n· 点左下角胶卷图标：换卷\n· 不同卷决定成片风格——人像、风光、黑白、反转片各不一样\n· 一支卷 36 张，拍满才送去冲洗</string>
     <string name="qs_title_2">拍完去暗房冲洗</string>
     <string name="qs_body_2">一卷拍满后机身提示回卷，打开暗房页冲洗，出片自动进相册。\n\n冲洗前相册里空空的不是坏了——底片都还卷在胶卷里。首卷相机会提醒你去冲洗。</string>
-    <string name="qs_title_3">机身上的可调项</string>
-    <string name="qs_body_3">快门条循环：闪光灯 / 外置闪光。\n\n设置面板（机身右侧键）：白平衡、RAW 底片、色彩浓度、冲洗画质、胶片相框。\n\n开拍前拨好档，成片风格都在冲洗里定。</string>
+    <string name="qs_title_3">取景与可调项</string>
+    <string name="qs_body_3">· 点一下取景框：对焦\n· 取景框内上下滑：调曝光\n· 按快门：过片进卷\n\n快门条循环：闪光灯 / 外置闪光。设置面板（机身右侧键）：白平衡、RAW 底片、色彩浓度、冲洗画质、胶片相框。成片风格都在冲洗里定。</string>
     <string name="qs_next">下一页</string>
     <string name="about_spec_quickstart">快速上手</string>
-    <string name="about_quickstart_action">重看</string>
+    <string name="about_quickstart_action">重玩</string>
 
-    <!-- v82 段2：机顶 LCD 实操引导（做对自动前进，超时 15s 跳过） -->
-    <string name="guide_focus">点一下取景框 · 对焦</string>
+    <!-- 段2：机顶 LCD 实操引导（八步，做对自动前进，超时 15s 跳过）
+         点阵屏可用逻辑宽约 78dp，文案必须短（≤10字）才不会被自动缩到看不清 -->
+    <string name="guide_roll">点胶卷图标 · 选卷</string>
+    <string name="guide_pro_enter">点机身铭牌 · 进 Pro</string>
+    <string name="guide_iso">左右滑铭牌 · 调 ISO</string>
+    <string name="guide_shutter_speed">推取景窗刻度 · 调快门</string>
+    <string name="guide_pro_exit">再点铭牌 · 回自动</string>
+    <string name="guide_focus">点取景框 · 对焦</string>
     <string name="guide_ev">框内上下滑 · 调曝光</string>
-    <string name="guide_shoot">好了，按快门拍第一张</string>
+    <string name="guide_shoot">按快门 · 拍第一张</string>
+    <!-- 高亮框上的步骤胶囊：极短，跟 LCD 长句分工（框说点哪，屏说做什么） -->
+    <string name="guide_tag_roll">选卷</string>
+    <string name="guide_tag_pro_enter">进 Pro</string>
+    <string name="guide_tag_iso">调 ISO</string>
+    <string name="guide_tag_shutter">调快门</string>
+    <string name="guide_tag_pro_exit">回自动</string>
+    <string name="guide_tag_focus">对焦</string>
+    <string name="guide_tag_ev">调曝光</string>
+    <string name="guide_tag_shoot">拍第一张</string>
+    <!-- 段3：首张落卷后带去暗房冲洗（LCD 常驻 + 框暗房字牌 + 暗房页接力提示） -->
+    <string name="guide_darkroom">点暗房 · 冲洗这一卷</string>
+    <string name="guide_tag_darkroom">去暗房</string>
+    <string name="gallery_first_develop_hint">点这一卷上的「冲洗」，看第一张成片</string>
 
     <!-- v82 段3：首卷护栏 -->
     <string name="guide_first_frame">第 1/36 张 · 拍完整卷去暗房冲洗</string>
