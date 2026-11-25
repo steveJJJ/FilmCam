@@ -45,7 +45,7 @@ class OnboardingGuideContractTest {
         assertEquals("护栏点12", 12, Regex("GUARD_FRAME_THIRD = (\\d+)").find(s)?.groupValues?.get(1)?.toInt())
         assertEquals("暗房引导60s自收", "60_000L",
             Regex("DARKROOM_GUIDE_TIMEOUT_MS = ([0-9_L]+)").find(s)?.groupValues?.get(1))
-        assertTrue("跨页接力 extra", s.contains("EXTRA_FIRST_ROLL_GUIDE"))
+        assertFalse("暗房页二次提醒已移除（11-25 用户拍板）", s.contains("EXTRA_FIRST_ROLL_GUIDE"))
         // 八步检测点：选卷 / 进Pro / ISO / 快门 / 退Pro / 对焦 / 曝光 / 落卷
         assertTrue("选卷检测点", s.contains("fun onRollPicked"))
         assertTrue("进Pro检测点", s.contains("fun onProEntered"))
@@ -220,7 +220,7 @@ class OnboardingGuideContractTest {
     }
 
     @Test
-    fun `首张落卷引导去暗房冲洗 并跨页接力`() {
+    fun `首张落卷引导去暗房冲洗 暗房页不再二次提醒`() {
         val main = main() ?: return
         val shot = main.substringAfter("val forceDarkroomGuide =", "")
             .substringBefore("if (count >= FILM_MAX)", "")
@@ -229,14 +229,14 @@ class OnboardingGuideContractTest {
         assertTrue("第 12 张保留普通提示", shot.contains("R.string.guide_third_frame"))
         val galleryClick = main.substringAfter("binding.btnGallery.hapticClick {", "")
             .substringBefore("binding.btnGallery.attachPressFeedback", "")
-        assertTrue("点暗房要收引导并带一次性 extra",
+        assertTrue("点暗房只收引导、不带额外提醒",
             galleryClick.contains("clearDarkroomGuide()") &&
-                galleryClick.contains("EXTRA_FIRST_ROLL_GUIDE"))
+                !galleryClick.contains("EXTRA_FIRST_ROLL_GUIDE"))
         val hv = read("java/com/filmcam/app/ui/GuideHighlightView.kt") ?: return
         assertTrue("无序号的跨页引导胶囊只显示动作短句", hv.contains("step <= 0 -> label"))
         val gal = read("java/com/filmcam/app/GalleryActivity.kt") ?: return
-        assertTrue("暗房页要接一句「点冲洗」",
-            gal.contains("EXTRA_FIRST_ROLL_GUIDE") && gal.contains("gallery_first_develop_hint"))
+        assertTrue("暗房页不得再弹「点冲洗」二次提醒（11-25 用户拍板）",
+            !gal.contains("gallery_first_develop_hint"))
     }
 
     @Test
@@ -248,7 +248,7 @@ class OnboardingGuideContractTest {
             "guide_pro_exit", "guide_focus", "guide_ev", "guide_shoot",
             "guide_tag_roll", "guide_tag_pro_enter", "guide_tag_iso", "guide_tag_shutter",
             "guide_tag_pro_exit", "guide_tag_focus", "guide_tag_ev", "guide_tag_shoot",
-            "guide_darkroom", "guide_tag_darkroom", "gallery_first_develop_hint",
+            "guide_darkroom", "guide_tag_darkroom",
             "guide_first_frame", "guide_third_frame", "about_spec_quickstart",
             "about_quickstart_action").forEach { key ->
             assertTrue("中文缺 $key", zh.contains("name=\"$key\""))

@@ -188,7 +188,6 @@ App 版本：%1$s (%2$d)
     <!-- 段3：首张落卷后带去暗房冲洗（LCD 常驻 + 框暗房字牌 + 暗房页接力提示） -->
     <string name="guide_darkroom">点暗房 · 冲洗这一卷</string>
     <string name="guide_tag_darkroom">去暗房</string>
-    <string name="gallery_first_develop_hint">点这一卷上的「冲洗」，看第一张成片</string>
 
     <!-- v82 段3：首卷护栏 -->
     <string name="guide_first_frame">第 1/36 张 · 拍完整卷去暗房冲洗</string>

@@ -673,13 +673,9 @@ class MainActivity : AppCompatActivity() {
             true
         }
         binding.btnGallery.hapticClick {
-            // 引导带进来的这一次，暗房页再补一句「点这一卷的冲洗」；自己进来则不打扰
-            val fromGuide = darkroomGuideActive
+            // 只收掉主页引导，正常进暗房；暗房页不再弹二次提醒（11-25 用户拍板）
             clearDarkroomGuide()
-            startActivity(
-                android.content.Intent(this, GalleryActivity::class.java)
-                    .putExtra(OnboardingGuide.EXTRA_FIRST_ROLL_GUIDE, fromGuide)
-            )
+            startActivity(android.content.Intent(this, GalleryActivity::class.java))
         }
         binding.btnGallery.attachPressFeedback(0.92f)   // 暗房字牌（11-21 用户反馈漏挂）
         binding.settingsKey.hapticClick { showSettings() }

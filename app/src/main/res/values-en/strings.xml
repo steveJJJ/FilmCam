@@ -180,7 +180,6 @@ Memory available: %10$d MB / %11$d MB total
     <!-- Stage 3: after the first frame, point at the darkroom and its Develop button. -->
     <string name="guide_darkroom">Tap darkroom · develop this roll</string>
     <string name="guide_tag_darkroom">Darkroom</string>
-    <string name="gallery_first_develop_hint">Tap Develop on this roll to see your first print</string>
 
     <!-- v82 stage 3: first-roll guardrails -->
     <string name="guide_first_frame">Frame 1/36 · develop the full roll in the darkroom</string>

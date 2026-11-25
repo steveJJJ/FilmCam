@@ -50,9 +50,6 @@ object OnboardingGuide {
     /** 段 3 首张落卷后的「去暗房」框和常驻提示，挂太久会烦人，到时自己收 */
     const val DARKROOM_GUIDE_TIMEOUT_MS = 60_000L
 
-    /** 从引导点进暗房时带的 extra：暗房页给一次「点冲洗」的接力提示 */
-    const val EXTRA_FIRST_ROLL_GUIDE = "first_roll_guide"
-
     private fun prefs(ctx: Context): SharedPreferences =
         ctx.getSharedPreferences("filmcam", Context.MODE_PRIVATE)
 
