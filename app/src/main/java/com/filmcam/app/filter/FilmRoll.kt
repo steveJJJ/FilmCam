@@ -1,5 +1,7 @@
 package com.filmcam.app.filter
 
+import com.filmcam.app.ui.AppLocale
+
 /**
  * 胶卷数据模型
  *
@@ -26,6 +28,18 @@ data class FilmRoll(
     val scene: String = "",
     /** 英文适用场景；缺省回落中文。 */
     val sceneEn: String = scene,
+    /** 繁体中文（港台共用一套）描述/标签/场景；缺省回落英文 */
+    val descriptionTw: String = descriptionEn,
+    val tagTw: String = tagEn,
+    val sceneTw: String = sceneEn,
+    /** 日本語描述/标签/场景；缺省回落英文 */
+    val descriptionJa: String = descriptionEn,
+    val tagJa: String = tagEn,
+    val sceneJa: String = sceneEn,
+    /** 한국어描述/标签/场景；缺省回落英文 */
+    val descriptionKo: String = descriptionEn,
+    val tagKo: String = tagEn,
+    val sceneKo: String = sceneEn,
     /**
      * 是否可选。默认全卷可选 —— 反转片（type=positive）是引擎一等支持的胶卷：
      * FilmStockMapper.isPositive → scan_film 直扫正片、NO_PRINT 不用相纸，
@@ -36,9 +50,14 @@ data class FilmRoll(
     val available: Boolean = true
 ) {
     /**
-     * 按语言返回展示副本。只替换 description/tag，双语原值都留在对象里，
-     * 因此在两种语言间来回切都能重新投影（见 FilmRollRepository.rolls）。
+     * 按语言档位返回展示副本。只替换 description/tag/scene，各语原值都留在对象里，
+     * 因此多语言间来回切都能重新投影（见 FilmRollRepository.rolls）。
      */
-    fun localized(english: Boolean): FilmRoll =
-        if (english) copy(description = descriptionEn, tag = tagEn, scene = sceneEn) else this
+    fun localized(mode: Int): FilmRoll = when (mode) {
+        AppLocale.EN -> copy(description = descriptionEn, tag = tagEn, scene = sceneEn)
+        AppLocale.ZH_TW -> copy(description = descriptionTw, tag = tagTw, scene = sceneTw)
+        AppLocale.JA -> copy(description = descriptionJa, tag = tagJa, scene = sceneJa)
+        AppLocale.KO -> copy(description = descriptionKo, tag = tagKo, scene = sceneKo)
+        else -> this   // 跟随系统 / 简体中文：原值即简体
+    }
 }

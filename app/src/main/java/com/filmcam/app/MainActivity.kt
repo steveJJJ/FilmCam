@@ -1632,9 +1632,13 @@ class MainActivity : AppCompatActivity() {
             updateViewfinderIndicators(lastAfState, lastExposureSec, lastAeIso)
         }
         row(R.id.rowSetLanguage).hapticClick {
-            // 切档会重建 Activity，弹窗必须走正常 dismiss（守卫计数归位）
+            // 六档语言一次点选；切档会重建 Activity，弹窗必须走正常 dismiss（守卫计数归位）
             dialog.dismiss()
-            com.filmcam.app.ui.AppLocale.cycle(this@MainActivity)
+            com.filmcam.app.ui.LanguagePicker.show(
+                this@MainActivity,
+                { d, cb -> d.guardDialog(cb) },
+                com.filmcam.app.ui.AppLocale.mode,
+            ) { m -> com.filmcam.app.ui.AppLocale.set(this@MainActivity, m) }
         }
         row(R.id.rowSetQuality).hapticClick {
             // 冲洗画质：就地翻转（完整 ↔ 标准），面板不关。
@@ -1837,12 +1841,9 @@ class MainActivity : AppCompatActivity() {
         }.start()
     }
 
-    /** 语言当前档位名：跟随系统 / 简体中文 / English */
-    private fun languageName(): String = when (com.filmcam.app.ui.AppLocale.mode) {
-        com.filmcam.app.ui.AppLocale.ZH -> getString(R.string.lang_zh)
-        com.filmcam.app.ui.AppLocale.EN -> getString(R.string.lang_en)
-        else -> getString(R.string.lang_system)
-    }
+    /** 语言当前档位名：六档共用 LanguagePicker 口径（语言名用自名，不随界面语言翻译） */
+    private fun languageName(): String =
+        com.filmcam.app.ui.LanguagePicker.name(this, com.filmcam.app.ui.AppLocale.mode)
 
     /**
      * 胶卷拍满：引导去暗房冲洗。11-22 从系统 AlertDialog 换成机身铭牌弹窗

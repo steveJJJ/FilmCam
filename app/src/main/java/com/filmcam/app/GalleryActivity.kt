@@ -127,7 +127,10 @@ class GalleryActivity : AppCompatActivity() {
         // 全黑底才能看片（银底会把成片的暗部压掉，也会破坏暗房氛围）。
         // 这里刻意不做 BodyTheme 重映射，保持原来的暗房配色。
 
-        // 外闪标定样本列表（11-22）：从暗房进，集中看待标定参数与好坏标记
+        // 外闪标定样本列表（11-22）：从暗房进，集中看待标定参数与好坏标记。
+        // 11-26 用户拍板：这是工程工具，不该默认露在普通暗房页。只有进工程模式把
+        // 「标定记录范围」切到「所有照片」（prefs calibScope=all）才显示；默认隐藏。
+        // 可见性在 onResume 里刷新 —— 从关于页切完开关返回暗房立刻生效，不用重进。
         findViewById<android.view.View>(R.id.btnCalibList).setOnClickListener {
             com.filmcam.app.ui.Haptics.vibrate(this, 24, 175)
             startActivity(android.content.Intent(this, CalibListActivity::class.java))
@@ -431,6 +434,19 @@ class GalleryActivity : AppCompatActivity() {
         loadUndevelopedRolls()
         loadPhotos()
         renderDevProgress()
+        refreshCalibEntry()
+    }
+
+    /**
+     * 标定样本入口只给工程模式用：默认（仅外置闪光档）隐藏，
+     * 只有把「标定记录范围」切到「所有照片」才露出。
+     * 每次回到暗房重读 prefs，切完开关直接返回就能看到。
+     */
+    private fun refreshCalibEntry() {
+        val scope = getSharedPreferences("filmcam", MODE_PRIVATE)
+            .getString("calibScope", "ext") ?: "ext"
+        findViewById<android.view.View>(R.id.btnCalibList).visibility =
+            if (scope == "all") android.view.View.VISIBLE else android.view.View.GONE
     }
 
     // ---------- 后台冲洗进度条 ----------

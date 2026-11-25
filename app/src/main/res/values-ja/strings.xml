@@ -1,0 +1,601 @@
+<resources>
+    <string name="app_name">Relic Cam</string>
+
+    <!-- についてページ -->
+    <string name="about_intro">スマホを CONTAX T3 に変えます。\n\nファインダーに映るのは本物の光学世界。シャッターを押すたびに 36 枚のフィルムが進み、撮り終えたら暗室で現像し、仕上がりはフィルムエンジンがその巻きのレシピに従って現像します。\n\n現像するまで、何が写ったかは誰にもわかりません —— それがフィルムの楽しさです。</string>
+    <string name="percent_fmt">%1$d%%</string>
+    <string name="about_self_title">RELIC CAM は GNU GPL-3.0-or-later のもとでオープンソースとして配布されます</string>
+    <string name="about_self_body">本プロジェクトは GPL-3.0 の SpektraLab フィルムシミュレーションエンジンを使用しているため、同様に GPL-3.0-or-later で配布されます。自由に使用・改変・再配布できますが、再配布時はソースコードを公開し、同じライセンスと署名を保持してください。\nリポジトリはまだ公開されていませんが、ライセンス条項に基づき、ソースコードは請求に応じて提供されます。</string>
+    <string name="about_paypal">PayPal で支援</string>
+    <!-- PayPal 支援ページ。空の場合は入口を表示しない -->
+    <string name="appreciate_paypal_url" translatable="false">https://paypal.me/Stevejjjjjj</string>
+    <!-- WeChat 支援コードは画像のみ表示でリンク先なし。この項目は将来の拡張用で、現在は空かつコードから参照されない。 -->
+    <string name="appreciate_wechat_url" translatable="false"></string>
+    <string name="about_feedback">問題を報告</string>
+    <string name="feedback_subject">RELIC CAM 問題報告 %1$s / 端末 %2$s %3$s / システム Android %4$s (API %5$d)</string>
+    <string name="feedback_body">発生した問題：
+（簡単な説明、例：「第 12 枚の現像で止まる」「シャッターを押しても反応しない」「ファインダーの枠がずれている」）
+
+再現手順：
+1.
+2.
+3.
+
+期待する結果：
+
+エラーメッセージ（クラッシュやエラーが出た場合は完全なスタックトレースを貼ってください。例外名が最も重要です）：
+（例えば IllegalStateException / Resources$NotFoundException / IOException /
+ OutOfMemoryError：Failed to allocate … free bytes … until OOM /
+ JNI weak global ref table overflow (0x1fff=8191 entries) など）
+
+adb logcat の抜粋（任意。PC で adb logcat | findstr FILMCAM を実行し、該当行を貼ってください）：
+
+—— 以下の情報は自動生成です。特定に役立つのでそのまま残してください ——
+アプリバージョン：%1$s (%2$d)
+端末：%3$s %4$s
+システム：Android %5$s (API %6$d)
+画面：%7$dx%8$d @%9$ddpi
+利用可能メモリ：%10$d MB / 合計 %11$d MB
+</string>
+    <string name="feedback_email_missing">フィードバック用メールアドレスが未設定です</string>
+    <string name="feedback_no_mail_app">使用できるメールアプリがありません</string>
+    <!-- 問題フィードバックを受け取るメールアドレス。空の場合はタップすると未設定と提示 -->
+    <string name="app_feedback_email" translatable="false">837226902ah@gmail.com</string>
+    <!-- 空の場合は about ページにソースコード請求の入口を表示しない。メールアドレスを入れるとクリック可能な mailto リンクになる -->
+    <string name="app_source_email" translatable="false"></string>
+    <string name="about_oss_summary">RELIC CAM はこれらのオープンソースプロジェクトと素材作者の作品の上に成り立っています —— 開発者の皆様の寛大な共有に感謝します。\n現像エンジンのコードは GPL-3.0-or-later、フィルム / 相紙のレシピとエンジン素材は CC BY-SA 4.0 で使用しています。タップすると各ライセンスと出典を確認できます。</string>
+
+    <!-- オープンソース謝辞：名前 | 作者/団体 | ライセンス | リンク | 変更説明（任意） -->
+    <string-array name="oss_credits">
+        <item>SpektraLab for Android（Vulkan 后端适配、JNI、Android 原生引擎库）|SAINTTaiYi|GPL-3.0-or-later|https://github.com/SAINTTaiYi/SpektraLab-Android|本プロジェクトはこの移植版が提供するネイティブエンジンライブラリとプロジェクト構成を直接使用し、アプリの要件に合わせて簡素化・調整しています</item>
+        <item>SpektraLab 物理胶片 / 相纸模拟引擎（上游）|JamesQiu2005 及 SpektraLab 贡献者|GPL-3.0-or-later|https://github.com/JamesQiu2005/SpektraLab</item>
+        <item>spektrafilm 胶片模型、28 款实测配置与放大 LUT|Andrea Volpato|CC BY-SA 4.0|https://github.com/andreavolpato/spektrafilm|元素材は本プロジェクトの要件に合わせて調整（ISO 対応とローカライズ名）し、同様に CC BY-SA 4.0 で配布します</item>
+        <item>SpektraFilm 引擎资源（profiles / LUT / 常量表）|SpektraLab · JamesQiu2005|CC BY-SA 4.0|https://creativecommons.org/licenses/by-sa/4.0/|リソースパックは本プロジェクトの必要に応じて簡素化（使用する機種のみ保持）し、同様に CC BY-SA 4.0 で配布します</item>
+        <item>LibRaw RAW 解码库|LibRaw 贡献者|LGPL-2.1 / CDLL|https://github.com/LibRaw/LibRaw</item>
+        <item>libjpeg-turbo JPEG 编解码库|libjpeg-turbo 贡献者|BSD-3-Clause / IJG / Zlib|https://github.com/libjpeg-turbo/libjpeg-turbo</item>
+        <item>Little CMS 2 色彩管理引擎|Marti Maria Saguer|MIT|https://github.com/mm2/Little-CMS</item>
+        <item>zlib 数据压缩库|Jean-loup Gailly、Mark Adler|zlib License|https://github.com/madler/zlib</item>
+        <item>LLVM libc++ 运行时|LLVM Project|Apache-2.0 with LLVM exception|https://github.com/llvm/llvm-project</item>
+        <item>Android Jetpack（AndroidX）：Core / AppCompat / RecyclerView / ViewPager2 / ConstraintLayout / Lifecycle / ExifInterface|Google LLC|Apache-2.0|https://github.com/androidx/androidx</item>
+        <item>Material Components for Android|Google LLC|Apache-2.0|https://github.com/material-components/material-components-android</item>
+        <item>Kotlin / Kotlinx Coroutines|JetBrains|Apache-2.0|https://github.com/JetBrains/kotlin</item>
+        <item>Coil 图片加载库|Coil Contributors|Apache-2.0|https://github.com/coil-kt/coil</item>
+        <item>DSEG7 七段数码管字体|keshikan|SIL OFL 1.1|https://github.com/keshikan/DSEG</item>
+        <item>Imprint 印刷体与等宽字体|Google Fonts · Croscore(Red Hat) · Bitstream/DejaVu|SIL OFL 1.1|https://fonts.google.com/</item>
+        <item>stb 单文件库|Sean Barrett|MIT / Public Domain|https://github.com/nothings/stb</item>
+        <item>org.json|JSON.org|JSON License|https://github.com/stleary/JSON-java</item>
+        <item>JUnit 4|Eclipse Foundation|EPL-1.0|https://github.com/junit-team/junit4</item>
+    </string-array>
+
+    <!-- 仕上がり情報パネル -->
+    <string name="info_group_shooting">撮影パラメータ</string>
+    <string name="info_group_develop">現像パラメータ</string>
+    <string name="info_group_engine">エンジン</string>
+    <string name="info_tap_hint">写真をタップするとフィルム情報が表示されます</string>
+    <string name="info_no_exif">この写真にはフィルム情報がありません</string>
+
+    <!-- 設定ダイアログ -->
+    <string name="set_title">設定</string>
+    <string name="set_close">閉じる</string>
+    <string name="set_body">ボディ</string>
+    <string name="set_datestamp">日付スタンプ</string>
+    <string name="set_haptic">振動の強さ</string>
+    <string name="set_language">言語</string>
+    <string name="set_quality">現像画質</string>
+    <string name="set_dev">現像パラメータ</string>
+    <string name="set_about">RELIC CAM について</string>
+    <string name="quality_full">フル</string>
+    <string name="quality_standard">標準</string>
+    <string name="set_style">出力スタイル</string>
+    <string name="style_print">プリント</string>
+    <string name="style_frontier">Frontier スキャン</string>
+    <string name="style_noritsu">Noritsu スキャン</string>
+    <string name="set_frame">フィルム枠</string>
+    <string name="frame_full">フルフレーム 3:2</string>
+    <string name="frame_white">白枠</string>
+    <string name="set_color">色の濃さ</string>
+    <string name="set_raw">RAW ネガ</string>
+    <string name="set_flash">外置フラッシュ管理</string>
+    <string name="set_flash_none">未ペアリング</string>
+    <string name="set_flash_multi">%1$d 台</string>
+    <string name="raw_unavailable">非対応</string>
+    <string name="color_strength_standard">標準</string>
+    <string name="color_strength_soft">淡</string>
+    <string name="color_strength_original">オリジナル</string>
+    <string name="color_strength_custom">カスタム %1$d%%</string>
+    <string name="set_frame_probe_failed">この片門はエンジンが認識しません。現像時はフィルム枠なしで仕上がります。詳細は外部ストレージの spektra_frame_probe.txt をご覧ください</string>
+    <string name="set_slow">スローシャッター</string>
+    <string name="set_wb">ホワイトバランス</string>
+    <string name="slow_off">オフ</string>
+    <string name="slow_natural">ナチュラル</string>
+    <string name="slow_frequent">やや遅め</string>
+    <string name="set_slow_unsupported">この端末は手動露出に対応していないため、スローシャッターは使用できません</string>
+    <string name="lang_pick_title">カメラの言語</string>
+    <string name="lang_pick_sub">画面とフィルムの説明が同時に切り替わります · タップで設定</string>
+    <string name="lang_system">システムに従う</string>
+    <string name="lang_zh">簡体字中国語</string>
+    <string name="lang_en">English</string>
+    <string name="common_on">オン</string>
+    <string name="common_off">オフ</string>
+    <string name="body_black">ブラックチタン</string>
+    <string name="body_titan">チタンシルバー</string>
+    <string name="haptic_low">弱</string>
+    <string name="haptic_mid">中</string>
+    <string name="haptic_strong">強</string>
+
+    <!-- 設定パネルはボディの名板として作られています：タイトルの下に小さな1行、その後に「名称 / 説明」のリスト -->
+    <string name="set_subtitle">ボディ設定</string>
+    <string-array name="set_labels">
+        <item>@string/set_body</item>
+        <item>@string/set_haptic</item>
+        <item>@string/set_wb</item>
+        <item>@string/set_language</item>
+        <item>@string/set_quality</item>
+        <item>@string/set_color</item>
+        <item>@string/set_raw</item>
+        <item>@string/set_flash</item>
+        <item>@string/set_about</item>
+    </string-array>
+    <string-array name="set_hints">
+        <item>ブラックチタン / チタンシルバーの 2 種類のボディ外装</item>
+        <item>巻き上げとボタンのモーター強度</item>
+        <item>色補正フィルターを交換するのと同じで、撮影後もそのまま維持されます。ウェストレベルファインダーを横にスワイプすると、その段階の公称色温度（≈K、実測値ではありません）が表示されます</item>
+        <item>システムに従う / 簡体字中国語 / English</item>
+        <item>フル＝元の解像度、遅い。標準≈1200 万画素、約 3 倍速い</item>
+        <item>スマホの ISP が追加した余分な色を打ち消します：標準 / 淡 / オリジナル。JPG と読み込み写真のみ、RAW は変更なし。エンジニアリングコンソールで 0～100% を細かく調整できます</item>
+        <item>撮影時に RAW ネガ（DNG）も同時保存し、現像はスマホの ISP をバイパスするため、ディテールと粒状感が実際のフィルムに近づきます。非対応端末では自動的に JPEG にフォールバックします。エンジニアリングコンソールと同じスイッチです</item>
+        <item>ペアリング済みの外置フラッシュを表示・コピー・削除できます。共有されたプロファイルを読み込んだり、新しい灯を自動学習でペアリングしたりできます</item>
+        <item>ボディの名板とライセンス</item>
+    </string-array>
+
+    <!-- ===== ホーム画面 MainActivity / レイアウト共通の文言 ===== -->
+
+    <!-- 共通ボタン -->
+    <string name="main_ok">OK</string>
+    <string name="main_cancel">キャンセル</string>
+
+    <!-- 初回起動ガイド -->
+    <string name="main_guide_start">ガイドを開始</string>
+
+    <!-- v82 クイックスタートカード（セグメント1、3ページ） -->
+    <string name="qs_title_1">これはフィルムカメラです</string>
+    <string name="qs_body_1">実際のフィルムと同じように、まずフィルムを装填し、撮影し、最後に暗室で現像して初めて仕上がりが見られます。\n\n・PORTRA 400 が最初から装填されているので、すぐに撮影できます\n・左下のフィルムアイコンをタップするとフィルムを替えられます。ポートレート、風景、モノクロ、リバーサルで仕上がりが変わります\n・1 巻 36 枚です</string>
+    <string name="qs_title_2">撮り終えたら暗室で現像</string>
+    <string name="qs_body_2">撮影直後にアルバムを見ないでください。ネガはまだフィルムの中にあり、現像するまでアルバムは空のままです。故障ではありません。\n\n・右下の DARKROOM をタップして暗室へ\n・未現像のカードの「現像」をタップすると、仕上がりがアルバムに入ります\n・最初の 1 枚を撮ると、カメラが暗室への入口を知らせてくれます</string>
+    <string name="qs_title_3">次は一つずつ手順を案内します</string>
+    <string name="qs_body_3">順番に一度ずつ試せば、このカメラを使えるようになります：\n\n① フィルムアイコンをタップしてフィルムを選ぶ\n② 名板をタップして Pro へ。ISO をスワイプし、シャッターを動かす\n③ もう一度名板をタップしてオートに戻る\n④ ファインダーをタップしてピントを合わせ、上下スワイプで露出を調整\n⑤ シャッターを押して 1 枚目を撮る\n⑥ 暗室で現像して仕上がりを見る</string>
+    <string name="qs_next">次へ</string>
+    <string name="about_spec_quickstart">クイックスタート</string>
+    <string name="about_quickstart_action">もう一度</string>
+
+    <!-- セグメント2：機頂 LCD の実操作ガイド（8ステップ、成功で自動進行、15秒でスキップ）
+         ドットマトリクス LCD の論理幅は約 78dp。文案は短く（10文字以内）しないと自動縮小で読めなくなる -->
+    <string name="guide_roll">フィルムアイコンをタップ · フィルム選択</string>
+    <string name="guide_pro_enter">名板をタップ · Pro へ</string>
+    <string name="guide_iso">名板を左右スワイプ · ISO 調整</string>
+    <string name="guide_shutter_speed">ファインダーの目盛りを動かす · シャッター調整</string>
+    <string name="guide_pro_exit">もう一度名板をタップ · オートへ戻る</string>
+    <string name="guide_focus">ファインダーをタップ · ピント合わせ</string>
+    <string name="guide_ev">枠内を上下スワイプ · 露出調整</string>
+    <string name="guide_shoot">シャッターを押す · 1 枚目</string>
+    <!-- ハイライト枠のステップカプセル：極短。LCD と役割分担（枠はタップ場所、画面は操作内容） -->
+    <string name="guide_tag_roll">フィルム選択</string>
+    <string name="guide_tag_pro_enter">Pro へ</string>
+    <string name="guide_tag_iso">ISO 調整</string>
+    <string name="guide_tag_shutter">シャッター調整</string>
+    <string name="guide_tag_pro_exit">オートへ</string>
+    <string name="guide_tag_focus">ピント</string>
+    <string name="guide_tag_ev">露出調整</string>
+    <string name="guide_tag_shoot">1 枚目</string>
+    <!-- セグメント3：最初の 1 枚後、暗室とその現像ボタンへ案内（LCD 常駐 + 枠で暗室の文字板 + 暗室ページでバトンタッチ） -->
+    <string name="guide_darkroom">暗室をタップ · この巻きを現像</string>
+    <string name="guide_tag_darkroom">暗室へ</string>
+
+    <!-- v82 セグメント3：最初の巻きのガードレール -->
+    <string name="guide_first_frame">1/36 枚目 · 巻きを撮り切って暗室で現像</string>
+    <string name="guide_third_frame">12/36 枚目 · 撮り終えたら暗室へ。現像して初めて仕上がりが見られます</string>
+    <string name="lcd_notice_first_dev_done">最初の巻きが現像されました · 仕上がり %1$d 枚</string>
+
+    <!-- フィルムを撮り切った：暗室へ案内 -->
+    <string name="main_roll_finished_title">フィルムを撮り切りました</string>
+    <string name="main_roll_finished_body">この 36 枚をすべて撮りました。暗室で現像して仕上がりを出しましょう</string>
+    <string name="main_roll_finished_develop">現像する</string>
+    <string name="main_roll_finished_later">あとで</string>
+    <string name="main_roll_finished_code">ROLL FULL</string>
+
+    <!-- 現像パラメータダイアログ -->
+    <string name="main_dev_reset">このフィルムの初期設定に戻す</string>
+    <string name="main_dev_paper_auto">自動（フィルムの初期設定に従う）</string>
+    <string name="main_dev_slide_no_paper">—（リバーサルは直接現像、相紙なし）</string>
+
+    <!-- フィルム / 相紙選択ダイアログ -->
+    <string name="main_pick_film_title">フィルムを選択</string>
+    <string name="main_pick_paper_title">相紙を選択</string>
+
+    <!-- ホワイトバランスプリセット（フラッシュオン時、プレビュー上で左右にドラッグして切り替え） -->
+    <string name="main_wb_incandescent">白熱灯</string>
+    <string name="main_wb_fluorescent">蛍光灯</string>
+    <string name="main_wb_daylight">日光</string>
+    <string name="main_wb_cloudy">曇天</string>
+    <string name="main_wb_shade">日陰</string>
+    <string name="main_wb_twilight">薄明</string>
+
+    <!-- Toast 通知 -->
+    <string name="main_toast_develop_first">先に現在のフィルムを現像してください</string>
+    <string name="main_toast_no_roll_to_rewind">巻き戻せるフィルムがありません</string>
+    <string name="main_toast_settings_failed">設定に失敗しました: %1$s</string>
+    <string name="main_toast_permission_required">カメラ / Bluetooth の権限が必要です</string>
+    <string name="main_toast_save_failed">保存に失敗しました: %1$s</string>
+    <string name="main_toast_capture_error">撮影エラー: %1$s</string>
+    <string name="main_toast_capture_timeout">撮影がタイムアウトしました</string>
+    <string name="main_toast_preview_map_test">プレビュー割り当てテスト: %1$d</string>
+
+    <!-- フラッシュ / ISO / シャッターの状態表示 -->
+    <string name="main_flash_off">フラッシュ: オフ</string>
+    <string name="main_flash_internal">フラッシュ: 内蔵</string>
+    <string name="main_flash_external">フラッシュ: 外置</string>
+    <!-- キセノンランプの再充電ヒント：発光後コンデンサが数秒で充電される。その間に撮ると光量が弱くなる -->
+    <string name="main_flash_recharging">チャージ中</string>
+    <!-- 外閃档の黒寫真検知（11-22）：ランプの電池切れ/通信不能で黒寫真になった時、LCD に表示。落巻は通常通りで削除するかはユーザーが判断 -->
+    <string name="main_flash_miss_notice">フラッシュが発光しません 電池を確認</string>
+    <string name="main_external_status">外置フラッシュ: %1$s</string>
+    <string name="main_flash_pair_needed">外置灯が未ペアリングです。ペアリングを開始します</string>
+    <string name="main_flash_pair_cancel">ペアリングが完了しませんでした。フラッシュはオフに戻りました</string>
+    <string name="main_external_on">外置: オン</string>
+    <string name="main_external_off">外置: オフ</string>
+    <string name="main_pro_label">Pro</string>
+    <string name="main_iso_auto">ISO オート</string>
+    <string name="main_iso_value">ISO %1$d</string>
+    <string name="main_shutter_auto">シャッター オート</string>
+    <!-- 左下のフィルム情報（非表示ビュー）：フィルム名 / 種類 / 残り枚数 -->
+    <string name="main_film_info">%1$s\nカラーネガ\nISO500 · 残り %2$d 枚</string>
+
+    <!-- ===== レイアウト：アクセシビリティ説明 ===== -->
+    <string name="main_cd_flash">フラッシュ</string>
+    <string name="main_cd_settings">設定</string>
+    <string name="main_cd_film_current">現在のフィルム</string>
+    <string name="main_cd_film_advancing">巻き上げ</string>
+    <string name="main_cd_film_icon">フィルムアイコン</string>
+    <string name="main_darkroom">暗室</string>
+    <string name="gallery_import">写真を読み込んで現像</string>
+    <string name="gallery_calib_list">キャリブレーション見本</string>
+    <string name="calib_list_title">外置フラッシュのキャリブレーション見本</string>
+    <string name="calib_list_hint">撮影直後に記録され、現像は不要です。各行は外置フラッシュ 1 枚分で、功率 / ISO / シャッター / 距離 / 輝度 が並びます。ここで「良」か「不良」を付け、TTL を導き出す際にこの印で絞り込めます</string>
+    <string name="calib_list_empty">外置フラッシュのキャリブレーション見本はまだありません。「外置フラッシュ」档に切り替え（Pro モード推奨）、1 枚撮って戻ってください。現像は不要です</string>
+    <string name="calib_list_no_ext">フィルムには写真がありますが、「外置フラッシュ」档で撮ったものがありません（キャリブレーションは EXT 档でしか記録されません）。ボディのフラッシュダイヤルを EXT に切り替え、A2 を接続してもう 1 枚撮ってください</string>
+    <string name="calib_list_count">%1$d 件の見本</string>
+    <string name="calib_mark_none">未マーク</string>
+    <string name="calib_row_good">✓ 良</string>
+    <string name="calib_row_bad">✗ 不良</string>
+    <string name="calib_row_clear">クリア</string>
+    <string name="calib_frame_raw">未現像のネガ</string>
+    <string name="calib_frame_developed">現像済みの仕上がり</string>
+    <string name="eng_calib_scope">キャリブレーション記録の範囲</string>
+    <string name="eng_calib_scope_hint">見本（見本リスト / 良不良のマーク）は既定では「外置フラッシュ」档でのみ記録されます。すべての写真に切り替えると、どの档でも見本 ID が発行されます（功率 / 距離はフラッシュ専用のままです）</string>
+    <string name="calib_scope_ext">外置フラッシュ档のみ</string>
+    <string name="calib_scope_all">すべての写真</string>
+    <string name="gallery_import_pick_film">どのフィルムを装填しますか？</string>
+    <string name="gallery_import_too_many">1 巻は最大 36 枚です。先頭の 36 枚のみ取り込みました</string>
+    <string name="gallery_import_busy">未現像のフィルムがあります。先に現像してから読み込んでください</string>
+    <string name="gallery_import_none">これらの写真を読み込めませんでした</string>
+    <string name="gallery_import_failed">読み込みに失敗しました: %1$s</string>
+
+    <!-- ===== レイアウト：フィルム選択ボトムシート ===== -->
+    <string name="main_sort_hint">長押しでドラッグして並べ替え</string>
+
+    <!-- ===== レイアウト：現像パラメータパネル ===== -->
+    <string name="main_dev_roll_row">フィルム</string>
+    <string name="main_dev_group_develop">現像 · DEVELOP</string>
+    <string name="main_dev_grain">粒状感の強さ</string>
+    <string name="main_dev_halation">ハレーションの強さ</string>
+    <string name="main_dev_glare">フレアの強さ</string>
+    <string name="main_dev_group_print">引き伸ばし · PRINT</string>
+    <string name="main_dev_enlarger_exposure">露出補正（画像のみに適用）</string>
+    <string name="main_dev_paper_row">相紙選択</string>
+    <string name="main_dev_paper_hint">自動は各フィルムのメーカー推奨の相紙と組み合わせます（コダックのネガは Portra Endura、シネマフィルムは Kodak 2383 など）。上をタップすると手動で選べます</string>
+
+    <!-- ===== レイアウト：エンジニアリングモード ===== -->
+    <string name="main_debug_softfocus_prob">ピントボケの発生確率（0% = オフ）</string>
+    <string name="main_debug_note">これらの項目は開発・デバッグ用です。通常の使用では変更不要です。</string>
+
+    <!-- ===== レイアウト：about ページ ===== -->
+    <string name="main_about_title">について</string>
+    <string name="main_about_subtitle">CONTAX T3 · デジタルフィルムカメラ</string>
+    <string name="main_about_tip_title">作者にコーヒーを一杯おごる</string>
+    <string name="main_about_tip_body">インディー開発の応援をありがとうございます —— QR コードを読み取るか、下の PayPal をご利用ください</string>
+    <string name="main_cd_tip_code">支援用 QR コード</string>
+    <string name="main_cd_paypal">PayPal で支援</string>
+    <string name="main_about_oss">オープンソース謝辞</string>
+
+    <!-- ===== レイアウト：暗室現像画面 ===== -->
+    <string name="main_dev_screen_title">暗室現像</string>
+    <string name="main_dev_shake_hint">スマホを振ると現像が速くなります</string>
+    <string name="main_dev_background">バックグラウンド現像</string>
+
+    <!-- ===== レイアウト：アルバムページ ===== -->
+    <string name="main_undeveloped_rolls">未現像のフィルム</string>
+    <string name="main_no_photos">写真はまだありません</string>
+    <string name="gallery_empty_title">仕上がりはまだありません</string>
+    <string name="gallery_empty_hint">ネガはまだフィルムの中にあります。1 巻撮り切って巻き戻し、暗室で現像すると仕上がりがここに表示されます</string>
+    <string name="gallery_undeveloped_hint">現像待ちのフィルムがあります · タップして現像</string>
+
+    <!-- ===== レイアウト：仕上がり表示 ===== -->
+    <string name="main_shoot_same">同じ設定で撮影</string>
+    <string name="viewer_share">共有</string>
+    <!-- 外閃の手動キャリブレーション見本の事後マーク（11-22） -->
+    <string name="viewer_calib_title">外置フラッシュのキャリブレーション見本</string>
+    <string name="viewer_calib_mark_good">良サンプルに設定</string>
+    <string name="viewer_calib_mark_bad">不良サンプルに設定</string>
+    <string name="viewer_calib_mark_clear">マークを解除</string>
+    <string name="viewer_calib_none">これは外置フラッシュのキャリブレーション見本ではありません</string>
+
+    <!-- ===== about ページの名板：仕様表 ===== -->
+    <string name="about_spec_model">機種 MODEL</string>
+    <string name="about_spec_model_value" translatable="false">RELIC CAM</string>
+    <string name="about_spec_lens">レンズ LENS</string>
+    <string name="about_spec_lens_value" translatable="false">35mm f/2.8</string>
+    <string name="about_spec_film">装填 FILM</string>
+    <string name="about_spec_film_value" translatable="false">36 EXP</string>
+    <string name="about_spec_engine">エンジン ENGINE</string>
+    <string name="about_spec_engine_value" translatable="false">SpektraLab</string>
+    <string name="about_spec_version">バージョン VER</string>
+    <string name="about_support">支援 SUPPORT</string>
+    <string name="about_credits">オープンソース謝辞 CREDITS</string>
+
+    <!-- ===== アプリ内購入：エンジニアリングモード Pro ===== -->
+    <string name="about_spec_pro">エンジニアリングモード PRO</string>
+    <string name="pro_state_locked">未ロック解除</string>
+    <string name="pro_state_unlocked" translatable="false">PRO</string>
+    <string name="pro_price_loading">取得中…</string>
+    <string name="pro_buy">%1$s をロック解除</string>
+    <string name="pro_dialog_title">エンジニアリングモード（Pro）</string>
+    <string name="pro_dialog_body">エンジニアリングモードは愛好家向けのエキスパートパネルです。入力露出、引き伸ばし機の露出、乳剤とプリント層のパラメータを手動で調整し、1 巻ずつ好みの仕上がりにできます。\n\n買い切り型でサブスクリプションではありません。一度購入すれば永久に使え、再インストールや機種変更後もワンタップで復元され、二重請求はありません。\n\nRelic Cam 自体にはネットワーク権限がありません。購入はアプリをインストールしたアプリストアが処理するので、撮った写真がこのスマホから外に出ることはありません。</string>
+    <string name="pro_dialog_buy">購入してロック解除</string>
+    <string name="pro_dialog_later">あとで</string>
+    <string name="pro_unlock_ok">エンジニアリングモードが解除されました。ご支援ありがとうございます</string>
+    <string name="pro_unavailable">ただいま購入できません。しばらくしてからお試しください</string>
+    <string name="pro_not_ready">価格を取得中です。少し待ってからもう一度タップしてください</string>
+
+    <!-- ===== about ページ（AboutActivity コード内の文言） ===== -->
+    <string name="about_tap_more">%1$s · あと %2$d 回タップ</string>
+    <string name="about_no_browser">使用できるブラウザがありません</string>
+    <string name="about_feedback_email_channel">メールでフィードバック</string>
+    <string name="about_feedback_wechat_channel">WeChat グループでフィードバック</string>
+    <!-- v81 フィードバックダイアログ：ボディの名板風（副題 / 副エッチング説明 / 2行のヒント / 下部の備考） -->
+    <string name="about_feedback_subtitle">フィードバック窓口</string>
+    <string name="about_feedback_hint">いずれかの方法で問題をお知らせください</string>
+    <string name="about_feedback_mail_hint">バージョン、機種、端末の診断レポートが自動で添付されます</string>
+    <string name="about_feedback_wechat_hint">WeChat ID「LazyRofin」をコピーしてグループに参加し、直接お話しください</string>
+    <string name="about_feedback_note">メールはシステムのメールアプリから送信されます。診断レポートは本文にあり、ご自身で削除できます</string>
+    <string name="feedback_diag_header">—— 端末診断レポート（自動生成、本メールに添付済み。不要なら削除可）——</string>
+    <string name="feedback_diag_unavailable">（端末診断レポートは現在使用できません。フィードバックに機種と OS バージョンをご記入ください）</string>
+    <string name="about_spec_update">アップデート UPDATE</string>
+    <string name="about_update_action">タップして確認</string>
+    <string name="update_checking">アップデートを確認中…</string>
+    <string name="update_no_update">最新バージョンです</string>
+    <string name="update_available">新しいバージョンが見つかりました。ダウンロードを開始します</string>
+    <string name="update_open_page">ダウンロードページを開きました</string>
+    <string name="update_no_browser">使用できるブラウザやアプリストアがありません</string>
+    <string name="update_flow_failed">アプリ内アップデートが開始されなかったため、ダウンロードページを開きました</string>
+    <string name="update_downloaded">新しいバージョンをダウンロードしました。アプリを再起動してインストールを完了してください</string>
+    <string name="update_restart">今すぐ再起動</string>
+    <string name="update_later">あとで</string>
+    <string name="about_wechat_id_label">WeChat ID</string>
+    <string name="about_wechat_copied">WeChat ID %1$s をコピーしました。WeChat で検索してグループに参加してください</string>
+    <string name="about_source_request">ソースコードの請求：%1$s</string>
+    <string name="about_source_subject">RELIC CAM ソースコード請求</string>
+    <string name="about_gpl_full">GNU GPL-3.0 全文</string>
+    <string name="hidden_title">エンジニアリングモード</string>
+    <string name="eng_mode_title">エンジニアリングモード</string>
+    <string name="eng_mode_on_toast">エンジニアリングモードがオンになりました。about ページのバージョン番号を 1 回タップすると開きます</string>
+    <string name="eng_mode_off_toast">エンジニアリングモードがオフになりました。about ページのバージョン番号を 10 回連続タップすると再び有効になります</string>
+    <string name="eng_slow_hint">暗い場所ではフィルムのシャッター速度で撮影します。その手持ちの揺れこそがフィルムらしさです</string>
+    <string name="eng_slow_mode">段階</string>
+    <string name="eng_lens_blur">レンズの柔らかさ</string>
+    <string name="eng_lens_hint">Sonnar がネガに与える柔らかさ（ボディの特性で、フィルムを替えても変わりません）</string>
+    <string name="eng_lens_note">0 = オフ（純粋なデジタル画像のシャープさ）· 4 = 気づかない程度 · 8 = わずか · 12 = 既定 · 20 = はっきり柔らかい · 35 = クリーミー。変更は次の現像から適用されます</string>
+    <string name="eng_jpeg_norm">JPEG 入力補正</string>
+    <string name="eng_jpeg_norm_hint">スマホの ISP が追加した余分な色を打ち消します（JPG / 読み込みのみ）</string>
+    <string name="eng_jpeg_norm_note">既定値は 70%（v73：JPG がまだ濃すぎるというユーザーからのフィードバックにより、11-08 の実機 3 段階の補間で引き上げました。上限も 35% から 45% に変更）· 0 = オフ（旧バージョンとピクセル単位で一致）· 100% は薄く明るすぎます。ボディ設定パネルの「色の濃さ」3 段階はこのスライダーと同じ値を共有し、パネルには標準 / 淡 / オリジナルと表示されます。中間値にすると「カスタム」と表示されます。1 巻で統一：最初のフレームの統計で基準を決め、36 枚すべてで共有するため、濃淡がぶれません。フラットな被写体、夜景、ほぼモノクロの画面では自動的に弱めたり補正しなかったりします。機種には依存しません：入力が ISP でどれだけ調整されたかだけを測るため、スマホごとに適した強度になります。JPG と読み込み写真のみに作用し、RAW は影響を受けず、フィルムやプリントのパラメータも変更しません。変更は次の現像から適用されます</string>
+    <string name="eng_jpeg_norm_off">オフ</string>
+    <string name="eng_raw_negative">RAW ネガ</string>
+    <string name="eng_raw_hint">撮影と同時に RAW も記録します（16bit Bayer、ISP のトーンマッピング / AWB / マルチフレーム合成をバイパス）。DNG はネガとしてプライベートディレクトリに保存され（1 枚約 25～40MB）、現像はエンジンの RAW セッションで行います。失敗した場合は自動的に JPEG 経路に戻り、フレームは失われません</string>
+    <string name="eng_raw_unavailable">RAW ネガ（非対応端末）</string>
+    <string name="eng_cc">色調整</string>
+    <string name="eng_cc_hint">肌色が黄色っぽく白くなり不足している場合、引き伸ばし機のフィルターで補正します（プリント档のみ）</string>
+    <string name="eng_cc_y">寒暖</string>
+    <string name="eng_cc_y_warm">暖 · 黄</string>
+    <string name="eng_cc_y_cold">寒 · 白</string>
+    <string name="eng_cc_m">緑 ↔ マゼンタ</string>
+    <string name="eng_cc_m_magenta">マゼンタ</string>
+    <string name="eng_cc_m_green">青緑</string>
+    <string name="eng_cc_scale">フィルター強度</string>
+    <string name="eng_cc_note">肌色が黄色っぽいときは、寒暖を「寒 · 白」側にドラッグします。まだ黄色い場合はマゼンタを少し追加してください。2 枚のフィルター自体は非常に弱く（最大でも 1～2 段しか動きません）、変化を確認するにはフィルター強度を上げる必要があります。既定値 0/0 = 補正なし（フィルターキーを一切送りません）。スライダーを動かすとすぐに適用されます。プリント出力のみに影響し（ラボスキャン档は独自の色補正を維持）、フィルムを替えても変わらず、変更は次の現像から適用されます</string>
+    <string name="eng_cc_off">オフ</string>
+    <string name="eng_style_hint">引き伸ばし機で相紙にプリントするか、お店でネガをスキャンしてもらうか</string>
+    <string name="eng_dev_hint">粒状感 · ハレーション · フレア · 露出補正 · 相紙（フィルムごとに保存）</string>
+    <string name="hidden_slow_trigger">スローシャッターの発動条件</string>
+    <string name="hidden_slow_prob">純粋な確率派：同じ場面でもブレるときとブレないときがある</string>
+    <string name="hidden_slow_real">純粋な再現派：暗い場所では必ずスローシャッターになり、乱数を使わない</string>
+    <string name="hidden_slow_mix">再現派 + わずかなランダム：必ずスローシャッターになり、たまにもう 1 段遅くなる</string>
+    <string name="hidden_slow_note">いずれも、このページの「スローシャッター」が「ナチュラル」または「やや遅め」に設定されている必要があります。昼間とフラッシュ使用時は発動しません。</string>
+    <string name="hidden_save">保存</string>
+    <string name="hidden_saved">保存しました</string>
+    <string name="hidden_diag_title">現像時間の診断 DEVELOP TIMING</string>
+    <string name="hidden_diag_none">現像の記録はまだありません</string>
+    <string name="hidden_diag_copied">診断情報をコピーしました</string>
+
+    <!-- クラッシュログ：native 層のクラッシュはプロセス全体が落ち、logcat では捕捉できないことが多く、ファイルに落として確認する -->
+    <string name="hidden_crash_title">クラッシュログ CRASH LOG</string>
+    <string name="hidden_crash_none">クラッシュの記録はまだありません</string>
+    <string name="hidden_crash_copy">コピー</string>
+    <string name="hidden_crash_clear">クリア</string>
+    <string name="hidden_crash_cleared">クラッシュログをクリアしました</string>
+
+    <!-- 11-21 フィルム巻きリスト：現在装填中の巻きの琥珀色の刻字 -->
+    <string name="film_current_badge">装填中</string>
+    <!-- 外閃の自動学習ペアリングウィザード（vc86 第3層） -->
+    <string name="flash_pair_title">外置フラッシュのペアリング</string>
+    <string name="flash_pair_subtitle">自動学習ペアリング · FLASH PAIRING</string>
+    <string name="flash_pair_scan_hint">付近の BLE デバイスをスキャン中… システムでペアリング済みの灯が先に表示されます。お使いの灯をタップしてください。Android からペアリング要求が表示された場合は「ペアリング」をタップしてください。</string>
+    <string name="flash_pair_unnamed">未命名のデバイス</string>
+    <string name="flash_pair_bonded_tag">ペアリング済み</string>
+    <string name="flash_pair_step1">ステップ 1 · フラッシュを選ぶ</string>
+    <string name="flash_pair_step2">ステップ 2 · コマンドチャネルを選ぶ</string>
+    <string name="flash_pair_step3">ステップ 3 · 発光コマンドを探す</string>
+    <string name="flash_pair_rescan">再スキャン</string>
+    <string name="flash_pair_trial_hint">候補を 1 つずつタップして送信し、灯の様子を見てください。光ったら下の緑色のボタンで保存します。（ウィザードは灯だけを操作し、カメラには影響しません）</string>
+    <string name="flash_pair_manual_hint">コマンドを手動入力 (hex)</string>
+    <string name="flash_pair_send">試し送信</string>
+    <string name="flash_pair_confirm">光ったのでペアリングを保存</string>
+    <string name="flash_pair_none">どれも光らなかったので、次のチャネルへ</string>
+    <string name="flash_pair_test_again">保存してもう一度試す</string>
+    <string name="flash_pair_finish">完了</string>
+    <string name="flash_pair_connected">接続しました。コマンドチャネルを読み取り中…</string>
+    <string name="flash_pair_disconnected">接続が切断されました</string>
+    <string name="flash_pair_chars_found">書き込み可能なチャネルを %1$d 個見つけました</string>
+    <string name="flash_pair_no_write_char">この灯は書き込み可能なチャネルを公開していないため、自動学習できません</string>
+    <string name="flash_pair_write_fail">コマンド %1$s の書き込みに失敗しました</string>
+    <string name="flash_pair_connecting">%1$s に接続中…</string>
+    <string name="flash_pair_sent_mark">送信済み</string>
+    <string name="flash_pair_try_next">チャネル一覧に戻り、別のものを試してください</string>
+    <string name="flash_pair_bad_hex">コマンドの形式が正しくありません。2、4、6 桁の 16 進数（例：05 00）で入力してください</string>
+    <string name="flash_pair_save_fail">プロファイルの保存に失敗しました</string>
+    <string name="flash_pair_saved">保存しました：%1$s\n発光コマンド %2$s\n撮影時にこの灯が自動で使われます</string>
+    <string name="flash_pair_saved_title">ペアリング済みの灯</string>
+    <string name="flash_pair_saved_empty">ペアリング済みの灯はまだありません。「外置フラッシュ」档に切り替えるとこのページが自動で開きます。</string>
+    <string name="flash_pair_delete">削除</string>
+    <string name="flash_pair_page1">ページ 1 · 灯を探す</string>
+    <string name="flash_pair_page2">ページ 2 · コマンドチャネル</string>
+    <string name="flash_pair_page3">ページ 3 · 試し発光</string>
+    <string name="flash_pair_page4">ページ 4 · 完了</string>
+    <string name="flash_pair_group_paired">システムでペアリング済み · 灯の候補</string>
+    <string name="flash_pair_group_nearby">付近の BLE アドバタイズ</string>
+    <string name="flash_pair_group_other">その他のペアリング済みデバイス</string>
+    <string name="flash_pair_hint_nobond">シャッターキー付きの灯は Android に HID として自動ペアリングされ、接続するとアドバタイズを止めます。システムの Bluetooth 設定でペアリングを削除しないでください。削除しても自動的に再ペアリングされます。</string>
+    <string name="flash_pair_hint_dialog">Android からペアリング要求が表示された場合は「ペアリング」をタップしてください。</string>
+    <string name="flash_pair_hint_near">灯が名前をアドバタイズしない場合があります。信号強度、MAC の下桁、svc 短コードを確認してください。灯をスマホに近づけると見つけやすくなります。</string>
+    <string name="flash_pair_manual_mac_hint">MAC を手動入力（例：DA:BA:CD:E2:BE:B0）</string>
+    <string name="flash_pair_manual_mac_btn">MAC で接続</string>
+    <string name="flash_pair_bad_mac">MAC の形式が正しくありません</string>
+    <string name="flash_pair_back">← 戻る</string>
+    <string name="flash_pair_exit">終了</string>
+    <string name="flash_pair_primary_rescan">再スキャン</string>
+    <string name="flash_pair_primary_relight">灯を選び直す</string>
+    <string name="flash_pair_primary_confirm">光った · ペアリングを保存</string>
+    <string name="flash_pair_primary_finish">完了 · ファインダーに戻る</string>
+    <string name="flash_pair_status_scan">SCANNING</string>
+    <string name="flash_pair_status_connecting">CONNECTING</string>
+    <string name="flash_pair_status_connected">CONNECTED</string>
+    <string name="flash_pair_status_trial">TRIAL</string>
+    <string name="flash_pair_status_paired">PAIRED</string>
+    <string name="flash_pair_paired_title">ペアリング済み</string>
+    <string name="flash_pair_next_hint">次回「外置フラッシュ」档に切り替えると、この灯に直接接続します</string>
+    <string name="flash_pair_no_candidate">灯の特徴を持つペアリング済みデバイスが見つかりません。下のアドバタイズ一覧を確認するか、MAC を手動入力してください</string>
+    <string name="flash_pair_disconnect_hint">切断されました。ページ 1 に戻って灯を選び直してください</string>
+    <string name="flash_pair_recommended">推奨 · スルー</string>
+    <string name="flash_pair_config_char">設定用</string>
+    <string name="flash_pair_char_hint">推奨チャネルは上部に並んでいます。設定用のキャラクタリスティックは灯を光らせないので、選ばないでください。</string>
+    <string name="flash_pair_write_busy">前のコマンドの応答を待っています。少し待ってからタップしてください</string>
+    <string name="flash_pair_reconnecting">チャネルから応答がありません · 再接続中</string>
+    <string name="flash_pair_reconnected">再接続しました · もう一度お試しください</string>
+    <string name="flash_pair_write_rejected">デバイスがこのコマンドを拒否しました</string>
+    <string name="flash_pair_trial_channel">現在のチャネル %1$s</string>
+    <string name="flash_pair_advanced">詳細 · その他のペアリング済み / 手動 MAC   ▾</string>
+    <string name="flash_pair_advanced_open">詳細 · その他のペアリング済み / 手動 MAC   ▴</string>
+    <string name="flash_pair_no_candidate_hint">灯らしいデバイスが見つかりません。① フラッシュの電源を入れる ② Android がペアリングするのを待つ ③ 下の「再スキャン」をタップしてペアリング済み一覧を更新してください。</string>
+    <string name="flash_pair_not_recommended">以下は設定用のキャラクタリスティックで、灯は光りません</string>
+    <string name="flash_pair_frame_untested">未試行 · %1$d 件</string>
+    <string name="flash_pair_frame_tried">試行済み · %1$d 件   %2$s</string>
+    <string name="flash_pair_expand">展開</string>
+    <string name="flash_pair_collapse">折りたたむ</string>
+    <string name="flash_pair_hit">光った</string>
+    <string name="flash_pair_hit_mark">✓ 命中</string>
+    <string name="flash_pair_hit_first">まずこの行をタップして送信し、灯が光ったら「光った」をタップしてください</string>
+    <string name="flash_pair_primary_confirm_with">これを保存 · %1$s</string>
+    <string name="flash_pair_frame_disabled_hint">メインボタンが有効になりません。まずフレームを 1 つタップし、灯が光ったら「光った」をタップしてください</string>
+    <!-- 神牛 A2 専用のクイック試し発光：汎用候補フレームでは 1000,Test に当たらないため、A2 を検出した時だけ表示 -->
+    <string name="flash_pair_a2_quick">Godox A2 クイック試し発光 · 自動 2 連発</string>
+    <string name="flash_pair_a2_hint">A2 を検出しました。クイックボタンをタップするとリセット後、検証済みの試し発光フレームを 2 回連続で送信します。キセノンが光ったら下の「ペアリングを保存」をタップしてください。</string>
+    <string name="flash_pair_a2_reset">A2 · フラッシュモードをリセット</string>
+    <string name="flash_pair_a2_fire1">A2 · 試し発光 1/2（最初の 1 発は灯に吸われることがあります）</string>
+    <string name="flash_pair_a2_fire2">A2 · 試し発光 2/2 · 灯を見てください</string>
+    <string name="flash_pair_a2_done">A2 · 2 回連続送信しました。キセノンが光ったら下の「ペアリングを保存」をタップしてください</string>
+    <string name="flash_pair_a2_no_cmd">A2 · FEC7 が見つかりません。直接試し発光します（LED のみ光る場合があります）</string>
+    <string name="flash_pair_a2_no_char">A2 · FFF1 の試し発光口が見つかりません。別のチャネルをお試しください</string>
+    <!-- FotorGear COB クイックペアリング：検証済みの FFE0 / FFE1 + 05 00 を使用し、候補フレームを 1 つずつ試さない -->
+    <string name="flash_pair_fg_quick">FotorGear クイックペアリング · ワンタップ試し発光</string>
+    <string name="flash_pair_fg_hint">FotorGear を検出しました。クイックボタンをタップすると検証済みの 05 00 を送信します（約 200ms で発光）。光ったら下の「ペアリングを保存」をタップしてください。</string>
+    <string name="flash_pair_fg_fire">FotorGear · 試し発光中（約 200ms 後に発光）</string>
+    <string name="flash_pair_fg_done">FotorGear · 試し発光しました。光ったら下の「ペアリングを保存」をタップしてください</string>
+    <string name="flash_pair_fg_no_char">FotorGear · FFE1 の試し発光口が見つかりません。別のチャネルをお試しください</string>
+    <string name="flash_pair_copy_profile">プロファイルをコピー（友達やフォーラムに貼れます）</string>
+    <string name="flash_pair_copied">プロファイルをコピーしました</string>
+    <string name="flash_pair_copy_empty">コピーできるプロファイルがまだありません</string>
+    <string name="flash_pair_done_meta">MAC    %1$s\nCH     %2$s\nTRIG   %3$s\nPAIRED %4$s   ·   LEARNED</string>
+    <string name="flash_pair_lcd_paired">PAIRED · 外置フラッシュ準備完了</string>
+    <string name="main_external_status_named">外置フラッシュ: %1$s · %2$s</string>
+
+    <!-- ===== 外置フラッシュ管理：設定パネルの visible 入口 + ウィザード管理モード ===== -->
+    <string name="flash_pair_manage_title">外置フラッシュ管理</string>
+    <string name="flash_pair_manage_subtitle">EXTERNAL FLASH / PROFILES</string>
+    <string name="flash_pair_status_manage">MANAGE</string>
+    <string name="flash_pair_manage_header">ペアリング済みの灯  %1$d</string>
+    <string name="flash_pair_manage_hint">プロファイルは MAC ごとに発光コマンドを記憶し、「フラッシュ: 外置」に切り替えると自動接続します。プロファイルをコピーして共有したり、貼り付けて読み込んだりできます。</string>
+    <string name="flash_pair_manage_empty">ペアリング済みの灯はまだありません。「新しい灯をペアリング」をタップするか、「フラッシュ: 外置」に切り替えると自動的にペアリングが始まります。</string>
+    <string name="flash_pair_manage_import">クリップボードからプロファイルを読み込む</string>
+    <string name="flash_pair_manage_import_ok">プロファイルを読み込みました：%1$s</string>
+    <string name="flash_pair_manage_import_fail">クリップボードに認識できるプロファイルがありません</string>
+    <string name="flash_pair_primary_pair_new">＋ 新しい灯をペアリング</string>
+    <string name="flash_pair_copy_short">コピー</string>
+    <string name="flash_pair_manage_deleted">%1$s を削除しました</string>
+    <string name="flash_pair_manage_row_meta">%1$s   CH %2$s   TRIG %3$s</string>
+
+    <!-- EXT 档に切り替えると：機頂の EV ダイヤルがその場でフラッシュ細か補正になる -->
+    <string name="lcd_notice_flash_ev_fine">外置フラッシュ補正 0.5 EV/段</string>
+
+    <!-- ===== ウェストレベルファインダー（P0 骨格）：設定行 + 半画面のコントロールバー ===== -->
+    <string name="a2_lamp_code">A2 LAMP</string>
+    <string name="a2_lamp_ready">コマンドチャネルの準備ができました（FEC7）</string>
+    <string name="a2_lamp_not_ready">未準備：外置フラッシュ档で A2 に接続すると使用できます</string>
+    <string name="a2_lamp_brightness">モデリングランプの明るさ（0～100、0 = オフ）</string>
+    <string name="a2_lamp_cct">色温度（1～100、100 = 白色光）</string>
+    <string name="a2_lamp_reset">フラッシュモードをリセット</string>
+    <string name="a2_lamp_reset_done">リセットシーケンスを再実行しました（06 01 → 05 00 → 0c 00 → 03 00）</string>
+    <string name="a2_lamp_hint">明るさ = 0x06（0 にドラッグするとモデリングモードから自動退出）、色温度 = 0x07。ランプを点けっぱなしにするとキセノン連写が悪化します（2 枚目以降は LED のみ）。撮影前に 0 に戻してください。LED しか光らないときは「フラッシュモードをリセット」をタップしてください。</string>
+    <string name="a2_lamp_close">閉じる</string>
+    <string name="a2_lamp_pwr_title">フラッシュの出力（8 段階のキャリブレーション）</string>
+    <string name="a2_lamp_pwr_slider">出力段階</string>
+    <string name="a2_lamp_pwr_full">フル出力 1/1</string>
+    <string name="a2_lamp_pwr_min">最小 1/128</string>
+    <string name="a2_lamp_pwr_restore">TTL に戻す</string>
+    <string name="a2_lamp_pwr_hint">スライダーで 1/1～1/128 を 8 段階から選び、指を離すと灯に出力が反映され、次の撮影に使われます。Pro の手動 ISO / シャッターと組み合わせてキャリブレーション見本を集められます。</string>
+    <string name="a2_lamp_pwr_sent">出力フレームを送信しました：%1$s</string>
+    <string name="a2_lamp_pwr_no_support">現在の灯は出力フレームに対応していません</string>
+    <string name="eng_waist">ウェストレベルファインダー（折りたたみ端末のイースターエッグ）</string>
+    <string name="eng_waist_hint">オフ＝発動しない。自動＝折りたたみ端末が半開きのときだけ表示（通常のスマホでは見えません）。シミュレート＝通常のスマホでも半画面に分割します。デバッグ専用です</string>
+    <string name="eng_waist_off">オフ</string>
+    <string name="eng_waist_auto">自動</string>
+    <string name="eng_waist_simulate">シミュレート</string>
+    <string name="waist_level_label">WAIST LEVEL</string>
+    <string name="waist_level_engrave">RELIC CAM · WAIST FINDER</string>
+    <string name="waist_level_close">CLOSE</string>
+    <string name="waist_level_readout">EV 0 · OFF · 0/36</string>
+    <string name="waist_level_cd_shutter">シャッター</string>
+    <string name="waist_level_cd_rotate">画幅を切り替え：自動 / 1:1 6×6 中判 / 3:2 135 フルフレーム</string>
+    <string name="lcd_notice_waist">ウェストレベルファインダー · 半画面</string>
+    <string name="lcd_notice_waist_off">ウェストレベルファインダー · オフ</string>
+
+    <!-- ===== 権限拒否の名板 ===== -->
+    <string name="perm_dlg_camera_title">カメラの権限が必要です</string>
+    <string name="perm_dlg_camera_body">これがないとファインダーで撮影できません。「設定」→「アプリ」→「権限」で有効にしてください。</string>
+    <string name="perm_dlg_bt_title">Bluetooth の権限が必要です</string>
+    <string name="perm_dlg_bt_body">外置フラッシュの接続に必要です。設定で有効にするか、内蔵フラッシュをご利用ください。</string>
+    <string name="perm_dlg_storage_title">ストレージの権限が必要です</string>
+    <string name="perm_dlg_storage_body">古い Android ではネガや仕上がりの保存に必要です。</string>
+    <string name="perm_dlg_notif_title">通知の権限が必要です</string>
+    <string name="perm_dlg_notif_body">現像が完了したときにお知らせします。設定で有効にしてください。</string>
+    <string name="perm_dlg_go_settings">設定へ</string>
+    <string name="perm_dlg_dismiss">了解</string>
+
+</resources>

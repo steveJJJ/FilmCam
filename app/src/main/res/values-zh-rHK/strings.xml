@@ -1,0 +1,601 @@
+<resources>
+    <string name="app_name">Relic Cam</string>
+
+    <!-- 關於頁 -->
+    <string name="about_intro">把手機變成一台康泰時 T3。\n\n取景器裡看到的是真實的光學世界；快門按下一卷 36 張的膠卷；拍完送進暗房沖洗，出片由膠片引擎按這一卷的配方顯影。\n\n沖洗之前，誰也不知道拍到的是什麼——這就是膠片的樂趣。</string>
+    <string name="percent_fmt">%1$d%%</string>
+    <string name="about_self_title">RELIC CAM 以 GNU GPL-3.0-or-later 開源散發</string>
+    <string name="about_self_body">本專案使用了 GPL-3.0 的 SpektraLab 膠片模擬引擎，因而同樣以 GPL-3.0-or-later 散發：你可以自由使用、修改與再散發，再散發時須開放原始碼並保留同一授權與署名。\n原始碼儲存庫尚未公開，依據授權條款，原始碼在索取時提供。</string>
+    <string name="about_paypal">PayPal 讚賞</string>
+    <!-- PayPal 讚賞頁；留空時不展示入口 -->
+    <string name="appreciate_paypal_url" translatable="false">https://paypal.me/Stevejjjjjj</string>
+    <!-- 微信讚賞碼為純圖片展示，無連結可跳。此欄位預留作未來擴充，當前留空、程式不引用。 -->
+    <string name="appreciate_wechat_url" translatable="false"></string>
+    <string name="about_feedback">問題回饋</string>
+    <string name="feedback_subject">RELIC CAM 問題回饋 %1$s / 裝置 %2$s %3$s / 系統 Android %4$s (API %5$d)</string>
+    <string name="feedback_body">遇到的問題：
+（簡單描述，例如「沖洗到第 12 張卡住」、「點了快門沒反應」、「取景框錯位」）
+
+重現步驟：
+1.
+2.
+3.
+
+期望的結果：
+
+錯誤訊息（如果崩潰或報錯，請貼上完整堆疊，異常名稱最關鍵）：
+（例如 IllegalStateException / Resources$NotFoundException / IOException /
+ OutOfMemoryError：Failed to allocate … free bytes … until OOM /
+ JNI weak global ref table overflow (0x1fff=8191 entries) 等）
+
+adb logcat 片段（選用，電腦上執行 adb logcat | findstr FILMCAM，貼相關行）：
+
+—— 以下資訊自動產生，請保留，有助於定位 ——
+App 版本：%1$s (%2$d)
+裝置：%3$s %4$s
+系統：Android %5$s (API %6$d)
+螢幕：%7$dx%8$d @%9$ddpi
+可用記憶體：%10$d MB / 共 %11$d MB
+</string>
+    <string name="feedback_email_missing">回饋信箱尚未設定</string>
+    <string name="feedback_no_mail_app">沒有可用的郵件應用程式</string>
+    <!-- 接收問題回饋的信箱；留空時點擊會提示未設定 -->
+    <string name="app_feedback_email" translatable="false">837226902ah@gmail.com</string>
+    <!-- 留空則關於頁不顯示索取入口；填入信箱後自動變成可點擊的 mailto 連結 -->
+    <string name="app_source_email" translatable="false"></string>
+    <string name="about_oss_summary">RELIC CAM 站在這些開源專案與素材作者的作品上——感謝各位開發者的慷慨分享。\n沖洗引擎程式碼依 GPL-3.0-or-later 使用，膠片/相紙配方與引擎資源依 CC BY-SA 4.0 使用；點擊查看具體授權與來源。</string>
+
+    <!-- 開源致謝：名稱 | 作者/組織 | 授權 | 連結 | 修改說明（選用） -->
+    <string-array name="oss_credits">
+        <item>SpektraLab for Android（Vulkan 後端適配、JNI、Android 原生引擎庫）|SAINTTaiYi|GPL-3.0-or-later|https://github.com/SAINTTaiYi/SpektraLab-Android|本專案直接使用該移植提供的原生引擎庫與工程結構，並按 App 需求做了裁剪與調整</item>
+        <item>SpektraLab 物理膠片 / 相紙模擬引擎（上游）|JamesQiu2005 及 SpektraLab 貢獻者|GPL-3.0-or-later|https://github.com/JamesQiu2005/SpektraLab</item>
+        <item>spektrafilm 膠片模型、28 款實測配置與放大 LUT|Andrea Volpato|CC BY-SA 4.0|https://github.com/andreavolpato/spektrafilm|原素材已按本專案需求調整（ISO 適配與本地化命名），同樣以 CC BY-SA 4.0 散發</item>
+        <item>SpektraFilm 引擎資源（profiles / LUT / 常量表）|SpektraLab · JamesQiu2005|CC BY-SA 4.0|https://creativecommons.org/licenses/by-sa/4.0/|資源包已按本專案需要裁剪（僅保留所用型號），同樣以 CC BY-SA 4.0 散發</item>
+        <item>LibRaw RAW 解碼庫|LibRaw 貢獻者|LGPL-2.1 / CDLL|https://github.com/LibRaw/LibRaw</item>
+        <item>libjpeg-turbo JPEG 編解碼庫|libjpeg-turbo 貢獻者|BSD-3-Clause / IJG / Zlib|https://github.com/libjpeg-turbo/libjpeg-turbo</item>
+        <item>Little CMS 2 色彩管理引擎|Marti Maria Saguer|MIT|https://github.com/mm2/Little-CMS</item>
+        <item>zlib 資料壓縮庫|Jean-loup Gailly、Mark Adler|zlib License|https://github.com/madler/zlib</item>
+        <item>LLVM libc++ 執行環境|LLVM Project|Apache-2.0 with LLVM exception|https://github.com/llvm/llvm-project</item>
+        <item>Android Jetpack（AndroidX）：Core / AppCompat / RecyclerView / ViewPager2 / ConstraintLayout / Lifecycle / ExifInterface|Google LLC|Apache-2.0|https://github.com/androidx/androidx</item>
+        <item>Material Components for Android|Google LLC|Apache-2.0|https://github.com/material-components/material-components-android</item>
+        <item>Kotlin / Kotlinx Coroutines|JetBrains|Apache-2.0|https://github.com/JetBrains/kotlin</item>
+        <item>Coil 圖片載入庫|Coil Contributors|Apache-2.0|https://github.com/coil-kt/coil</item>
+        <item>DSEG7 七段數碼管字體|keshikan|SIL OFL 1.1|https://github.com/keshikan/DSEG</item>
+        <item>Imprint 印刷體與等寬字體|Google Fonts · Croscore(Red Hat) · Bitstream/DejaVu|SIL OFL 1.1|https://fonts.google.com/</item>
+        <item>stb 單檔案庫|Sean Barrett|MIT / Public Domain|https://github.com/nothings/stb</item>
+        <item>org.json|JSON.org|JSON License|https://github.com/stleary/JSON-java</item>
+        <item>JUnit 4|Eclipse Foundation|EPL-1.0|https://github.com/junit-team/junit4</item>
+    </string-array>
+
+    <!-- 成片資訊面板 -->
+    <string name="info_group_shooting">拍攝參數</string>
+    <string name="info_group_develop">沖洗參數</string>
+    <string name="info_group_engine">引擎</string>
+    <string name="info_tap_hint">點擊照片查看膠卷資訊</string>
+    <string name="info_no_exif">此照片無膠卷資訊</string>
+
+    <!-- 設定彈窗 -->
+    <string name="set_title">設定</string>
+    <string name="set_close">關閉</string>
+    <string name="set_body">機身</string>
+    <string name="set_datestamp">日期浮水印</string>
+    <string name="set_haptic">震動強度</string>
+    <string name="set_language">語言</string>
+    <string name="set_quality">沖洗畫質</string>
+    <string name="set_dev">沖洗參數</string>
+    <string name="set_about">關於 RELIC CAM</string>
+    <string name="quality_full">完整</string>
+    <string name="quality_standard">標準</string>
+    <string name="set_style">輸出風格</string>
+    <string name="style_print">印相</string>
+    <string name="style_frontier">Frontier 掃描</string>
+    <string name="style_noritsu">Noritsu 掃描</string>
+    <string name="set_frame">膠片相框</string>
+    <string name="frame_full">全畫幅 3:2</string>
+    <string name="frame_white">白邊相框</string>
+    <string name="set_color">色彩濃度</string>
+    <string name="set_raw">RAW 底片</string>
+    <string name="set_flash">外閃燈管理</string>
+    <string name="set_flash_none">未配對</string>
+    <string name="set_flash_multi">%1$d 台</string>
+    <string name="raw_unavailable">不支援</string>
+    <string name="color_strength_standard">標準</string>
+    <string name="color_strength_soft">淡</string>
+    <string name="color_strength_original">原始</string>
+    <string name="color_strength_custom">自訂 %1$d%%</string>
+    <string name="set_frame_probe_failed">這一格片門引擎不認，沖洗時這一卷不會帶片框；詳情見機身外部儲存 spektra_frame_probe.txt</string>
+    <string name="set_slow">慢門</string>
+    <string name="set_wb">白平衡</string>
+    <string name="slow_off">關</string>
+    <string name="slow_natural">自然</string>
+    <string name="slow_frequent">偏慢</string>
+    <string name="set_slow_unsupported">本機不支援手動曝光，慢門不可用</string>
+    <string name="lang_pick_title">選擇機身語言</string>
+    <string name="lang_pick_sub">介面與膠卷說明同時切換 · 點選即刻落位</string>
+    <string name="lang_system">跟隨系統</string>
+    <string name="lang_zh">簡體中文</string>
+    <string name="lang_en">English</string>
+    <string name="common_on">開</string>
+    <string name="common_off">關</string>
+    <string name="body_black">黑鈦</string>
+    <string name="body_titan">鈦銀</string>
+    <string name="haptic_low">低</string>
+    <string name="haptic_mid">中</string>
+    <string name="haptic_strong">強</string>
+
+    <!-- 設定面板做成機身銘牌：標題下的一行小字 + 六項「名稱 / 說明」列表 -->
+    <string name="set_subtitle">機身設定</string>
+    <string-array name="set_labels">
+        <item>@string/set_body</item>
+        <item>@string/set_haptic</item>
+        <item>@string/set_wb</item>
+        <item>@string/set_language</item>
+        <item>@string/set_quality</item>
+        <item>@string/set_color</item>
+        <item>@string/set_raw</item>
+        <item>@string/set_flash</item>
+        <item>@string/set_about</item>
+    </string-array>
+    <string-array name="set_hints">
+        <item>黑鈦 / 鈦銀兩種機身外殼</item>
+        <item>過卷與按鍵的馬達力度</item>
+        <item>相當於換一片校色濾鏡，拍完也保持不變；腰平取景窗橫滑時顯示該檔標稱色溫（≈K，非實測）</item>
+        <item>跟隨系統 / 簡體中文 / English</item>
+        <item>完整＝原始解析度，慢；標準≈1200 萬畫素，快約 3 倍</item>
+        <item>退掉手機 ISP 多加的那層色彩：標準 / 淡 / 原始，僅 JPG 與匯入照片，RAW 不變；工程控制台可微調 0–100%</item>
+        <item>拍攝時同時儲存 RAW 底片（DNG），沖洗繞過手機 ISP，細節與顆粒更接近真實底片；本機不支援時自動回落 JPEG，工程控制台同款開關</item>
+        <item>檢視、複製或刪除已配對的外置閃光燈；匯入別人的檔案，或自學習配一盞新燈</item>
+        <item>機身銘牌與授權</item>
+    </string-array>
+
+    <!-- ===== 主頁 MainActivity / 版面通用文案 ===== -->
+
+    <!-- 通用按鈕 -->
+    <string name="main_ok">確定</string>
+    <string name="main_cancel">取消</string>
+
+    <!-- 首次進入引導 -->
+    <string name="main_guide_start">開始引導</string>
+
+    <!-- v82 快速上手卡（段 1，三螢幕翻頁） -->
+    <string name="qs_title_1">這是一台膠片相機</string>
+    <string name="qs_body_1">和真膠卷一樣：先裝卷、再拍攝、最後去暗房沖洗，才看得到成片。\n\n· 已替你裝好 PORTRA 400，直接就能拍\n· 點左下角膠卷圖示換卷——人像、風光、黑白、反轉片風格各不同\n· 一支卷 36 張</string>
+    <string name="qs_title_2">拍完去暗房沖洗</string>
+    <string name="qs_body_2">拍完別急著找相簿：底片還卷在膠卷裡，沖洗前相簿裡空空的不是壞了。\n\n· 點右下角 DARKROOM 進暗房\n· 未沖洗卡片上點「沖洗」，成片自動進相簿\n· 拍完第一張，相機會直接框出暗房入口</string>
+    <string name="qs_title_3">接下來手把手帶你走一遍</string>
+    <string name="qs_body_3">按順序做一遍，就會用這台相機了：\n\n① 點膠卷圖示選卷\n② 點銘牌進 Pro，滑 ISO、推快門\n③ 再點銘牌回自動檔\n④ 點取景框對焦、上下滑調曝光\n⑤ 按快門拍第一張\n⑥ 去暗房沖洗看成片</string>
+    <string name="qs_next">下一頁</string>
+    <string name="about_spec_quickstart">快速上手</string>
+    <string name="about_quickstart_action">重玩</string>
+
+    <!-- 段 2：機頂 LCD 實作引導（八步，做對自動前進，逾時 15s 跳過）
+         點陣螢幕可用邏輯寬約 78dp，文案必須短（≤10 字）才不會被自動縮到看不清楚 -->
+    <string name="guide_roll">點膠卷圖示 · 選卷</string>
+    <string name="guide_pro_enter">點機身銘牌 · 進 Pro</string>
+    <string name="guide_iso">左右滑銘牌 · 調 ISO</string>
+    <string name="guide_shutter_speed">推取景窗刻度 · 調快門</string>
+    <string name="guide_pro_exit">再點銘牌 · 回自動</string>
+    <string name="guide_focus">點取景框 · 對焦</string>
+    <string name="guide_ev">框內上下滑 · 調曝光</string>
+    <string name="guide_shoot">按快門 · 拍第一張</string>
+    <!-- 高亮框上的步驟膠囊：極短，跟 LCD 長句分工（框說點哪，螢幕說做什麼） -->
+    <string name="guide_tag_roll">選卷</string>
+    <string name="guide_tag_pro_enter">進 Pro</string>
+    <string name="guide_tag_iso">調 ISO</string>
+    <string name="guide_tag_shutter">調快門</string>
+    <string name="guide_tag_pro_exit">回自動</string>
+    <string name="guide_tag_focus">對焦</string>
+    <string name="guide_tag_ev">調曝光</string>
+    <string name="guide_tag_shoot">拍第一張</string>
+    <!-- 段 3：首張落卷後帶去暗房沖洗（LCD 常駐 + 框暗房字牌 + 暗房頁接力提示） -->
+    <string name="guide_darkroom">點暗房 · 沖洗這一卷</string>
+    <string name="guide_tag_darkroom">去暗房</string>
+
+    <!-- v82 段 3：首卷護欄 -->
+    <string name="guide_first_frame">第 1/36 張 · 拍完整卷去暗房沖洗</string>
+    <string name="guide_third_frame">已 12/36 · 拍完可去暗房，沖完才能看成片</string>
+    <string name="lcd_notice_first_dev_done">第一卷沖好了 · 出片 %1$d 張</string>
+
+    <!-- 膠卷拍完：引導去暗房 -->
+    <string name="main_roll_finished_title">膠卷已拍完</string>
+    <string name="main_roll_finished_body">這一卷 36 張已拍完，去暗房沖洗出片</string>
+    <string name="main_roll_finished_develop">去沖洗</string>
+    <string name="main_roll_finished_later">稍後</string>
+    <string name="main_roll_finished_code">ROLL FULL</string>
+
+    <!-- 沖洗參數彈窗 -->
+    <string name="main_dev_reset">恢復該款預設</string>
+    <string name="main_dev_paper_auto">自動（按膠卷預設）</string>
+    <string name="main_dev_slide_no_paper">—（反轉片直接顯影，無相紙）</string>
+
+    <!-- 膠卷 / 相紙選擇彈窗 -->
+    <string name="main_pick_film_title">選擇膠卷</string>
+    <string name="main_pick_paper_title">相紙選擇</string>
+
+    <!-- 白平衡預設（閃光開啟時，預覽上左右拖動切換） -->
+    <string name="main_wb_incandescent">白熾燈</string>
+    <string name="main_wb_fluorescent">螢光燈</string>
+    <string name="main_wb_daylight">日光</string>
+    <string name="main_wb_cloudy">陰天</string>
+    <string name="main_wb_shade">陰影</string>
+    <string name="main_wb_twilight">暮光</string>
+
+    <!-- Toast 提示 -->
+    <string name="main_toast_develop_first">請先沖洗當前膠卷</string>
+    <string name="main_toast_no_roll_to_rewind">沒有可卷回的膠卷</string>
+    <string name="main_toast_settings_failed">設定失敗: %1$s</string>
+    <string name="main_toast_permission_required">需要相機/藍牙權限</string>
+    <string name="main_toast_save_failed">儲存失敗: %1$s</string>
+    <string name="main_toast_capture_error">拍照錯誤: %1$s</string>
+    <string name="main_toast_capture_timeout">拍照逾時</string>
+    <string name="main_toast_preview_map_test">預覽映射測試: %1$d</string>
+
+    <!-- 閃光 / ISO / 快門狀態文字 -->
+    <string name="main_flash_off">閃: 關</string>
+    <string name="main_flash_internal">閃: 內建</string>
+    <string name="main_flash_external">閃: 外置</string>
+    <!-- 氙氣燈回電提示：閃光後電容需要數秒充滿，期間再拍會偏弱 -->
+    <string name="main_flash_recharging">回電中</string>
+    <!-- 外閃檔黑片偵測（11-22）：燈沒電/失聯拍出黑片時 LCD 提示，照常落卷由使用者決定刪留 -->
+    <string name="main_flash_miss_notice">閃光未觸發 查電量</string>
+    <string name="main_external_status">外置閃光: %1$s</string>
+    <string name="main_flash_pair_needed">尚未配對外置燈，開始配對</string>
+    <string name="main_flash_pair_cancel">未完成配對，閃光燈已切回關閉</string>
+    <string name="main_external_on">外置: 開</string>
+    <string name="main_external_off">外置: 關</string>
+    <string name="main_pro_label">專業</string>
+    <string name="main_iso_auto">ISO 自動</string>
+    <string name="main_iso_value">ISO %1$d</string>
+    <string name="main_shutter_auto">快門 自動</string>
+    <!-- 左下膠卷資訊（隱藏控制項）：膠卷名 / 類型 / 剩餘張數 -->
+    <string name="main_film_info">%1$s\nCOLOR NEGATIVE\nISO500 · 剩 %2$d 張</string>
+
+    <!-- ===== 版面：無障礙描述 ===== -->
+    <string name="main_cd_flash">閃光燈</string>
+    <string name="main_cd_settings">設定</string>
+    <string name="main_cd_film_current">當前膠卷</string>
+    <string name="main_cd_film_advancing">過卷</string>
+    <string name="main_cd_film_icon">膠卷圖示</string>
+    <string name="main_darkroom">暗房</string>
+    <string name="gallery_import">匯入照片沖洗</string>
+    <string name="gallery_calib_list">標定樣本</string>
+    <string name="calib_list_title">外閃標定樣本</string>
+    <string name="calib_list_hint">拍完即刻記錄，無需沖洗。每行是外置閃光檔的一張：功率 / ISO / 快門 / 距離 / 亮度。直接在這一行標「好」或「差」，歸納 TTL 時按標記篩。</string>
+    <string name="calib_list_empty">還沒有外閃標定樣本。請切到「外置閃光」檔（建議同時進 Pro 模式）拍一張，回到這裡就能看到，不用沖洗。</string>
+    <string name="calib_list_no_ext">卷裡已有照片，但沒有一張是「外置閃光」檔（標定只在 EXT 檔記錄）。請把機身閃光檔切到 EXT、連上 A2 再拍一張。</string>
+    <string name="calib_list_count">%1$d 個樣本</string>
+    <string name="calib_mark_none">未標記</string>
+    <string name="calib_row_good">✓ 好</string>
+    <string name="calib_row_bad">✗ 差</string>
+    <string name="calib_row_clear">清除</string>
+    <string name="calib_frame_raw">未沖洗底片</string>
+    <string name="calib_frame_developed">已沖洗成片</string>
+    <string name="eng_calib_scope">標定記錄範圍</string>
+    <string name="eng_calib_scope_hint">標定樣本（樣本庫/好差標記）預設只在「外置閃光」檔記錄；切到所有照片後任何檔都會發樣本 id（功率/距離仍為閃光專屬）。</string>
+    <string name="calib_scope_ext">僅外置閃光檔</string>
+    <string name="calib_scope_all">所有照片</string>
+    <string name="gallery_import_pick_film">裝哪卷膠卷？</string>
+    <string name="gallery_import_too_many">一卷最多 36 張，只取了前 36 張</string>
+    <string name="gallery_import_busy">當前還有沒沖洗的膠卷，先沖完再匯入</string>
+    <string name="gallery_import_none">沒讀到這些照片</string>
+    <string name="gallery_import_failed">匯入失敗：%1$s</string>
+
+    <!-- ===== 版面：膠卷選擇底部彈層 ===== -->
+    <string name="main_sort_hint">長按可拖拽排序</string>
+
+    <!-- ===== 版面：沖洗參數面板 ===== -->
+    <string name="main_dev_roll_row">膠卷</string>
+    <string name="main_dev_group_develop">顯影 · DEVELOP</string>
+    <string name="main_dev_grain">顆粒強度</string>
+    <string name="main_dev_halation">輝光強度</string>
+    <string name="main_dev_glare">眩光強度</string>
+    <string name="main_dev_group_print">放大 · PRINT</string>
+    <string name="main_dev_enlarger_exposure">曝光補償（只作用於畫面）</string>
+    <string name="main_dev_paper_row">相紙選擇</string>
+    <string name="main_dev_paper_hint">自動 = 按膠卷品牌的官方推薦相紙搭配（如柯達負片印 Portra Endura、電影卷印 Kodak 2383），點上方可手動覆蓋</string>
+
+    <!-- ===== 版面：工程師模式 ===== -->
+    <string name="main_debug_softfocus_prob">模擬失焦機率（0% = 關閉）</string>
+    <string name="main_debug_note">這些選項用於開發除錯，一般使用無需調整。</string>
+
+    <!-- ===== 版面：關於頁 ===== -->
+    <string name="main_about_title">關於</string>
+    <string name="main_about_subtitle">CONTAX T3 · 數位膠片機</string>
+    <string name="main_about_tip_title">請作者喝杯咖啡</string>
+    <string name="main_about_tip_body">感謝支持獨立開發 —— 掃碼讚賞，或走下方 PayPal</string>
+    <string name="main_cd_tip_code">讚賞碼</string>
+    <string name="main_cd_paypal">PayPal 讚賞</string>
+    <string name="main_about_oss">開源致謝</string>
+
+    <!-- ===== 版面：暗房顯影頁 ===== -->
+    <string name="main_dev_screen_title">暗房顯影</string>
+    <string name="main_dev_shake_hint">搖動手機加快顯影</string>
+    <string name="main_dev_background">背景沖洗</string>
+
+    <!-- ===== 版面：相簿頁 ===== -->
+    <string name="main_undeveloped_rolls">未沖洗膠卷</string>
+    <string name="main_no_photos">暫無照片</string>
+    <string name="gallery_empty_title">還沒有成片</string>
+    <string name="gallery_empty_hint">底片還卷在相機裡。拍滿一卷後回卷，到暗房沖洗，成片才會出現在這裡。</string>
+    <string name="gallery_undeveloped_hint">這裡有卷待沖洗 · 點進去洗</string>
+
+    <!-- ===== 版面：成片檢視 ===== -->
+    <string name="main_shoot_same">拍攝同款</string>
+    <string name="viewer_share">分享</string>
+    <!-- 外閃手動標定樣本的事後標記（11-22） -->
+    <string name="viewer_calib_title">外閃標定樣本</string>
+    <string name="viewer_calib_mark_good">標為好樣本</string>
+    <string name="viewer_calib_mark_bad">標為差樣本</string>
+    <string name="viewer_calib_mark_clear">清除標記</string>
+    <string name="viewer_calib_none">這張不是外閃標定樣本</string>
+
+    <!-- ===== 關於頁銘牌：規格表 ===== -->
+    <string name="about_spec_model">型號 MODEL</string>
+    <string name="about_spec_model_value" translatable="false">RELIC CAM</string>
+    <string name="about_spec_lens">鏡頭 LENS</string>
+    <string name="about_spec_lens_value" translatable="false">35mm f/2.8</string>
+    <string name="about_spec_film">裝片 FILM</string>
+    <string name="about_spec_film_value" translatable="false">36 EXP</string>
+    <string name="about_spec_engine">引擎 ENGINE</string>
+    <string name="about_spec_engine_value" translatable="false">SpektraLab</string>
+    <string name="about_spec_version">版本 VER</string>
+    <string name="about_support">讚賞 SUPPORT</string>
+    <string name="about_credits">開源致謝 CREDITS</string>
+
+    <!-- ===== 內購：工程模式 Pro ===== -->
+    <string name="about_spec_pro">工程模式 PRO</string>
+    <string name="pro_state_locked">未解鎖</string>
+    <string name="pro_state_unlocked" translatable="false">PRO</string>
+    <string name="pro_price_loading">獲取中…</string>
+    <string name="pro_buy">解鎖 %1$s</string>
+    <string name="pro_dialog_title">工程模式（Pro）</string>
+    <string name="pro_dialog_body">工程模式是給發燒友的專家面板：可以手工校準輸入曝光、放大機曝光、乳劑與印相層參數，讓每一卷按你的口味出片。\n\n一次買斷，不是訂閱 —— 買過即永久可用；重裝或換手機後點一下就能恢復，不會重複收費。\n\nRelic Cam 自身沒有連網權限，購買由你安裝本應用程式的應用市場完成，你拍的照片依然不可能離開這台手機。</string>
+    <string name="pro_dialog_buy">購買解鎖</string>
+    <string name="pro_dialog_later">以後再說</string>
+    <string name="pro_unlock_ok">已解鎖工程模式，謝謝支持</string>
+    <string name="pro_unavailable">暫時無法完成購買，請稍後再試</string>
+    <string name="pro_not_ready">正在獲取價格，請稍後再點一次</string>
+
+    <!-- ===== 關於頁（AboutActivity 程式內文案） ===== -->
+    <string name="about_tap_more">%1$s · 再點 %2$d 次</string>
+    <string name="about_no_browser">沒有可用的瀏覽器</string>
+    <string name="about_feedback_email_channel">發郵件回饋</string>
+    <string name="about_feedback_wechat_channel">加微信進群回饋</string>
+    <!-- v81 回饋彈窗：機身銘牌風格（副題 / 副蝕刻說明 / 兩行 hint / 底部備註） -->
+    <string name="about_feedback_subtitle">回饋管道</string>
+    <string name="about_feedback_hint">選一種方式把問題交給我們</string>
+    <string name="about_feedback_mail_hint">自動附上版本、機型與裝置診斷報告</string>
+    <string name="about_feedback_wechat_hint">複製微信帳號 LazyRofin，進群當面說</string>
+    <string name="about_feedback_note">郵件由系統郵件應用程式發出，診斷報告在內文，可自行刪除</string>
+    <string name="feedback_diag_header">—— 裝置診斷報告（自動產生，已隨本郵件附上；如不便可刪除）——</string>
+    <string name="feedback_diag_unavailable">（裝置診斷報告暫不可用，請在回饋中說明機型與系統版本）</string>
+    <string name="about_spec_update">更新 UPDATE</string>
+    <string name="about_update_action">點擊檢查</string>
+    <string name="update_checking">正在檢查更新…</string>
+    <string name="update_no_update">當前已是最新版本</string>
+    <string name="update_available">發現新版本，開始下載</string>
+    <string name="update_open_page">已開啟下載頁面</string>
+    <string name="update_no_browser">沒有可用的瀏覽器或應用商店</string>
+    <string name="update_flow_failed">應用內更新未啟動，已改為開啟下載頁面</string>
+    <string name="update_downloaded">新版本已下載，重啟應用程式完成安裝</string>
+    <string name="update_restart">立即重啟</string>
+    <string name="update_later">稍後</string>
+    <string name="about_wechat_id_label">微信帳號</string>
+    <string name="about_wechat_copied">微信帳號 %1$s 已複製，去微信搜尋加群</string>
+    <string name="about_source_request">索取原始碼：%1$s</string>
+    <string name="about_source_subject">RELIC CAM 原始碼索取</string>
+    <string name="about_gpl_full">GNU GPL-3.0 全文</string>
+    <string name="hidden_title">工程模式</string>
+    <string name="eng_mode_title">工程模式</string>
+    <string name="eng_mode_on_toast">工程模式已開啟：關於頁點一下版本號即可進入</string>
+    <string name="eng_mode_off_toast">工程模式已關閉，需在關於頁連點版本號 10 次重新開啟</string>
+    <string name="eng_slow_hint">暗光按膠卷快門速度拍，抖那一下才是膠片</string>
+    <string name="eng_slow_mode">檔位</string>
+    <string name="eng_lens_blur">鏡頭柔度</string>
+    <string name="eng_lens_hint">Sonnar 在底片上的柔度（機身屬性，不隨膠卷換）</string>
+    <string name="eng_lens_note">0 = 關（純數位銳）· 4 察覺不到 · 8 輕微 · 12 預設 · 20 明顯柔 · 35 奶油。改完下一次沖洗生效</string>
+    <string name="eng_jpeg_norm">JPEG 輸入校正</string>
+    <string name="eng_jpeg_norm_hint">退掉手機 ISP 多加的那層色彩（僅 JPG / 匯入）</string>
+    <string name="eng_jpeg_norm_note">預設 70%（v73：使用者回饋 JPG 仍偏濃，按 11-08 真機三檔插值上調；滿檔上限同步由 35% 提到 45%）· 0 = 關（與舊版逐像素一致）· 100% 會偏淡偏亮。機身設定面板的「色彩濃度」三檔與這根滑桿共用同一檔位，面板上顯示標準 / 淡 / 原始；拖到中間值則顯示「自訂」。整卷統一：由首幀統計定一個基準，一卷 36 張共用，不會忽濃忽淡；平淡、夜景與近單色畫面會自動減弱甚至不校正。不認機型：只量輸入被 ISP 調了多少，不同手機自動得到不同強度。只作用 JPG 與匯入照片，RAW 不受影響，也不動膠片和印相參數。改完下一次沖洗生效</string>
+    <string name="eng_jpeg_norm_off">關</string>
+    <string name="eng_raw_negative">RAW 負片</string>
+    <string name="eng_raw_hint">快門同時收 RAW（16bit Bayer，繞過 ISP 的色調映射/自動白平衡/多幀合成），DNG 作底片存私有目錄（約 25–40MB/張），沖洗走引擎 RAW 工作階段。失敗自動落回 JPEG 通路，幀不丟</string>
+    <string name="eng_raw_unavailable">RAW 負片（本機不支援）</string>
+    <string name="eng_cc">色彩微調</string>
+    <string name="eng_cc_hint">膚色偏黃不夠白，用放大機濾色片修（僅印相檔）</string>
+    <string name="eng_cc_y">冷暖</string>
+    <string name="eng_cc_y_warm">暖 · 黃</string>
+    <string name="eng_cc_y_cold">冷 · 白</string>
+    <string name="eng_cc_m">綠 ↔ 洋紅</string>
+    <string name="eng_cc_m_magenta">洋紅</string>
+    <string name="eng_cc_m_green">青綠</string>
+    <string name="eng_cc_scale">濾色強度</string>
+    <string name="eng_cc_note">膚色偏黃：冷暖往「冷·白」拖；還嫌黃再配一點洋紅。兩根濾色片本身很弱（拉滿也只挪一兩個色階），要看到變化須調大濾色強度。預設 0/0 = 不校色（一個濾色鍵都不發）；拖動滑桿即生效。只影響印相出口（店掃檔保持自家校色），不隨膠卷換，改完下一次沖洗生效</string>
+    <string name="eng_cc_off">關</string>
+    <string name="eng_style_hint">放大機印成相紙，還是店裡把底片掃出來</string>
+    <string name="eng_dev_hint">顆粒 · 輝光 · 眩光 · 曝光補償 · 相紙（按膠卷分別存）</string>
+    <string name="hidden_slow_trigger">慢門觸發機制</string>
+    <string name="hidden_slow_prob">純機率派：同一場景有時糊、有時不糊</string>
+    <string name="hidden_slow_real">純真實派：暗光必然慢門，不擲骰</string>
+    <string name="hidden_slow_mix">真實派 + 輕隨機：必然慢門，偶爾再慢一檔</string>
+    <string name="hidden_slow_note">三種都要求本頁「慢門」已切到自然或偏慢；白天與閃光下不觸發。</string>
+    <string name="hidden_save">儲存</string>
+    <string name="hidden_saved">已儲存</string>
+    <string name="hidden_diag_title">沖洗耗時診斷 DEVELOP TIMING</string>
+    <string name="hidden_diag_none">還沒有沖洗記錄</string>
+    <string name="hidden_diag_copied">診斷資訊已複製</string>
+
+    <!-- 崩潰日誌：native 層崩下來是整程序閃退，logcat 常常抓不到，只能落盤看 -->
+    <string name="hidden_crash_title">崩潰日誌 CRASH LOG</string>
+    <string name="hidden_crash_none">還沒有崩潰記錄</string>
+    <string name="hidden_crash_copy">複製</string>
+    <string name="hidden_crash_clear">清空</string>
+    <string name="hidden_crash_cleared">崩潰日誌已清空</string>
+
+    <!-- 11-21 換卷列表：當前裝機卷的琥珀刻字 -->
+    <string name="film_current_badge">裝機中</string>
+    <!-- 外閃自學習配對嚮導（vc86 第三層） -->
+    <string name="flash_pair_title">外閃配對</string>
+    <string name="flash_pair_subtitle">自學習配對 · FLASH PAIRING</string>
+    <string name="flash_pair_scan_hint">正在掃描附近的 BLE 裝置… 系統已配對的燈會排在最前面，直接點它即可。若系統彈出配對請求，請點「配對」。</string>
+    <string name="flash_pair_unnamed">未命名裝置</string>
+    <string name="flash_pair_bonded_tag">已配對</string>
+    <string name="flash_pair_step1">第 1 步 · 選擇閃光燈</string>
+    <string name="flash_pair_step2">第 2 步 · 選擇指令通道</string>
+    <string name="flash_pair_step3">第 3 步 · 找觸發指令</string>
+    <string name="flash_pair_rescan">重新掃描</string>
+    <string name="flash_pair_trial_hint">逐條點擊候選指令，發一條看一眼燈。燈閃了就點下方綠色按鈕儲存。（嚮導只動燈，不影響相機）</string>
+    <string name="flash_pair_manual_hint">手動輸入指令 (hex)</string>
+    <string name="flash_pair_send">試發</string>
+    <string name="flash_pair_confirm">燈閃了，儲存配對</string>
+    <string name="flash_pair_none">都沒閃，換下一個通道</string>
+    <string name="flash_pair_test_again">儲存後再試一次</string>
+    <string name="flash_pair_finish">完成</string>
+    <string name="flash_pair_connected">已連線，正在讀取指令通道…</string>
+    <string name="flash_pair_disconnected">連線已中斷</string>
+    <string name="flash_pair_chars_found">發現 %1$d 個可寫通道</string>
+    <string name="flash_pair_no_write_char">這盞燈沒有暴露可寫通道，無法自學習</string>
+    <string name="flash_pair_write_fail">指令 %1$s 寫入失敗</string>
+    <string name="flash_pair_connecting">正在連線 %1$s…</string>
+    <string name="flash_pair_sent_mark">已試發</string>
+    <string name="flash_pair_try_next">回到通道列表，換一個再試</string>
+    <string name="flash_pair_bad_hex">指令格式不對：要 2、4、6 位十六進位，如 05 00</string>
+    <string name="flash_pair_save_fail">檔案儲存失敗</string>
+    <string name="flash_pair_saved">已儲存：%1$s\n觸發指令 %2$s\n拍照時會自動使用這盞燈</string>
+    <string name="flash_pair_saved_title">已配對的燈</string>
+    <string name="flash_pair_saved_empty">還沒有配對過的燈。切到外置閃光檔會自動進入本頁。</string>
+    <string name="flash_pair_delete">刪除</string>
+    <string name="flash_pair_page1">第 1 頁 · 認燈</string>
+    <string name="flash_pair_page2">第 2 頁 · 指令通道</string>
+    <string name="flash_pair_page3">第 3 頁 · 試閃</string>
+    <string name="flash_pair_page4">第 4 頁 · 完成</string>
+    <string name="flash_pair_group_paired">系統已配對 · 燈候選</string>
+    <string name="flash_pair_group_nearby">附近 BLE 廣播</string>
+    <string name="flash_pair_group_other">其他已配對裝置</string>
+    <string name="flash_pair_hint_nobond">帶快門鍵的燈會被系統當作 HID 自動配對並連走，連上後就不再廣播。不用去系統藍牙裡刪除配對——刪了也會自動配回來。</string>
+    <string name="flash_pair_hint_dialog">若 Android 彈出配對請求，請點「配對」。</string>
+    <string name="flash_pair_hint_near">燈可能不廣播名字：看訊號強度、MAC 尾碼與 svc 短碼；把燈貼近手機更容易認。</string>
+    <string name="flash_pair_manual_mac_hint">手動輸入 MAC，如 DA:BA:CD:E2:BE:B0</string>
+    <string name="flash_pair_manual_mac_btn">按 MAC 連線</string>
+    <string name="flash_pair_bad_mac">MAC 格式不對</string>
+    <string name="flash_pair_back">← 上一步</string>
+    <string name="flash_pair_exit">退出</string>
+    <string name="flash_pair_primary_rescan">重新掃描</string>
+    <string name="flash_pair_primary_relight">重新選燈</string>
+    <string name="flash_pair_primary_confirm">燈閃了 · 儲存配對</string>
+    <string name="flash_pair_primary_finish">完成 · 回取景器</string>
+    <string name="flash_pair_status_scan">SCANNING</string>
+    <string name="flash_pair_status_connecting">CONNECTING</string>
+    <string name="flash_pair_status_connected">CONNECTED</string>
+    <string name="flash_pair_status_trial">TRIAL</string>
+    <string name="flash_pair_status_paired">PAIRED</string>
+    <string name="flash_pair_paired_title">已配對</string>
+    <string name="flash_pair_next_hint">下次切到外置閃光檔會直接連這盞燈</string>
+    <string name="flash_pair_no_candidate">沒發現帶燈特徵的已配對裝置，可看下方廣播區或手動輸入 MAC</string>
+    <string name="flash_pair_disconnect_hint">已中斷，請回到第 1 頁重新選燈</string>
+    <string name="flash_pair_recommended">推薦 · 透傳</string>
+    <string name="flash_pair_config_char">配置類</string>
+    <string name="flash_pair_char_hint">推薦通道已置頂；配置類特徵不會讓燈閃，別選它們。</string>
+    <string name="flash_pair_write_busy">上一條指令還在等回應，稍等一下再點</string>
+    <string name="flash_pair_reconnecting">通道無回應 · 正在重連</string>
+    <string name="flash_pair_reconnected">已重連 · 請再試一次</string>
+    <string name="flash_pair_write_rejected">裝置拒絕了這條指令</string>
+    <string name="flash_pair_trial_channel">當前通道 %1$s</string>
+    <string name="flash_pair_advanced">進階 · 其他已配對 / 手動 MAC   ▾</string>
+    <string name="flash_pair_advanced_open">進階 · 其他已配對 / 手動 MAC   ▴</string>
+    <string name="flash_pair_no_candidate_hint">沒發現燈候選：① 打開閃光燈電源 ② 等系統完成配對 ③ 點底部「重新掃描」刷新已配對列表。</string>
+    <string name="flash_pair_not_recommended">以下為配置類特徵，不會讓燈閃</string>
+    <string name="flash_pair_frame_untested">未試 · %1$d 條</string>
+    <string name="flash_pair_frame_tried">已試 · %1$d 條   %2$s</string>
+    <string name="flash_pair_expand">展開</string>
+    <string name="flash_pair_collapse">收起</string>
+    <string name="flash_pair_hit">閃了</string>
+    <string name="flash_pair_hit_mark">✓ 命中</string>
+    <string name="flash_pair_hit_first">先點這一行試發，燈閃了再點「閃了」</string>
+    <string name="flash_pair_primary_confirm_with">儲存這條 · %1$s</string>
+    <string name="flash_pair_frame_disabled_hint">主按鈕未點亮：先點一條，燈閃了再點「閃了」</string>
+    <!-- 神牛 A2 專用快速試閃：通用候選幀撞不上 1000,Test，辨識到 A2 才顯示 -->
+    <string name="flash_pair_a2_quick">神牛 A2 快速試閃 · 自動雙發</string>
+    <string name="flash_pair_a2_hint">辨識到 A2：點快配按鈕自動復位並連發兩次已驗證試閃幀，氙氣閃了直接點底部「儲存配對」。</string>
+    <string name="flash_pair_a2_reset">A2 · 復位閃光模式</string>
+    <string name="flash_pair_a2_fire1">A2 · 試閃 1/2（首發可能被燈吃掉）</string>
+    <string name="flash_pair_a2_fire2">A2 · 試閃 2/2 · 請看燈</string>
+    <string name="flash_pair_a2_done">A2 · 已連發兩次，氙氣閃了直接點底部「儲存配對」</string>
+    <string name="flash_pair_a2_no_cmd">A2 · 未找到 FEC7，直接試閃（可能只閃 LED）</string>
+    <string name="flash_pair_a2_no_char">A2 · 未找到 FFF1 試閃口，請換通道</string>
+    <!-- FotorGear COB 快速配對：已驗證 FFE0 / FFE1 + 05 00，不再逐條試候選幀 -->
+    <string name="flash_pair_fg_quick">FotorGear 快速配對 · 一鍵試閃</string>
+    <string name="flash_pair_fg_hint">辨識到 FotorGear：點快配按鈕發已驗證的 05 00（約 200ms 出光），燈閃了直接點底部「儲存配對」。</string>
+    <string name="flash_pair_fg_fire">FotorGear · 試閃中（約 200ms 後出光）</string>
+    <string name="flash_pair_fg_done">FotorGear · 已試閃，燈閃了直接點底部「儲存配對」</string>
+    <string name="flash_pair_fg_no_char">FotorGear · 未找到 FFE1 試閃口，請換通道</string>
+    <string name="flash_pair_copy_profile">複製檔案（可貼給朋友 / 論壇）</string>
+    <string name="flash_pair_copied">檔案已複製</string>
+    <string name="flash_pair_copy_empty">還沒有可複製的檔案</string>
+    <string name="flash_pair_done_meta">MAC    %1$s\nCH     %2$s\nTRIG   %3$s\nPAIRED %4$s   ·   LEARNED</string>
+    <string name="flash_pair_lcd_paired">PAIRED · 外閃就緒</string>
+    <string name="main_external_status_named">外置閃光: %1$s · %2$s</string>
+
+    <!-- ===== 外閃燈管理：設定面板可見入口 + 嚮導管理模式 ===== -->
+    <string name="flash_pair_manage_title">外閃燈管理</string>
+    <string name="flash_pair_manage_subtitle">EXTERNAL FLASH / PROFILES</string>
+    <string name="flash_pair_status_manage">MANAGE</string>
+    <string name="flash_pair_manage_header">已配對的燈  %1$d</string>
+    <string name="flash_pair_manage_hint">檔案按燈的 MAC 記住觸發指令；切到「閃： 外置」時自動連燈。複製檔案可貼給朋友，貼上文字可匯入別人的檔案。</string>
+    <string name="flash_pair_manage_empty">還沒有配對的燈。點「配對新燈」，或切到「閃： 外置」時自動進入配對。</string>
+    <string name="flash_pair_manage_import">從剪貼簿匯入檔案</string>
+    <string name="flash_pair_manage_import_ok">檔案已匯入：%1$s</string>
+    <string name="flash_pair_manage_import_fail">剪貼簿裡沒有可辨識的檔案文字</string>
+    <string name="flash_pair_primary_pair_new">＋ 配對新燈</string>
+    <string name="flash_pair_copy_short">複製</string>
+    <string name="flash_pair_manage_deleted">已刪除 %1$s</string>
+    <string name="flash_pair_manage_row_meta">%1$s   CH %2$s   TRIG %3$s</string>
+
+    <!-- 切到 EXT 檔：機頂 EV 撥盤就地變成閃光燈細檔補償 -->
+    <string name="lcd_notice_flash_ev_fine">外閃補償 0.5 EV/檔</string>
+
+    <!-- ===== 腰平取景（P0 骨架）：設定列 + 半螢幕控制項條 ===== -->
+    <string name="a2_lamp_code">A2 LAMP</string>
+    <string name="a2_lamp_ready">命令通道已就緒（FEC7）</string>
+    <string name="a2_lamp_not_ready">未就緒：外置閃光檔連上 A2 後可用</string>
+    <string name="a2_lamp_brightness">造型燈亮度（0–100，0 = 關）</string>
+    <string name="a2_lamp_cct">色溫（1–100，100 = 白光）</string>
+    <string name="a2_lamp_reset">復位閃光模式</string>
+    <string name="a2_lamp_reset_done">已重播復位序列（06 01 → 05 00 → 0c 00 → 03 00）</string>
+    <string name="a2_lamp_hint">亮度 = 0x06（拖到 0 自動退出造型燈模式）、色溫 = 0x07。造型燈常亮會影響氙氣連拍（第二張起只剩 LED），拍照前拖回 0。⚠️ 燈只閃 LED 不出氙氣時點「復位閃光模式」。</string>
+    <string name="a2_lamp_close">關閉</string>
+    <string name="a2_lamp_pwr_title">閃光燈功率（8 檔標定）</string>
+    <string name="a2_lamp_pwr_slider">功率檔</string>
+    <string name="a2_lamp_pwr_full">滿功率 1/1</string>
+    <string name="a2_lamp_pwr_min">最低 1/128</string>
+    <string name="a2_lamp_pwr_restore">恢復 TTL</string>
+    <string name="a2_lamp_pwr_hint">滑桿選 1/1~1/128 共 8 檔，鬆手下發光功率並用於下一張；配合 Pro 手動 ISO/快門採標定樣本。</string>
+    <string name="a2_lamp_pwr_sent">已下發功率幀：%1$s</string>
+    <string name="a2_lamp_pwr_no_support">當前燈不支援功率幀</string>
+    <string name="eng_waist">腰平取景（摺疊螢幕彩蛋）</string>
+    <string name="eng_waist_hint">關＝永不觸發；自動＝只有摺疊螢幕摺到半開才出現（直板機看不到）；模擬＝直板機也按半螢幕切分，僅除錯用</string>
+    <string name="eng_waist_off">關</string>
+    <string name="eng_waist_auto">自動</string>
+    <string name="eng_waist_simulate">模擬</string>
+    <string name="waist_level_label">WAIST LEVEL</string>
+    <string name="waist_level_engrave">RELIC CAM · WAIST FINDER</string>
+    <string name="waist_level_close">CLOSE</string>
+    <string name="waist_level_readout">EV 0 · OFF · 0/36</string>
+    <string name="waist_level_cd_shutter">快門</string>
+    <string name="waist_level_cd_rotate">切換畫幅：自動 / 1:1 6×6 中畫幅 / 3:2 135 全幅</string>
+    <string name="lcd_notice_waist">腰平取景 · 半螢幕</string>
+    <string name="lcd_notice_waist_off">腰平取景 · 關閉</string>
+
+    <!-- ===== 權限拒絕銘牌 ===== -->
+    <string name="perm_dlg_camera_title">需要相機權限</string>
+    <string name="perm_dlg_camera_body">沒有它無法取景拍照。請在 設定 → 應用程式 → 權限 中開啟。</string>
+    <string name="perm_dlg_bt_title">需要藍牙權限</string>
+    <string name="perm_dlg_bt_body">外置閃光燈靠它連線。可在設定裡開啟，或改用內建閃光。</string>
+    <string name="perm_dlg_storage_title">需要儲存權限</string>
+    <string name="perm_dlg_storage_body">舊版本安卓需要它來儲存底片和成片。</string>
+    <string name="perm_dlg_notif_title">需要通知權限</string>
+    <string name="perm_dlg_notif_body">沖洗完成時靠它通知你。可在設定裡開啟。</string>
+    <string name="perm_dlg_go_settings">去設定</string>
+    <string name="perm_dlg_dismiss">知道了</string>
+
+</resources>

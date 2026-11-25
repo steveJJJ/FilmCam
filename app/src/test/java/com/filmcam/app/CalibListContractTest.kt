@@ -30,6 +30,15 @@ class CalibListContractTest {
         assertTrue("必须跳转列表页", g.contains("CalibListActivity::class.java"))
         val l = read("app/src/main/res/layout/activity_gallery.xml") ?: return
         assertTrue("布局必须有入口", l.contains("@+id/btnCalibList"))
+        // 11-26 用户拍板：工程工具不默认露在普通暗房，默认 gone
+        val btn = l.substringAfter("android:id=\"@+id/btnCalibList\"", "")
+            .substringBefore("/>", "")
+        assertTrue("入口默认隐藏", btn.contains("android:visibility=\"gone\""))
+        assertTrue("必须按工程模式标定范围刷新可见性",
+            g.contains("fun refreshCalibEntry()") &&
+                g.contains("getString(\"calibScope\", \"ext\")") &&
+                g.contains("if (scope == \"all\")") &&
+                g.contains("refreshCalibEntry()"))
     }
 
     @Test

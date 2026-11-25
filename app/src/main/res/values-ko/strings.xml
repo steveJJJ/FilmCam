@@ -1,0 +1,601 @@
+<resources>
+    <string name="app_name">Relic Cam</string>
+
+    <!-- 정보 페이지 -->
+    <string name="about_intro">휴대폰을 CONTAX T3로 바꿔 보세요.\n\n뷰파인더에는 실제 광학 세계가 보이고, 셔터를 누를 때마다 36장짜리 필름이 한 칸씩 감깁니다. 촬영을 마치면 암실로 보내 현상하고, 필름 엔진이 이 롤의 레시피에 따라 한 장 한 장 현상해 줍니다.\n\n현상하기 전에는 무엇이 찍혔는지 아무도 모릅니다. 그것이 필름의 재미입니다.</string>
+    <string name="percent_fmt">%1$d%%</string>
+    <string name="about_self_title">RELIC CAM은 GNU GPL-3.0-or-later 라이선스로 오픈소스 배포됩니다</string>
+    <string name="about_self_body">이 프로젝트는 GPL-3.0의 SpektraLab 필름 시뮬레이션 엔진을 사용하므로 동일하게 GPL-3.0-or-later로 배포됩니다. 자유롭게 사용, 수정, 재배포할 수 있지만, 재배포 시에는 소스 코드를 공개하고 동일한 라이선스와 저작자 표시를 유지해야 합니다.\n소스 저장소는 아직 공개되지 않았으며, 라이선스 조항에 따라 요청 시 소스를 제공합니다.</string>
+    <string name="about_paypal">PayPal 후원</string>
+    <!-- PayPal 후원 페이지. 비어 있으면 진입점을 표시하지 않음 -->
+    <string name="appreciate_paypal_url" translatable="false">https://paypal.me/Stevejjjjjj</string>
+    <!-- 위챗 후원 코드는 이미지로만 표시하며 연결할 링크가 없습니다. 향후 확장을 위해 비워 두었으며 현재 코드에서는 참조하지 않습니다. -->
+    <string name="appreciate_wechat_url" translatable="false"></string>
+    <string name="about_feedback">문제 신고</string>
+    <string name="feedback_subject">RELIC CAM 문제 신고 %1$s / 기기 %2$s %3$s / 시스템 Android %4$s (API %5$d)</string>
+    <string name="feedback_body">발생한 문제:
+(간단히 설명해 주세요. 예: "12번째 프레임에서 현상이 멈춤", "셔터를 눌러도 반응 없음", "뷰파인더 프레임이 어긋남")
+
+재현 단계:
+1.
+2.
+3.
+
+기대한 결과:
+
+오류 메시지(충돌이나 오류가 발생했다면 전체 스택을 붙여 넣어 주세요. 예외 이름이 가장 중요합니다):
+(예: IllegalStateException / Resources$NotFoundException / IOException /
+ OutOfMemoryError: Failed to allocate … free bytes … until OOM /
+ JNI weak global ref table overflow (0x1fff=8191 entries) 등)
+
+adb logcat 조각(선택. PC에서 adb logcat | findstr FILMCAM을 실행한 뒤 관련 줄을 붙여 넣으세요):
+
+—— 자동 생성된 정보입니다. 유지해 주세요. 문제 파악에 도움이 됩니다 ——
+앱 버전: %1$s (%2$d)
+기기: %3$s %4$s
+시스템: Android %5$s (API %6$d)
+화면: %7$dx%8$d @%9$ddpi
+사용 가능 메모리: %10$d MB / 전체 %11$d MB
+</string>
+    <string name="feedback_email_missing">피드백 이메일이 설정되지 않았습니다</string>
+    <string name="feedback_no_mail_app">사용할 수 있는 메일 앱이 없습니다</string>
+    <!-- 문제 신고를 받을 이메일. 비어 있으면 누를 때 미설정 안내가 표시됨 -->
+    <string name="app_feedback_email" translatable="false">837226902ah@gmail.com</string>
+    <!-- 비어 있으면 정보 페이지에 소스 요청 진입점이 표시되지 않음. 이메일을 넣으면 클릭 가능한 mailto 링크로 자동 전환됨 -->
+    <string name="app_source_email" translatable="false"></string>
+    <string name="about_oss_summary">RELIC CAM은 이러한 오픈소스 프로젝트와 에셋 제작자의 작업 위에 세워졌습니다. 아낌없이 공유해 주신 개발자 여러분께 감사합니다.\n현상 엔진 코드는 GPL-3.0-or-later로, 필름/인화지 레시피와 엔진 리소스는 CC BY-SA 4.0으로 사용됩니다. 눌러서 각 라이선스와 출처를 확인하세요.</string>
+
+    <!-- 오픈소스 감사: 이름 | 저자/조직 | 라이선스 | 링크 | 수정 설명(선택) -->
+    <string-array name="oss_credits">
+        <item>SpektraLab for Android(Vulkan 백엔드 이식, JNI, Android 네이티브 엔진 라이브러리)|SAINTTaiYi|GPL-3.0-or-later|https://github.com/SAINTTaiYi/SpektraLab-Android|이 이식판이 제공하는 네이티브 엔진 라이브러리와 프로젝트 구조를 그대로 사용하고, 앱에 맞게 잘라내고 조정했습니다.</item>
+        <item>SpektraLab 물리 필름 / 인화지 시뮬레이션 엔진(업스트림)|JamesQiu2005 및 SpektraLab 기여자|GPL-3.0-or-later|https://github.com/JamesQiu2005/SpektraLab</item>
+        <item>spektrafilm 필름 모델, 28종 실측 프로파일 및 확대 LUT|Andrea Volpato|CC BY-SA 4.0|https://github.com/andreavolpato/spektrafilm|원본 자료를 이 프로젝트에 맞게 조정(ISO 대응 및 현지화된 이름)했으며, CC BY-SA 4.0으로 배포합니다.</item>
+        <item>SpektraFilm 엔진 리소스(profiles / LUT / 상수 표)|SpektraLab · JamesQiu2005|CC BY-SA 4.0|https://creativecommons.org/licenses/by-sa/4.0/|리소스 팩을 이 프로젝트에 맞게 정리했습니다(사용하는 모델만 유지). CC BY-SA 4.0으로 배포합니다.</item>
+        <item>LibRaw RAW 디코딩 라이브러리|LibRaw 기여자|LGPL-2.1 / CDLL|https://github.com/LibRaw/LibRaw</item>
+        <item>libjpeg-turbo JPEG 코덱 라이브러리|libjpeg-turbo 기여자|BSD-3-Clause / IJG / Zlib|https://github.com/libjpeg-turbo/libjpeg-turbo</item>
+        <item>Little CMS 2 색 관리 엔진|Marti Maria Saguer|MIT|https://github.com/mm2/Little-CMS</item>
+        <item>zlib 데이터 압축 라이브러리|Jean-loup Gailly、Mark Adler|zlib License|https://github.com/madler/zlib</item>
+        <item>LLVM libc++ 런타임|LLVM Project|Apache-2.0 with LLVM exception|https://github.com/llvm/llvm-project</item>
+        <item>Android Jetpack(AndroidX): Core / AppCompat / RecyclerView / ViewPager2 / ConstraintLayout / Lifecycle / ExifInterface|Google LLC|Apache-2.0|https://github.com/androidx/androidx</item>
+        <item>Material Components for Android|Google LLC|Apache-2.0|https://github.com/material-components/material-components-android</item>
+        <item>Kotlin / Kotlinx Coroutines|JetBrains|Apache-2.0|https://github.com/JetBrains/kotlin</item>
+        <item>Coil 이미지 로딩 라이브러리|Coil Contributors|Apache-2.0|https://github.com/coil-kt/coil</item>
+        <item>DSEG7 7세그먼트 폰트|keshikan|SIL OFL 1.1|https://github.com/keshikan/DSEG</item>
+        <item>Imprint 인쇄체 및 고정폭 폰트|Google Fonts · Croscore(Red Hat) · Bitstream/DejaVu|SIL OFL 1.1|https://fonts.google.com/</item>
+        <item>stb 단일 파일 라이브러리|Sean Barrett|MIT / Public Domain|https://github.com/nothings/stb</item>
+        <item>org.json|JSON.org|JSON License|https://github.com/stleary/JSON-java</item>
+        <item>JUnit 4|Eclipse Foundation|EPL-1.0|https://github.com/junit-team/junit4</item>
+    </string-array>
+
+    <!-- 완성 사진 정보 패널 -->
+    <string name="info_group_shooting">촬영 파라미터</string>
+    <string name="info_group_develop">현상 파라미터</string>
+    <string name="info_group_engine">엔진</string>
+    <string name="info_tap_hint">사진을 눌러 필름 정보를 확인하세요</string>
+    <string name="info_no_exif">이 사진에는 필름 정보가 없습니다</string>
+
+    <!-- 설정 팝업 -->
+    <string name="set_title">설정</string>
+    <string name="set_close">닫기</string>
+    <string name="set_body">바디</string>
+    <string name="set_datestamp">날짜 워터마크</string>
+    <string name="set_haptic">진동 강도</string>
+    <string name="set_language">언어</string>
+    <string name="set_quality">현상 화질</string>
+    <string name="set_dev">현상 파라미터</string>
+    <string name="set_about">RELIC CAM 정보</string>
+    <string name="quality_full">전체</string>
+    <string name="quality_standard">표준</string>
+    <string name="set_style">출력 스타일</string>
+    <string name="style_print">인화</string>
+    <string name="style_frontier">Frontier 스캔</string>
+    <string name="style_noritsu">Noritsu 스캔</string>
+    <string name="set_frame">필름 테두리</string>
+    <string name="frame_full">풀프레임 3:2</string>
+    <string name="frame_white">흰색 테두리</string>
+    <string name="set_color">색 농도</string>
+    <string name="set_raw">RAW 네거티브</string>
+    <string name="set_flash">외장 플래시 관리</string>
+    <string name="set_flash_none">페어링 안 됨</string>
+    <string name="set_flash_multi">%1$d개</string>
+    <string name="raw_unavailable">지원하지 않음</string>
+    <string name="color_strength_standard">표준</string>
+    <string name="color_strength_soft">연하게</string>
+    <string name="color_strength_original">원본</string>
+    <string name="color_strength_custom">사용자 지정 %1$d%%</string>
+    <string name="set_frame_probe_failed">이 필름 게이트는 엔진이 인식하지 못해 현상할 때 이 롤에 테두리가 붙지 않습니다. 자세한 내용은 외부 저장소의 spektra_frame_probe.txt를 참고하세요.</string>
+    <string name="set_slow">슬로우 셔터</string>
+    <string name="set_wb">화이트 밸런스</string>
+    <string name="slow_off">꺼짐</string>
+    <string name="slow_natural">자연</string>
+    <string name="slow_frequent">느리게</string>
+    <string name="set_slow_unsupported">이 기기는 수동 노출을 지원하지 않아 슬로우 셔터를 사용할 수 없습니다</string>
+    <string name="lang_pick_title">카메라 언어</string>
+    <string name="lang_pick_sub">화면과 필름 설명이 함께 바뀝니다 · 눌러서 설정</string>
+    <string name="lang_system">시스템 설정 따름</string>
+    <string name="lang_zh">간체 중국어</string>
+    <string name="lang_en">English</string>
+    <string name="common_on">켜짐</string>
+    <string name="common_off">꺼짐</string>
+    <string name="body_black">블랙 티타늄</string>
+    <string name="body_titan">티타늄 실버</string>
+    <string name="haptic_low">낮음</string>
+    <string name="haptic_mid">보통</string>
+    <string name="haptic_strong">강함</string>
+
+    <!-- 설정 패널은 바디 명판 형태: 제목 아래 한 줄 작은 글씨 + '이름 / 설명' 목록 -->
+    <string name="set_subtitle">바디 설정</string>
+    <string-array name="set_labels">
+        <item>@string/set_body</item>
+        <item>@string/set_haptic</item>
+        <item>@string/set_wb</item>
+        <item>@string/set_language</item>
+        <item>@string/set_quality</item>
+        <item>@string/set_color</item>
+        <item>@string/set_raw</item>
+        <item>@string/set_flash</item>
+        <item>@string/set_about</item>
+    </string-array>
+    <string-array name="set_hints">
+        <item>블랙 티타늄 / 티타늄 실버 두 가지 바디 외장</item>
+        <item>필름 감기와 버튼의 모터 세기</item>
+        <item>색보정 필터를 바꾸는 것과 같으며, 촬영 후에도 그대로 유지됩니다. 웨이스트 레벨 뷰파인더를 가로로 밀면 해당 단계의 공칭 색온도가 표시됩니다(≈K, 실측 아님).</item>
+        <item>시스템 설정 따름 / 간체 중국어 / English</item>
+        <item>전체 = 원본 해상도, 느림; 표준 ≈ 1200만 화소, 약 3배 빠름</item>
+        <item>휴대폰 ISP가 더한 색을 되돌립니다: 표준 / 연하게 / 원본. JPG와 가져온 사진에만 적용되며 RAW는 변경되지 않습니다. 엔지니어링 콘솔에서 0~100%로 세부 조정할 수 있습니다.</item>
+        <item>촬영 시 RAW 네거티브(DNG)를 함께 저장하고, 현상할 때 휴대폰 ISP를 우회해 디테일과 그레인이 실제 필름에 더 가까워집니다. 기기가 지원하지 않으면 자동으로 JPEG로 되돌아갑니다. 엔지니어링 콘솔의 스위치와 동일합니다.</item>
+        <item>페어링된 외장 플래시를 확인, 복사 또는 삭제하고, 다른 사람의 프로필을 가져오거나 새 조명을 셀프러닝으로 페어링합니다.</item>
+        <item>바디 명판과 라이선스</item>
+    </string-array>
+
+    <!-- ===== 홈 MainActivity / 공통 레이아웃 문구 ===== -->
+
+    <!-- 공통 버튼 -->
+    <string name="main_ok">확인</string>
+    <string name="main_cancel">취소</string>
+
+    <!-- 첫 실행 가이드 -->
+    <string name="main_guide_start">가이드 시작</string>
+
+    <!-- v82 빠른 시작 카드(1段, 3페이지) -->
+    <string name="qs_title_1">이건 필름 카메라입니다</string>
+    <string name="qs_body_1">실제 필름과 같습니다. 먼저 필름을 장전하고 촬영한 뒤 암실에서 현상해야 사진을 볼 수 있습니다.\n\n· PORTRA 400을 미리 장전해 두었으니 바로 촬영할 수 있습니다\n· 왼쪽 하단 필름 아이콘을 눌러 필름을 바꿀 수 있습니다. 인물, 풍경, 흑백, 슬라이드마다 느낌이 다릅니다\n· 필름 한 롤은 36장입니다</string>
+    <string name="qs_title_2">촬영 후 암실에서 현상하기</string>
+    <string name="qs_body_2">촬영 직후 갤러리를 찾지 마세요. 네거티브가 아직 필름에 감겨 있어 현상 전 갤러리가 비어 있는 것은 고장이 아닙니다.\n\n· 오른쪽 하단 DARKROOM을 눌러 암실로 이동하세요\n· 현상되지 않은 카드에서 "현상"을 누르면 사진이 자동으로 갤러리에 저장됩니다\n· 첫 장을 찍으면 카메라가 암실 입구를 바로 표시해 줍니다</string>
+    <string name="qs_title_3">이제 단계별로 함께 따라 해 보겠습니다</string>
+    <string name="qs_body_3">순서대로 한 번씩 따라 하면 이 카메라를 사용할 수 있습니다:\n\n① 필름 아이콘을 눌러 필름 선택\n② 명판을 눌러 Pro로 진입, ISO 조정, 셔터 조작\n③ 명판을 다시 눌러 자동 모드로 복귀\n④ 뷰파인더를 눌러 초점을 맞추고 위아래로 밀어 노출 조정\n⑤ 셔터를 눌러 첫 장 촬영\n⑥ 암실에서 현상하고 결과 확인</string>
+    <string name="qs_next">다음</string>
+    <string name="about_spec_quickstart">빠른 시작</string>
+    <string name="about_quickstart_action">다시 보기</string>
+
+    <!-- 2段: 상단 LCD 실습 가이드(8단계, 성공 시 자동 진행, 15초 초과 시 건너뜀)
+         도트 매트릭스 화면의 논리 폭은 약 78dp. 글자가 너무 길면 자동 축소로 읽기 어려워짐 -->
+    <string name="guide_roll">필름 아이콘 터치 · 필름 선택</string>
+    <string name="guide_pro_enter">바디 명판 터치 · Pro 진입</string>
+    <string name="guide_iso">명판 좌우 슬라이드 · ISO 조정</string>
+    <string name="guide_shutter_speed">뷰파인더 눈금 밀기 · 셔터 조정</string>
+    <string name="guide_pro_exit">명판 다시 터치 · 자동 복귀</string>
+    <string name="guide_focus">뷰파인더 터치 · 초점</string>
+    <string name="guide_ev">프레임 안 위아래 · 노출 조정</string>
+    <string name="guide_shoot">셔터 누르기 · 첫 장 촬영</string>
+    <!-- 강조 프레임의 단계 캡슐: 매우 짧게. LCD의 긴 문장과 역할 분담(프레임은 어디를 누를지, 화면은 무엇을 할지) -->
+    <string name="guide_tag_roll">필름 선택</string>
+    <string name="guide_tag_pro_enter">Pro 진입</string>
+    <string name="guide_tag_iso">ISO 조정</string>
+    <string name="guide_tag_shutter">셔터 조정</string>
+    <string name="guide_tag_pro_exit">자동 복귀</string>
+    <string name="guide_tag_focus">초점</string>
+    <string name="guide_tag_ev">노출 조정</string>
+    <string name="guide_tag_shoot">첫 장 촬영</string>
+    <!-- 3段: 첫 장 촬영 후 암실로 안내(LCD 상시 표시 + 암실 글씨판 강조 + 암실 페이지 연계 안내) -->
+    <string name="guide_darkroom">암실 터치 · 이 롤 현상</string>
+    <string name="guide_tag_darkroom">암실로</string>
+
+    <!-- v82 3段: 첫 롤 안전장치 -->
+    <string name="guide_first_frame">1/36장 · 필름 모두 찍고 암실에서 현상</string>
+    <string name="guide_third_frame">12/36장 완료 · 다 찍으면 암실에서 현상, 현상해야 사진을 볼 수 있습니다</string>
+    <string name="lcd_notice_first_dev_done">첫 롤 현상 완료 · 사진 %1$d장</string>
+
+    <!-- 필름 촬영 완료: 암실로 안내 -->
+    <string name="main_roll_finished_title">필름 촬영 완료</string>
+    <string name="main_roll_finished_body">이 롤 36장을 모두 찍었습니다. 암실에서 현상해 사진을 뽑아 보세요.</string>
+    <string name="main_roll_finished_develop">현상하러 가기</string>
+    <string name="main_roll_finished_later">나중에</string>
+    <string name="main_roll_finished_code">ROLL FULL</string>
+
+    <!-- 현상 파라미터 팝업 -->
+    <string name="main_dev_reset">해당 필름 기본값으로 복원</string>
+    <string name="main_dev_paper_auto">자동(필름 기본값 따름)</string>
+    <string name="main_dev_slide_no_paper">—(슬라이드 필름은 직접 현상하며 인화지 없음)</string>
+
+    <!-- 필름 / 인화지 선택 팝업 -->
+    <string name="main_pick_film_title">필름 선택</string>
+    <string name="main_pick_paper_title">인화지 선택</string>
+
+    <!-- 화이트 밸런스 프리셋(플래시 켜진 상태에서 프리뷰를 좌우로 드래그해 전환) -->
+    <string name="main_wb_incandescent">백열등</string>
+    <string name="main_wb_fluorescent">형광등</string>
+    <string name="main_wb_daylight">일광</string>
+    <string name="main_wb_cloudy">흐림</string>
+    <string name="main_wb_shade">그늘</string>
+    <string name="main_wb_twilight">황혼</string>
+
+    <!-- 토스트 알림 -->
+    <string name="main_toast_develop_first">먼저 현재 필름을 현상해 주세요.</string>
+    <string name="main_toast_no_roll_to_rewind">되감을 필름이 없습니다.</string>
+    <string name="main_toast_settings_failed">설정 실패: %1$s</string>
+    <string name="main_toast_permission_required">카메라/블루투스 권한이 필요합니다.</string>
+    <string name="main_toast_save_failed">저장 실패: %1$s</string>
+    <string name="main_toast_capture_error">촬영 오류: %1$s</string>
+    <string name="main_toast_capture_timeout">촬영 시간 초과</string>
+    <string name="main_toast_preview_map_test">프리뷰 매핑 테스트: %1$d</string>
+
+    <!-- 플래시 / ISO / 셔터 상태 문구 -->
+    <string name="main_flash_off">플래시: 꺼짐</string>
+    <string name="main_flash_internal">플래시: 내장</string>
+    <string name="main_flash_external">플래시: 외장</string>
+    <!-- 크세논 램프 재충전 안내: 발광 후 커패시터가 충전되는 몇 초 사이에 찍으면 빛이 약해짐 -->
+    <string name="main_flash_recharging">충전 중</string>
+    <!-- 외장 플래시 모드의 흑화 프레임 감지(11-22): 전원 부족/연결 끊김으로 검게 나온 프레임이 생기면 LCD에 안내. 프레임은 그대로 기록하며 삭제 여부는 사용자가 결정 -->
+    <string name="main_flash_miss_notice">플래시 미작동 · 배터리 확인</string>
+    <string name="main_external_status">외장 플래시: %1$s</string>
+    <string name="main_flash_pair_needed">외장 조명이 페어링되지 않았습니다. 페어링을 시작합니다.</string>
+    <string name="main_flash_pair_cancel">페어링이 완료되지 않아 플래시가 꺼짐으로 돌아갔습니다.</string>
+    <string name="main_external_on">외장: 켜짐</string>
+    <string name="main_external_off">외장: 꺼짐</string>
+    <string name="main_pro_label">Pro</string>
+    <string name="main_iso_auto">ISO 자동</string>
+    <string name="main_iso_value">ISO %1$d</string>
+    <string name="main_shutter_auto">셔터 자동</string>
+    <!-- 좌하단 필름 정보(숨김 뷰): 필름 이름 / 종류 / 남은 장수 -->
+    <string name="main_film_info">%1$s\nCOLOR NEGATIVE\nISO500 · %2$d장 남음</string>
+
+    <!-- ===== 레이아웃: 접근성 설명 ===== -->
+    <string name="main_cd_flash">플래시</string>
+    <string name="main_cd_settings">설정</string>
+    <string name="main_cd_film_current">현재 필름</string>
+    <string name="main_cd_film_advancing">필름 감기</string>
+    <string name="main_cd_film_icon">필름 아이콘</string>
+    <string name="main_darkroom">암실</string>
+    <string name="gallery_import">사진 가져와 현상</string>
+    <string name="gallery_calib_list">교정 샘플</string>
+    <string name="calib_list_title">외장 플래시 교정 샘플</string>
+    <string name="calib_list_hint">촬영 직후 바로 기록되며 현상이 필요 없습니다. 각 줄은 외장 플래시 모드에서 찍은 한 장으로, 출력 / ISO / 셔터 / 거리 / 밝기를 담습니다. 해당 줄에서 \'좋음\' 또는 \'나쁨\'으로 표시하고, TTL을 정리할 때 표시를 기준으로 걸러내면 됩니다.</string>
+    <string name="calib_list_empty">외장 플래시 교정 샘플이 아직 없습니다. \'외장 플래시\' 모드(Pro 모드 권장)로 전환해 한 장 찍은 뒤 돌아오면 표시됩니다. 현상은 필요 없습니다.</string>
+    <string name="calib_list_no_ext">필름에 사진은 있지만 \'외장 플래시\' 모드로 찍은 장이 없습니다(교정은 EXT 모드에서만 기록됩니다). 바디 플래시 모드를 EXT로 바꾸고 A2를 연결한 뒤 한 장 더 찍어 주세요.</string>
+    <string name="calib_list_count">샘플 %1$d개</string>
+    <string name="calib_mark_none">표시 안 함</string>
+    <string name="calib_row_good">✓ 좋음</string>
+    <string name="calib_row_bad">✗ 나쁨</string>
+    <string name="calib_row_clear">지우기</string>
+    <string name="calib_frame_raw">미현상 네거티브</string>
+    <string name="calib_frame_developed">현상 완료 사진</string>
+    <string name="eng_calib_scope">교정 기록 범위</string>
+    <string name="eng_calib_scope_hint">교정 샘플(샘플 목록/좋음·나쁨 표시)은 기본적으로 \'외장 플래시\' 모드에서만 기록됩니다. 모든 사진으로 바꾸면 어떤 모드에서도 샘플 id가 발급됩니다(출력/거리는 플래시 전용으로 유지).</string>
+    <string name="calib_scope_ext">외장 플래시만</string>
+    <string name="calib_scope_all">모든 사진</string>
+    <string name="gallery_import_pick_film">어떤 필름을 장전할까요?</string>
+    <string name="gallery_import_too_many">필름 한 롤은 최대 36장이므로 앞의 36장만 가져왔습니다.</string>
+    <string name="gallery_import_busy">아직 현상하지 않은 필름이 있습니다. 먼저 현상한 뒤 가져오세요.</string>
+    <string name="gallery_import_none">사진을 읽을 수 없습니다.</string>
+    <string name="gallery_import_failed">가져오기 실패: %1$s</string>
+
+    <!-- ===== 布局：胶卷选择底部弹层 ===== -->
+    <string name="main_sort_hint">길게 눌러 순서를 바꿀 수 있습니다.</string>
+
+    <!-- ===== 布局：冲洗参数面板 ===== -->
+    <string name="main_dev_roll_row">필름</string>
+    <string name="main_dev_group_develop">현상 · DEVELOP</string>
+    <string name="main_dev_grain">그레인 강도</string>
+    <string name="main_dev_halation">할레이션 강도</string>
+    <string name="main_dev_glare">글레어 강도</string>
+    <string name="main_dev_group_print">확대 · PRINT</string>
+    <string name="main_dev_enlarger_exposure">노출 보정(화면에만 적용)</string>
+    <string name="main_dev_paper_row">인화지 선택</string>
+    <string name="main_dev_paper_hint">자동 = 필름 브랜드의 공식 추천 인화지 조합을 사용합니다(예: Kodak 네거티브는 Portra Endura, 시네마 필름은 Kodak 2383). 위를 눌러 직접 선택할 수도 있습니다.</string>
+
+    <!-- ===== 布局：工程师模式 ===== -->
+    <string name="main_debug_softfocus_prob">초점 흐림 시뮬레이션 확률(0% = 꺼짐)</string>
+    <string name="main_debug_note">이 항목은 개발 디버깅용이므로 일반 사용 시 조정할 필요가 없습니다.</string>
+
+    <!-- ===== 布局：关于页 ===== -->
+    <string name="main_about_title">앱 정보</string>
+    <string name="main_about_subtitle">CONTAX T3 · 디지털 필름 카메라</string>
+    <string name="main_about_tip_title">개발자에게 커피 한 잔 선물하기</string>
+    <string name="main_about_tip_body">인디 개발을 응원해 주셔서 감사합니다. QR 코드를 스캔해 후원하거나 아래 PayPal을 이용해 주세요.</string>
+    <string name="main_cd_tip_code">후원 QR 코드</string>
+    <string name="main_cd_paypal">PayPal 후원</string>
+    <string name="main_about_oss">오픈소스 감사</string>
+
+    <!-- ===== 布局：暗房显影页 ===== -->
+    <string name="main_dev_screen_title">암실 현상</string>
+    <string name="main_dev_shake_hint">휴대폰을 흔들면 현상이 빨라집니다.</string>
+    <string name="main_dev_background">백그라운드 현상</string>
+
+    <!-- ===== 布局：相册页 ===== -->
+    <string name="main_undeveloped_rolls">미현상 필름</string>
+    <string name="main_no_photos">사진이 없습니다</string>
+    <string name="gallery_empty_title">아직 완성된 사진이 없습니다</string>
+    <string name="gallery_empty_hint">네거티브가 아직 카메라 안에 있습니다. 필름을 모두 찍은 뒤 되감고 암실에서 현상하면 사진이 여기에 표시됩니다.</string>
+    <string name="gallery_undeveloped_hint">현상 대기 중인 필름이 있습니다 · 눌러서 현상</string>
+
+    <!-- ===== 布局：成片查看 ===== -->
+    <string name="main_shoot_same">같은 필름으로 촬영</string>
+    <string name="viewer_share">공유</string>
+    <!-- 외장 플래시 수동 교정 샘플의 사후 표시(11-22) -->
+    <string name="viewer_calib_title">외장 플래시 교정 샘플</string>
+    <string name="viewer_calib_mark_good">좋은 샘플로 표시</string>
+    <string name="viewer_calib_mark_bad">나쁜 샘플로 표시</string>
+    <string name="viewer_calib_mark_clear">표시 지우기</string>
+    <string name="viewer_calib_none">이 사진은 외장 플래시 교정 샘플이 아닙니다.</string>
+
+    <!-- ===== 정보 페이지 명판: 사양 표 ===== -->
+    <string name="about_spec_model">모델 MODEL</string>
+    <string name="about_spec_model_value" translatable="false">RELIC CAM</string>
+    <string name="about_spec_lens">렌즈 LENS</string>
+    <string name="about_spec_lens_value" translatable="false">35mm f/2.8</string>
+    <string name="about_spec_film">장전 FILM</string>
+    <string name="about_spec_film_value" translatable="false">36 EXP</string>
+    <string name="about_spec_engine">엔진 ENGINE</string>
+    <string name="about_spec_engine_value" translatable="false">SpektraLab</string>
+    <string name="about_spec_version">버전 VER</string>
+    <string name="about_support">후원 SUPPORT</string>
+    <string name="about_credits">오픈소스 감사 CREDITS</string>
+
+    <!-- ===== 인앱 구매: 엔지니어링 모드 Pro ===== -->
+    <string name="about_spec_pro">엔지니어링 모드 PRO</string>
+    <string name="pro_state_locked">잠금</string>
+    <string name="pro_state_unlocked" translatable="false">PRO</string>
+    <string name="pro_price_loading">가져오는 중…</string>
+    <string name="pro_buy">%1$s 잠금 해제</string>
+    <string name="pro_dialog_title">엔지니어링 모드(Pro)</string>
+    <string name="pro_dialog_body">엔지니어링 모드는 매니아를 위한 전문가 패널입니다. 입력 노출, 확대기 노출, 유제 및 인화층 파라미터를 직접 보정해 각 필름을 원하는 대로 현상할 수 있습니다.\n\n구독이 아닌 일회성 구매입니다. 한 번 구매하면 영구히 사용할 수 있고, 재설치하거나 휴대폰을 바꾼 뒤 한 번만 누르면 복원되며 중복 청구되지 않습니다.\n\nRelic Cam 자체에는 네트워크 권한이 없습니다. 구매는 앱을 설치한 앱스토어에서 처리하므로, 찍은 사진은 여전히 이 휴대폰을 벗어날 수 없습니다.</string>
+    <string name="pro_dialog_buy">구매하고 잠금 해제</string>
+    <string name="pro_dialog_later">나중에</string>
+    <string name="pro_unlock_ok">엔지니어링 모드가 잠금 해제되었습니다. 감사합니다.</string>
+    <string name="pro_unavailable">지금은 구매를 완료할 수 없습니다. 잠시 후 다시 시도해 주세요.</string>
+    <string name="pro_not_ready">가격을 가져오는 중입니다. 잠시 후 다시 눌러 주세요.</string>
+
+    <!-- ===== 정보 페이지(AboutActivity 코드 내 문구) ===== -->
+    <string name="about_tap_more">%1$s · %2$d번 더 누르세요</string>
+    <string name="about_no_browser">사용할 수 있는 브라우저가 없습니다.</string>
+    <string name="about_feedback_email_channel">이메일로 문의</string>
+    <string name="about_feedback_wechat_channel">위챗 그룹에 참여해 문의</string>
+    <!-- v81 피드백 팝업: 바디 명판 스타일(부제 / 새겨진 설명 / 두 줄 힌트 / 하단 메모) -->
+    <string name="about_feedback_subtitle">피드백 채널</string>
+    <string name="about_feedback_hint">문제를 전달할 방법을 선택하세요.</string>
+    <string name="about_feedback_mail_hint">버전, 기기 모델, 진단 보고서가 자동으로 첨부됩니다.</string>
+    <string name="about_feedback_wechat_hint">위챗 ID LazyRofin을 복사해 그룹에 참여해 이야기하세요.</string>
+    <string name="about_feedback_note">이메일은 시스템 메일 앱으로 전송되며 진단 보고서는 본문에 있습니다. 원하면 삭제할 수 있습니다.</string>
+    <string name="feedback_diag_header">—— 기기 진단 보고서(자동 생성, 이 메일에 첨부됨. 원하면 삭제 가능) ——</string>
+    <string name="feedback_diag_unavailable">(기기 진단 보고서를 사용할 수 없습니다. 문의 시 기기 모델과 OS 버전을 알려 주세요.)</string>
+    <string name="about_spec_update">업데이트 UPDATE</string>
+    <string name="about_update_action">눌러서 확인</string>
+    <string name="update_checking">업데이트 확인 중…</string>
+    <string name="update_no_update">이미 최신 버전입니다.</string>
+    <string name="update_available">새 버전이 있습니다. 다운로드를 시작합니다.</string>
+    <string name="update_open_page">다운로드 페이지를 열었습니다.</string>
+    <string name="update_no_browser">사용할 수 있는 브라우저나 앱스토어가 없습니다.</string>
+    <string name="update_flow_failed">앱 내 업데이트가 시작되지 않아 다운로드 페이지를 열었습니다.</string>
+    <string name="update_downloaded">새 버전 다운로드가 완료되었습니다. 앱을 다시 시작해 설치를 완료하세요.</string>
+    <string name="update_restart">지금 재시작</string>
+    <string name="update_later">나중에</string>
+    <string name="about_wechat_id_label">위챗 ID</string>
+    <string name="about_wechat_copied">위챗 ID %1$s가 복사되었습니다. 위챗에서 검색해 그룹에 참여하세요.</string>
+    <string name="about_source_request">소스 요청: %1$s</string>
+    <string name="about_source_subject">RELIC CAM 소스 요청</string>
+    <string name="about_gpl_full">GNU GPL-3.0 전문</string>
+    <string name="hidden_title">엔지니어링 모드</string>
+    <string name="eng_mode_title">엔지니어링 모드</string>
+    <string name="eng_mode_on_toast">엔지니어링 모드가 켜졌습니다. 앱 정보에서 버전 번호를 한 번 누르면 진입할 수 있습니다.</string>
+    <string name="eng_mode_off_toast">엔지니어링 모드가 꺼졌습니다. 앱 정보에서 버전 번호를 10번 연속 눌러 다시 켜세요.</string>
+    <string name="eng_slow_hint">어두운 곳에서 필름 셔터 속도로 촬영하세요. 흔들리는 그 맛이 바로 필름입니다.</string>
+    <string name="eng_slow_mode">단계</string>
+    <string name="eng_lens_blur">렌즈 부드러움</string>
+    <string name="eng_lens_hint">네거티브에 담기는 Sonnar 렌즈의 부드러움(바디 속성이며 필름에 따라 바뀌지 않음)</string>
+    <string name="eng_lens_note">0 = 꺼짐(순수 디지털 선예도) · 4 = 거의 티가 나지 않음 · 8 = 약간 · 12 = 기본값 · 20 = 뚜렷하게 부드러움 · 35 = 크리미. 변경 후 다음 현상부터 적용됩니다.</string>
+    <string name="eng_jpeg_norm">JPEG 입력 보정</string>
+    <string name="eng_jpeg_norm_hint">휴대폰 ISP가 더한 색을 되돌립니다(JPG / 가져온 사진에만 적용)</string>
+    <string name="eng_jpeg_norm_note">기본값 70%(v73: JPG가 여전히 진하다는 사용자 의견을 반영해 11-08 실기기 3단계 보간값으로 상향 조정. 최대 한도도 35%에서 45%로 상향) · 0 = 꺼짐(이전 버전과 픽셀 단위로 동일) · 100%는 연하고 밝게 나옵니다. 바디 설정 패널의 \'색 농도\' 3단계와 이 슬라이더가 같은 값을 공유하며, 패널에는 표준 / 연하게 / 원본으로 표시됩니다. 중간 값으로 드래그하면 \'사용자 지정\'으로 표시됩니다. 한 롤에 하나의 기준을 적용해 36장이 같은 강도를 공유하므로 색이 들쭉날쭉하지 않습니다. 플랫, 야경, 거의 단색인 화면은 자동으로 강도를 줄이거나 보정을 생략합니다. 기기 종류를 가리지 않습니다. 입력이 ISP에서 얼마나 보정됐는지만 측정하므로 휴대폰마다 알맞은 강도가 자동으로 정해집니다. JPG와 가져온 사진에만 적용되며 RAW는 영향받지 않고 필름/인화 파라미터도 변경하지 않습니다. 변경 후 다음 현상부터 적용됩니다.</string>
+    <string name="eng_jpeg_norm_off">꺼짐</string>
+    <string name="eng_raw_negative">RAW 네거티브</string>
+    <string name="eng_raw_hint">셔터를 누를 때 RAW도 함께 저장합니다(16bit Bayer, ISP의 톤 매핑/자동 화이트 밸런스/멀티프레임 합성 우회). DNG는 네거티브로 전용 폴더에 저장되며(장당 약 25~40MB), 현상은 엔진 RAW 세션으로 진행됩니다. 실패하면 자동으로 JPEG 경로로 되돌아가 프레임이 손실되지 않습니다.</string>
+    <string name="eng_raw_unavailable">RAW 네거티브(이 기기에서는 지원하지 않음)</string>
+    <string name="eng_cc">색상 미세 조정</string>
+    <string name="eng_cc_hint">피부색이 노랗고 하얗지 않을 때 확대기 필터로 보정합니다(인화 모드에서만 적용)</string>
+    <string name="eng_cc_y">따뜻함/차가움</string>
+    <string name="eng_cc_y_warm">따뜻함 · 노랑</string>
+    <string name="eng_cc_y_cold">차가움 · 하양</string>
+    <string name="eng_cc_m">초록 ↔ 마젠타</string>
+    <string name="eng_cc_m_magenta">마젠타</string>
+    <string name="eng_cc_m_green">초록</string>
+    <string name="eng_cc_scale">필터 강도</string>
+    <string name="eng_cc_note">피부색이 노란 경우: 따뜻함/차가움을 \'차가움 · 하양\' 쪽으로 드래그하세요. 그래도 노랗면 마젠타를 조금 더합니다. 두 필터 자체는 매우 약해(최대로 해도 한두 단계만 이동) 변화를 보려면 필터 강도를 높여야 합니다. 기본값 0/0 = 보정 없음(필터 키를 전혀 보내지 않음). 슬라이더를 드래그하면 바로 적용됩니다. 인화 출력에만 영향을 주며(현상소 스캔 스타일은 자체 보정을 유지), 필름에 따라 바뀌지 않고 변경 후 다음 현상부터 적용됩니다.</string>
+    <string name="eng_cc_off">꺼짐</string>
+    <string name="eng_style_hint">확대기로 인화할지, 현상소에서 네거티브를 스캔할지 선택합니다.</string>
+    <string name="eng_dev_hint">그레인 · 할레이션 · 글레어 · 노출 보정 · 인화지(필름별로 저장)</string>
+    <string name="hidden_slow_trigger">슬로우 셔터 발동 방식</string>
+    <string name="hidden_slow_prob">순수 확률 방식: 같은 장면에서도 흐려질 때와 선명할 때가 있음</string>
+    <string name="hidden_slow_real">순수 재현 방식: 어두우면 반드시 슬로우 셔터, 운에 맡기지 않음</string>
+    <string name="hidden_slow_mix">재현 방식 + 약간의 무작위: 반드시 슬로우 셔터, 가끔 한 단계 더 느려짐</string>
+    <string name="hidden_slow_note">세 방식 모두 이 페이지의 \'슬로우 셔터\'가 \'자연\' 또는 \'느리게\'로 설정돼 있어야 합니다. 주간 및 플래시 촬영에서는 발동하지 않습니다.</string>
+    <string name="hidden_save">저장</string>
+    <string name="hidden_saved">저장됨</string>
+    <string name="hidden_diag_title">현상 소요 시간 진단 DEVELOP TIMING</string>
+    <string name="hidden_diag_none">현상 기록이 없습니다.</string>
+    <string name="hidden_diag_copied">진단 정보가 복사되었습니다.</string>
+
+    <!-- 크래시 로그: 네이티브 계층에서 충돌하면 프로세스 전체가 종료되어 logcat으로 잡기 어렵고 파일로 저장해 확인해야 함 -->
+    <string name="hidden_crash_title">크래시 로그 CRASH LOG</string>
+    <string name="hidden_crash_none">크래시 기록이 없습니다.</string>
+    <string name="hidden_crash_copy">복사</string>
+    <string name="hidden_crash_clear">비우기</string>
+    <string name="hidden_crash_cleared">크래시 로그를 비웠습니다.</string>
+
+    <!-- 11-21 필름 교체 목록: 현재 장전된 롤의 호박색 각인 -->
+    <string name="film_current_badge">장전 중</string>
+    <!-- 외장 플래시 셀프러닝 페어링 마법사(vc86 3단계) -->
+    <string name="flash_pair_title">외장 플래시 페어링</string>
+    <string name="flash_pair_subtitle">셀프러닝 페어링 · FLASH PAIRING</string>
+    <string name="flash_pair_scan_hint">주변 BLE 기기를 스캔하는 중입니다. 시스템에 이미 페어링된 조명이 맨 앞에 표시되므로 바로 누르면 됩니다. 시스템에서 페어링 요청이 뜨면 \'페어링\'을 누르세요.</string>
+    <string name="flash_pair_unnamed">이름 없는 기기</string>
+    <string name="flash_pair_bonded_tag">페어링됨</string>
+    <string name="flash_pair_step1">1단계 · 플래시 선택</string>
+    <string name="flash_pair_step2">2단계 · 명령 채널 선택</string>
+    <string name="flash_pair_step3">3단계 · 트리거 명령 찾기</string>
+    <string name="flash_pair_rescan">다시 스캔</string>
+    <string name="flash_pair_trial_hint">후보 명령을 하나씩 눌러 보내고 조명을 확인하세요. 조명이 켜지면 아래 초록색 버튼을 눌러 저장합니다. (마법사는 조명만 제어하며 카메라에는 영향을 주지 않습니다)</string>
+    <string name="flash_pair_manual_hint">명령 직접 입력(hex)</string>
+    <string name="flash_pair_send">시험 전송</string>
+    <string name="flash_pair_confirm">조명이 켜졌습니다. 페어링 저장</string>
+    <string name="flash_pair_none">아무것도 켜지지 않았습니다. 다음 채널로 바꿔 보세요.</string>
+    <string name="flash_pair_test_again">저장 후 한 번 더 시도</string>
+    <string name="flash_pair_finish">완료</string>
+    <string name="flash_pair_connected">연결되었습니다. 명령 채널을 읽는 중…</string>
+    <string name="flash_pair_disconnected">연결이 끊어졌습니다.</string>
+    <string name="flash_pair_chars_found">쓰기 가능한 채널 %1$d개를 찾았습니다.</string>
+    <string name="flash_pair_no_write_char">이 조명은 쓰기 가능한 채널을 노출하지 않아 셀프러닝할 수 없습니다.</string>
+    <string name="flash_pair_write_fail">명령 %1$s 전송 실패</string>
+    <string name="flash_pair_connecting">%1$s에 연결하는 중…</string>
+    <string name="flash_pair_sent_mark">전송됨</string>
+    <string name="flash_pair_try_next">채널 목록으로 돌아가 다른 채널을 시도하세요.</string>
+    <string name="flash_pair_bad_hex">명령 형식이 올바르지 않습니다. 2, 4, 6자리 16진수여야 합니다. 예: 05 00</string>
+    <string name="flash_pair_save_fail">프로필 저장 실패</string>
+    <string name="flash_pair_saved">저장됨: %1$s\n트리거 명령 %2$s\n촬영 시 이 조명을 자동으로 사용합니다</string>
+    <string name="flash_pair_saved_title">페어링된 조명</string>
+    <string name="flash_pair_saved_empty">페어링된 조명이 없습니다. 외장 플래시 모드로 바꾸면 이 페이지가 자동으로 열립니다.</string>
+    <string name="flash_pair_delete">삭제</string>
+    <string name="flash_pair_page1">1페이지 · 조명 찾기</string>
+    <string name="flash_pair_page2">2페이지 · 명령 채널</string>
+    <string name="flash_pair_page3">3페이지 · 시험 발광</string>
+    <string name="flash_pair_page4">4페이지 · 완료</string>
+    <string name="flash_pair_group_paired">시스템 페어링됨 · 조명 후보</string>
+    <string name="flash_pair_group_nearby">주변 BLE 광고</string>
+    <string name="flash_pair_group_other">기타 페어링된 기기</string>
+    <string name="flash_pair_hint_nobond">셔터 키가 있는 조명은 시스템에서 HID로 자동 페어링되어 연결되며, 연결되면 더 이상 광고하지 않습니다. 시스템 블루투스에서 페어링을 삭제할 필요가 없습니다. 삭제해도 다시 자동으로 페어링됩니다.</string>
+    <string name="flash_pair_hint_dialog">Android에서 페어링 요청이 뜨면 \'페어링\'을 누르세요.</string>
+    <string name="flash_pair_hint_near">조명이 이름을 광고하지 않을 수 있습니다. 신호 강도, MAC 끝자리, svc 짧은 코드를 확인하세요. 조명을 휴대폰에 가까이 두면 더 쉽게 찾을 수 있습니다.</string>
+    <string name="flash_pair_manual_mac_hint">MAC 직접 입력, 예: DA:BA:CD:E2:BE:B0</string>
+    <string name="flash_pair_manual_mac_btn">MAC으로 연결</string>
+    <string name="flash_pair_bad_mac">MAC 형식이 올바르지 않습니다.</string>
+    <string name="flash_pair_back">← 이전 단계</string>
+    <string name="flash_pair_exit">나가기</string>
+    <string name="flash_pair_primary_rescan">다시 스캔</string>
+    <string name="flash_pair_primary_relight">조명 다시 선택</string>
+    <string name="flash_pair_primary_confirm">조명이 켜졌습니다 · 페어링 저장</string>
+    <string name="flash_pair_primary_finish">완료 · 뷰파인더로 돌아가기</string>
+    <string name="flash_pair_status_scan">SCANNING</string>
+    <string name="flash_pair_status_connecting">CONNECTING</string>
+    <string name="flash_pair_status_connected">CONNECTED</string>
+    <string name="flash_pair_status_trial">TRIAL</string>
+    <string name="flash_pair_status_paired">PAIRED</string>
+    <string name="flash_pair_paired_title">페어링됨</string>
+    <string name="flash_pair_next_hint">다음에 외장 플래시 모드로 바꾸면 이 조명에 바로 연결됩니다.</string>
+    <string name="flash_pair_no_candidate">조명 특징이 있는 페어링 기기를 찾지 못했습니다. 아래 광고 목록을 확인하거나 MAC을 직접 입력하세요.</string>
+    <string name="flash_pair_disconnect_hint">연결이 끊어졌습니다. 1페이지로 돌아가 조명을 다시 선택하세요.</string>
+    <string name="flash_pair_recommended">추천 · 패스스루</string>
+    <string name="flash_pair_config_char">설정용</string>
+    <string name="flash_pair_char_hint">추천 채널이 맨 위에 있습니다. 설정용 특성은 조명을 켜지 않으므로 선택하지 마세요.</string>
+    <string name="flash_pair_write_busy">이전 명령의 응답을 기다리는 중입니다. 잠시 후 다시 누르세요.</string>
+    <string name="flash_pair_reconnecting">채널 응답 없음 · 다시 연결 중</string>
+    <string name="flash_pair_reconnected">다시 연결되었습니다 · 한 번 더 시도해 주세요.</string>
+    <string name="flash_pair_write_rejected">기기가 이 명령을 거부했습니다.</string>
+    <string name="flash_pair_trial_channel">현재 채널 %1$s</string>
+    <string name="flash_pair_advanced">고급 · 기타 페어링 기기 / MAC 직접 입력   ▾</string>
+    <string name="flash_pair_advanced_open">고급 · 기타 페어링 기기 / MAC 직접 입력   ▴</string>
+    <string name="flash_pair_no_candidate_hint">조명 후보를 찾지 못했습니다: ① 플래시 전원을 켜세요 ② 시스템 페어링이 완료될 때까지 기다리세요 ③ 하단 \'다시 스캔\'을 눌러 페어링 목록을 갱신하세요.</string>
+    <string name="flash_pair_not_recommended">아래는 설정용 특성이며 조명을 켜지 않습니다.</string>
+    <string name="flash_pair_frame_untested">미시험 · %1$d개</string>
+    <string name="flash_pair_frame_tried">시험됨 · %1$d개   %2$s</string>
+    <string name="flash_pair_expand">펼치기</string>
+    <string name="flash_pair_collapse">접기</string>
+    <string name="flash_pair_hit">켜졌음</string>
+    <string name="flash_pair_hit_mark">✓ 히트</string>
+    <string name="flash_pair_hit_first">먼저 이 줄을 눌러 시험 전송하고, 조명이 켜지면 \'켜졌음\'을 누르세요.</string>
+    <string name="flash_pair_primary_confirm_with">이 항목 저장 · %1$s</string>
+    <string name="flash_pair_frame_disabled_hint">주 버튼이 활성화되지 않았습니다. 항목을 먼저 누르고 조명이 켜지면 \'켜졌음\'을 누르세요.</string>
+    <!-- Godox A2 전용 빠른 시험 발광: 일반 후보 프레임으로는 1000,Test에 맞지 않아 A2 감지 시에만 표시 -->
+    <string name="flash_pair_a2_quick">Godox A2 빠른 시험 발광 · 자동 2회 전송</string>
+    <string name="flash_pair_a2_hint">A2가 감지되었습니다. 빠른 설정 버튼을 누르면 자동으로 초기화한 뒤 검증된 시험 발광 프레임을 두 번 연속 전송합니다. 크세논이 발광하면 하단 \'페어링 저장\'을 누르세요.</string>
+    <string name="flash_pair_a2_reset">A2 · 플래시 모드 초기화</string>
+    <string name="flash_pair_a2_fire1">A2 · 시험 발광 1/2(첫 신호는 조명에서 소실될 수 있음)</string>
+    <string name="flash_pair_a2_fire2">A2 · 시험 발광 2/2 · 조명을 확인하세요</string>
+    <string name="flash_pair_a2_done">A2 · 두 번 연속 전송했습니다. 크세논이 발광하면 하단 \'페어링 저장\'을 누르세요.</string>
+    <string name="flash_pair_a2_no_cmd">A2 · FEC7을 찾지 못했습니다. 바로 시험 발광합니다(LED만 켜질 수 있음).</string>
+    <string name="flash_pair_a2_no_char">A2 · FFF1 시험 발광 채널을 찾지 못했습니다. 채널을 바꿔 주세요.</string>
+    <!-- FotorGear COB 빠른 페어링: FFE0 / FFE1 + 05 00 검증 완료, 후보 프레임을 하나씩 시도하지 않음 -->
+    <string name="flash_pair_fg_quick">FotorGear 빠른 페어링 · 원터치 시험 발광</string>
+    <string name="flash_pair_fg_hint">FotorGear가 감지되었습니다. 빠른 설정 버튼을 누르면 검증된 05 00을 전송합니다(약 200ms 후 발광). 조명이 켜지면 하단 \'페어링 저장\'을 누르세요.</string>
+    <string name="flash_pair_fg_fire">FotorGear · 시험 발광 중(약 200ms 후 발광)</string>
+    <string name="flash_pair_fg_done">FotorGear · 시험 발광했습니다. 조명이 켜지면 하단 \'페어링 저장\'을 누르세요.</string>
+    <string name="flash_pair_fg_no_char">FotorGear · FFE1 시험 발광 채널을 찾지 못했습니다. 채널을 바꿔 주세요.</string>
+    <string name="flash_pair_copy_profile">프로필 복사(친구나 포럼에 붙여넣기 가능)</string>
+    <string name="flash_pair_copied">프로필이 복사되었습니다.</string>
+    <string name="flash_pair_copy_empty">복사할 프로필이 없습니다.</string>
+    <string name="flash_pair_done_meta">MAC    %1$s\nCH     %2$s\nTRIG   %3$s\nPAIRED %4$s   ·   LEARNED</string>
+    <string name="flash_pair_lcd_paired">PAIRED · 외장 플래시 준비됨</string>
+    <string name="main_external_status_named">외장 플래시: %1$s · %2$s</string>
+
+    <!-- ===== 외장 플래시 관리: 설정 패널의 진입점 + 마법사 관리 모드 ===== -->
+    <string name="flash_pair_manage_title">외장 플래시 관리</string>
+    <string name="flash_pair_manage_subtitle">EXTERNAL FLASH / PROFILES</string>
+    <string name="flash_pair_status_manage">MANAGE</string>
+    <string name="flash_pair_manage_header">페어링된 조명  %1$d</string>
+    <string name="flash_pair_manage_hint">프로필은 조명의 MAC별로 트리거 명령을 기억합니다. \'플래시: 외장\'으로 바꾸면 자동으로 연결됩니다. 프로필을 복사해 친구에게 보내거나, 텍스트를 붙여넣어 다른 사람의 프로필을 가져올 수 있습니다.</string>
+    <string name="flash_pair_manage_empty">페어링된 조명이 없습니다. \'새 조명 페어링\'을 누르거나 \'플래시: 외장\'으로 바꾸면 페어링이 자동으로 시작됩니다.</string>
+    <string name="flash_pair_manage_import">클립보드에서 프로필 가져오기</string>
+    <string name="flash_pair_manage_import_ok">프로필을 가져왔습니다: %1$s</string>
+    <string name="flash_pair_manage_import_fail">클립보드에 인식할 수 있는 프로필 텍스트가 없습니다.</string>
+    <string name="flash_pair_primary_pair_new">＋ 새 조명 페어링</string>
+    <string name="flash_pair_copy_short">복사</string>
+    <string name="flash_pair_manage_deleted">%1$s를 삭제했습니다.</string>
+    <string name="flash_pair_manage_row_meta">%1$s   CH %2$s   TRIG %3$s</string>
+
+    <!-- EXT 모드로 전환: 상단 EV 다이얼이 플래시 미세 보정 다이얼로 바뀜 -->
+    <string name="lcd_notice_flash_ev_fine">외장 플래시 보정 0.5 EV/단계</string>
+
+    <!-- ===== 웨이스트 레벨 뷰파인더(P0 골격): 설정 행 + 반 화면 컨트롤 바 ===== -->
+    <string name="a2_lamp_code">A2 LAMP</string>
+    <string name="a2_lamp_ready">명령 채널이 준비되었습니다(FEC7)</string>
+    <string name="a2_lamp_not_ready">준비되지 않음: 외장 플래시 모드에서 A2를 연결하면 사용할 수 있습니다.</string>
+    <string name="a2_lamp_brightness">모델링 조명 밝기(0~100, 0 = 꺼짐)</string>
+    <string name="a2_lamp_cct">색온도(1~100, 100 = 흰 빛)</string>
+    <string name="a2_lamp_reset">플래시 모드 초기화</string>
+    <string name="a2_lamp_reset_done">초기화 시퀀스를 다시 실행했습니다(06 01 → 05 00 → 0c 00 → 03 00)</string>
+    <string name="a2_lamp_hint">밝기 = 0x06(0으로 드래그하면 모델링 모드 자동 종료), 색온도 = 0x07. 모델링 조명을 계속 켜 두면 크세논 연속 발광에 영향을 줍니다(두 번째 장부터 LED만 남음). 촬영 전에 0으로 되돌리세요. ⚠️ LED만 켜지고 크세논이 나오지 않으면 \'플래시 모드 초기화\'를 누르세요.</string>
+    <string name="a2_lamp_close">닫기</string>
+    <string name="a2_lamp_pwr_title">플래시 출력(8단계 교정)</string>
+    <string name="a2_lamp_pwr_slider">출력 단계</string>
+    <string name="a2_lamp_pwr_full">최대 출력 1/1</string>
+    <string name="a2_lamp_pwr_min">최소 1/128</string>
+    <string name="a2_lamp_pwr_restore">TTL 복원</string>
+    <string name="a2_lamp_pwr_hint">슬라이더로 1/1~1/128까지 8단계를 선택하고, 손을 떼면 출력이 조명에 전달되어 다음 장에 적용됩니다. Pro의 수동 ISO/셔터와 함께 사용해 교정 샘플을 모으세요.</string>
+    <string name="a2_lamp_pwr_sent">출력 프레임을 전송했습니다: %1$s</string>
+    <string name="a2_lamp_pwr_no_support">현재 조명은 출력 프레임을 지원하지 않습니다.</string>
+    <string name="eng_waist">웨이스트 레벨 뷰파인더(폴더블 이스터에그)</string>
+    <string name="eng_waist_hint">꺼짐 = 발동하지 않음; 자동 = 폴더블 기기를 반쯤 펼쳤을 때만 표시(일반 휴대폰에서는 보이지 않음); 시뮬레이션 = 일반 휴대폰에서도 반 화면으로 분할, 디버깅 전용</string>
+    <string name="eng_waist_off">꺼짐</string>
+    <string name="eng_waist_auto">자동</string>
+    <string name="eng_waist_simulate">시뮬레이션</string>
+    <string name="waist_level_label">WAIST LEVEL</string>
+    <string name="waist_level_engrave">RELIC CAM · WAIST FINDER</string>
+    <string name="waist_level_close">CLOSE</string>
+    <string name="waist_level_readout">EV 0 · OFF · 0/36</string>
+    <string name="waist_level_cd_shutter">셔터</string>
+    <string name="waist_level_cd_rotate">화각 전환: 자동 / 1:1 6×6 중형 / 3:2 135 풀프레임</string>
+    <string name="lcd_notice_waist">웨이스트 레벨 · 반 화면</string>
+    <string name="lcd_notice_waist_off">웨이스트 레벨 · 꺼짐</string>
+
+    <!-- ===== 권한 거부 명판 ===== -->
+    <string name="perm_dlg_camera_title">카메라 권한이 필요합니다</string>
+    <string name="perm_dlg_camera_body">이 권한이 없으면 뷰파인더와 촬영을 사용할 수 없습니다. 설정 → 앱 → 권한에서 켜 주세요.</string>
+    <string name="perm_dlg_bt_title">블루투스 권한이 필요합니다</string>
+    <string name="perm_dlg_bt_body">외장 플래시는 블루투스로 연결됩니다. 설정에서 켜거나 내장 플래시를 사용하세요.</string>
+    <string name="perm_dlg_storage_title">저장소 권한이 필요합니다</string>
+    <string name="perm_dlg_storage_body">구버전 Android에서는 네거티브와 사진을 저장할 때 이 권한이 필요합니다.</string>
+    <string name="perm_dlg_notif_title">알림 권한이 필요합니다</string>
+    <string name="perm_dlg_notif_body">현상이 완료되면 알려 주는 데 필요합니다. 설정에서 켤 수 있습니다.</string>
+    <string name="perm_dlg_go_settings">설정으로</string>
+    <string name="perm_dlg_dismiss">확인</string>
+
+</resources>

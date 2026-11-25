@@ -15,14 +15,14 @@
 - [x] 隐私政策：免费 + 内购表述，已推送上线 `https://stevejjj.github.io/relic-cam-privacy/`
 - [x] 商店文案 / 图标 / 特色图 / 3 张截图 / 原生符号包 全部就绪
 - [x] 商家账号（付款资料）已提交，银行账户改用储蓄卡
-- [x] **GitHub Release 资产已同步 vc112**（2026-11-25；此前停在 vc49，落后 16 个版本，vc72 起每次迭代都同步）→ 后续每次迭代按第 4.5 节执行
+- [x] **GitHub Release 资产已同步 vc113**（2026-11-26；此前停在 vc49，落后 16 个版本，vc72 起每次迭代都同步）→ 后续每次迭代按第 4.5 节执行
 
 **接下来按顺序做**
 1. **确认银行账户验证状态** → `payments.google.com` → 设置 → 付款方式
    - 「正在验证」→ 等 1~3 个工作日（可能需上传 90 天内对账单 / 回填小额打款）
    - 「已验证」→ 进第 2 步
 2. **应用定价改「免费」**（⚠️ 不可逆）→ **商品 > 应用定价**（旧版：商店发布 > 定价和分发范围）；逐字段见 `PLAY_PRICING_FILL_GUIDE.md` 第 3 节
-3. **传 AAB** → 测试 → 内部测试 → 上传 `RelicCam-v1.0.0-vc112.aab`（每次发版后改这里的版本号）
+3. **传 AAB** → 测试 → 内部测试 → 上传 `RelicCam-v1.0.0-vc113.aab`（每次发版后改这里的版本号）
 4. **传素材 + 填商店信息**（第 1 节）→ 图标 512 / 特色图 1024×500 / 3 张截图
 5. **填 App content 全部问卷**（第 2 节）→ Data safety 全 No、无广告、目标受众 13-17+18+
 6. **建 `pro_unlock` 商品并激活**（第 3 节，需第 1 步完成）
@@ -271,8 +271,16 @@ Free to download. Pick up your phone and step back into the film era.
    不删任何旧资产、不动无资产的内测引导 Release。
 6. `git commit` + `push`；同步本清单的版本引用（作废区间、上传用 vc<N>）。
 
-Release 现状（2026-11-25）：`v1.0.0-vc112` 为 **Latest**（vc112 APK + AAB，
+Release 现状（2026-11-26）：`v1.0.0-vc113` 为 **Latest**（vc113 APK + AAB，
 sha256 见 Release 正文），旧版已标废弃，无资产的 `RelicCam` 内测引导页保持不动。
+
+vc113 核验记录（2026-11-26）：`aapt2 dump badging` versionCode=113 / targetSdk=36；
+6 个 `.so` 的 `PT_LOAD p_align=16384` 全通过；`aapt2 dump permissions` 无 INTERNET /
+ACCESS_NETWORK_STATE / REQUEST_INSTALL_PACKAGES / QUERY_ALL_PACKAGES；单测 724 例 / 0 失败；
+`assembleRelease` + `bundleRelease` BUILD SUCCESSFUL。vc113 变更：App 内六语（简中/繁中/英/日/韩
++ 跟随系统）与铭牌式语言选择弹窗（震动 + 240ms 琥珀落位）、25 支胶卷文案六语；暗房右上标定样本
+入口默认隐藏（仅工程模式记录范围切到「所有照片」才显示）。vc112 已移除暗房页「点这一卷的冲洗」
+二次 Toast 提醒。
 
 vc112 核验记录（2026-11-25）：`aapt2 dump badging` versionCode=112 / targetSdk=36；
 6 个 `.so` 的 `PT_LOAD p_align=16384` 全通过；`aapt2 dump permissions` 无 INTERNET /

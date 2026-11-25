@@ -110,6 +110,8 @@ App 版本：%1$s (%2$d)
     <string name="slow_natural">自然</string>
     <string name="slow_frequent">偏慢</string>
     <string name="set_slow_unsupported">本机不支持手动曝光，慢门不可用</string>
+    <string name="lang_pick_title">选择机身语言</string>
+    <string name="lang_pick_sub">界面与胶卷说明同时切换 · 点选即刻落位</string>
     <string name="lang_system">跟随系统</string>
     <string name="lang_zh">简体中文</string>
     <string name="lang_en">English</string>

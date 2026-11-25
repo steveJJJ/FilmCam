@@ -98,6 +98,6 @@ class MotionContractTest {
         assertTrue("关闭字牌走退场", fn.contains("dialog.dismissPanel(view)"))
         assertTrue("外部/返回键接上", fn.contains("dialog.attachOutsideDismiss(view)"))
         // 跳转型三行必须保持硬切，否则会被切屏打断
-        assertTrue("语言切档仍硬切", fn.indexOf("dialog.dismiss()") < fn.indexOf("AppLocale.cycle"))
+        assertTrue("语言切档仍硬切", fn.indexOf("dialog.dismiss()") < fn.indexOf("LanguagePicker.show"))
     }
 }

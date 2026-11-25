@@ -44,11 +44,13 @@
             android:layout_height="1dp"
             android:layout_weight="1" />
 
-        <!-- 外闪标定样本列表（11-22）：所有已冲洗成片的标定参数 + 好坏标记 -->
+        <!-- 外闪标定样本列表（11-22）：工程工具，默认隐藏；
+             只有工程模式「标定记录范围」切到「所有照片」时由 GalleryActivity 点亮（11-26） -->
         <TextView
             android:id="@+id/btnCalibList"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:visibility="gone"
             android:text="@string/gallery_calib_list"
             android:textColor="#C9A882"
             android:textSize="13sp"

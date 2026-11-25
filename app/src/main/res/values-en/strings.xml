@@ -102,6 +102,8 @@ Memory available: %10$d MB / %11$d MB total
     <string name="slow_natural">Natural</string>
     <string name="slow_frequent">Slower</string>
     <string name="set_slow_unsupported">This device has no manual exposure — slow shutter unavailable</string>
+    <string name="lang_pick_title">Camera language</string>
+    <string name="lang_pick_sub">Interface and film notes switch together · tap to set</string>
     <string name="lang_system">Follow system</string>
     <string name="lang_zh">简体中文</string>
     <string name="lang_en">English</string>
