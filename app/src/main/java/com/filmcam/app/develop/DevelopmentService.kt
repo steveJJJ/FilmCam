@@ -135,6 +135,18 @@ class DevelopmentService : Service() {
 
     // ---------- 主冲洗循环 ----------
 
+    /**
+     * 🔴母片纯净契约（vc114）：所有**喂给母片**的参数，`extraEntries` 一律传这个空表——
+     * 盖掉 [FilmStockMapper.buildParamsJson] 「extraEntries=null 时按全局相框档
+     * 自动补 overscan 片框」的默认分支。否则用户历史 prefs 里相框=全画幅（旧版
+     * `filmcam_frame_border` 开关迁移）时，齿孔/片基会在冲洗时直接烤进母片，
+     * 之后编辑页选「无/白边」都去不掉（一加 13 用户反馈的根因）。
+     *
+     * 带框变体（frameParamsJson / flashFrameParamsJson / mf66 带框两份）显式传
+     * frameBorderEntries，不受本常量影响。契约由 MotherPurityContractTest 锁定。
+     */
+    private val MOTHER_EXTRA: List<Pair<String, String>> = emptyList()
+
     private fun runDevelopment(rollId: String) {
         // v2 暗房改造：母片模式（11-18 起全量默认开）。冲洗只出母片+预览，不直接入相册，
         // 效果（片框/日期/白边）推迟到编辑页保存时再施加。老链路仅作兜底保留。
@@ -219,6 +231,7 @@ class DevelopmentService : Service() {
                     roll.filmStockId, mappedPrint, effective.copy(ccScale = null),
                     includeStyleMark = false,
                     scanFinishLevel = FilmStockMapper.SCAN_LEVEL_SAFE,
+                    extraEntries = MOTHER_EXTRA,
                 )
                 val scaleEntry = "filter_shift_scale" to
                     FilmStockMapper.ccScaleJsonLiteral(effective.ccScale!!)
@@ -232,7 +245,11 @@ class DevelopmentService : Service() {
             }
             // 交给引擎的参数：只包含引擎认识的键。
             // （曾把 output_style 这个自定义标记塞进去，引擎报 unknown parameter，整卷 0 帧出图。）
-            val paramsJson = FilmStockMapper.buildParamsJson(roll.filmStockId, mappedPrint, effective)
+            val paramsJson = FilmStockMapper.buildParamsJson(
+                roll.filmStockId, mappedPrint, effective,
+                includeStyleMark = false,
+                extraEntries = MOTHER_EXTRA,
+            )
             // v2 母片配方：纯色彩参数（activeParamsJson 在下方兜底链确定后才赋值，
             // 这里先记 base paramsJson，landAsMother 用它作为重渲基线）。
             val motherRecipeJson = paramsJson
@@ -249,6 +266,7 @@ class DevelopmentService : Service() {
                     roll.filmStockId, mappedPrint, effective,
                     includeStyleMark = false,
                     scanFinishLevel = FilmStockMapper.SCAN_LEVEL_SAFE,
+                    extraEntries = MOTHER_EXTRA,
                 )
             // 未经验证的键（店扫新味 + 片框）先问过引擎再下发：
             // 真机上 y_filter_shift 越界曾让两档整档降级，引擎还可能收下键却不认值。
@@ -323,7 +341,7 @@ class DevelopmentService : Service() {
                 scanExtraOverride = FilmStockMapper.scanFinishEntries(
                     effective.outputStyle, FilmStockMapper.SCAN_LEVEL_SAFE
                 ) + acceptedScan,
-                extraEntries = null,
+                extraEntries = MOTHER_EXTRA,
             )
             // 带片框的那一份（逐帧按朝向决定用哪份：引擎可能只认横置片门）
             val frameParamsJson = if (frameFormat != null && acceptedFrame.isNotEmpty()) {
@@ -346,6 +364,7 @@ class DevelopmentService : Service() {
                 scanExtraOverride = FilmStockMapper.scanFinishEntries(
                     effective.outputStyle, FilmStockMapper.SCAN_LEVEL_SAFE
                 ) + acceptedScan,
+                extraEntries = MOTHER_EXTRA,
                 flashShot = true,
                 flashEntries = acceptedFlash,
             )
@@ -396,7 +415,9 @@ class DevelopmentService : Service() {
                     add(
                         FilmStockMapper.buildParamsJson(
                             roll.filmStockId, mappedPrint,
-                            effective.copy(outputStyle = FilmStockMapper.OutputStyle.PRINT)
+                            effective.copy(outputStyle = FilmStockMapper.OutputStyle.PRINT),
+                            includeStyleMark = false,
+                            extraEntries = MOTHER_EXTRA,
                         )
                     )
                 }

@@ -82,9 +82,6 @@ Memory available: %10$d MB / %11$d MB total
     <string name="style_print">Print</string>
     <string name="style_frontier">Frontier scan</string>
     <string name="style_noritsu">Noritsu scan</string>
-    <string name="set_frame">Film border</string>
-    <string name="frame_full">Full 3:2</string>
-    <string name="frame_white">White border</string>
     <string name="set_color">Colour strength</string>
     <string name="set_raw">RAW negative</string>
     <string name="set_flash">External flash</string>
@@ -95,7 +92,6 @@ Memory available: %10$d MB / %11$d MB total
     <string name="color_strength_soft">Soft</string>
     <string name="color_strength_original">Original</string>
     <string name="color_strength_custom">Custom %1$d%%</string>
-    <string name="set_frame_probe_failed">The engine rejects this gate — the roll develops without a film border; details in spektra_frame_probe.txt on external storage</string>
     <string name="set_slow">Slow shutter</string>
     <string name="set_wb">White balance</string>
     <string name="slow_off">Off</string>

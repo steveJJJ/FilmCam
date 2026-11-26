@@ -185,32 +185,33 @@ object FilmStockMapper {
             if (portrait) gatePortrait else gateAspect
 
         companion object {
-            /** 旧版存过的半格档位串：现在只剩 135 一格，升级时按「仍要片框」处理 */
+            /** 旧版存过的半格档位串：现在只剩 135 一格 */
             const val LEGACY_KEY_HALF = "135_half"
 
             fun fromKey(s: String?): FrameFormat = when (s) {
-                LEGACY_KEY_HALF -> FULL   // 老用户选过的半格 → 归到 135，别把片框悄悄关掉
+                LEGACY_KEY_HALF -> FULL   // 老用户选过的半格 → 归到 135
                 else -> values().firstOrNull { it.key == s } ?: OFF
             }
 
-            /** 按引擎版式串反查档位（自检/日志里拿到的就是这种串）。 */
+            /** 按引擎版式串反查档位（冲洗前自检/日志里拿到的就是这种串）。 */
             fun fromOverscanFormat(s: String?): FrameFormat =
                 values().firstOrNull { it.overscanFormat != null && it.overscanFormat == s } ?: OFF
-
-            /** 档位循环：关 → 全画幅 135 → 白边 → 关。设置面板点一下就地切换。 */
-            fun next(current: FrameFormat): FrameFormat = when (current) {
-                OFF -> FULL
-                FULL -> WHITE
-                WHITE -> OFF
-            }
         }
     }
 
     /**
-     * 新装 / 清数据后的默认片框档位（用户 2026-11-13 指定：白边相框）。
-     * 旧包升级仍优先按 `filmcam_frame_border` 迁移成 FULL，见 [readFrameFormat]。
+     * 🔴vc114 起机身**不再有**「胶片相框」档位（设置行早已移除，档位钉死 OFF）。
+     * 成片相框完全由暗房编辑页三档（EditsCodec 无/片边/白边）管理，
+     * 「白边为默认」由 EditsCodec.FrameEdit.frame = FRAME_WHITE 承担。
+     *
+     * 为什么钉死：`buildParamsJson` 在 extraEntries=null 时会按 settings.frameFormat
+     * 自动补一份 overscan 片框（齿孔/片基/暗边）。v2 契约是「冲洗只出纯色彩母片，
+     * 片框推迟到编辑导出」——若这里还按历史 prefs 迁移出 FULL（旧版
+     * `filmcam_frame_border` 开关），齿孔会在冲洗时直接烤进母片，之后编辑页选什么
+     * 都去不掉（一加 13 用户反馈「不管怎么设置都有相片齿孔」的根因）。
+     * 母片侧另以 extraEntries 空表双重封死，见 MotherPurityContractTest。
      */
-    val DEFAULT_FRAME_FORMAT: FrameFormat = FrameFormat.WHITE
+    fun readFrameFormat(@Suppress("UNUSED_PARAMETER") context: Context): FrameFormat = FrameFormat.OFF
 
     /**
      * 引擎已知参数名白名单（逐条对照 libspektrafilm_engine.so 字符串表核过）。
@@ -577,32 +578,6 @@ object FilmStockMapper {
                 "filmcam_dev_jpeg_normalize", JpegNormalizer.DEFAULT_LEVEL_STRENGTH
             ).coerceIn(0f, JpegNormalizer.MAX_STRENGTH),
         )
-    }
-
-    private const val PREF_FRAME_BORDER = "filmcam_frame_border"   // 旧版开关（布尔），仅用于迁移
-    private const val PREF_FRAME_FORMAT = "filmcam_frame_format"
-
-    /** 片框档位（整卷统一）。旧版只有"开/关"，开过的一律按 135 全画幅迁移。 */
-    fun readFrameFormat(context: Context): FrameFormat {
-        val sp = context.getSharedPreferences("filmcam", Context.MODE_PRIVATE)
-        val saved = sp.getString(PREF_FRAME_FORMAT, null)
-        if (saved != null) return FrameFormat.fromKey(saved)
-        // 旧包升级：以前开着片框的用户，档位就是当时那个（半格串由 fromKey 归一成 135）。
-        // 从没存过任何片框设置的新装用户 → 11-13 指定的白边相框。
-        return if (sp.getBoolean(PREF_FRAME_BORDER, false)) FrameFormat.FULL
-        else DEFAULT_FRAME_FORMAT
-    }
-
-    fun saveFrameFormat(context: Context, format: FrameFormat) {
-        context.getSharedPreferences("filmcam", Context.MODE_PRIVATE)
-            .edit().putString(PREF_FRAME_FORMAT, format.key).apply()
-    }
-
-    /** 档位循环：关 → 全画幅 135 → 白边 → 关，返回新档位 */
-    fun cycleFrameFormat(context: Context): FrameFormat {
-        val next = FrameFormat.next(readFrameFormat(context))
-        saveFrameFormat(context, next)
-        return next
     }
 
     /**

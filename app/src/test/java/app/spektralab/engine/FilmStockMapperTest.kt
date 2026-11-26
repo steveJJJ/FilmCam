@@ -420,19 +420,6 @@ class FilmStockMapperTest {
         assertTrue(FilmStockMapper.ENGINE_KNOWN_KEYS.contains("filter_shift_scale"))
     }
 
-    // ---- 胶片相框：设置面板点一下就地循环 ----
-
-    @Test
-    fun `相框循环顺序为关全画幅白边再回关`() {
-        assertEquals(FrameFormat.FULL, FrameFormat.next(FrameFormat.OFF))
-        assertEquals(FrameFormat.WHITE, FrameFormat.next(FrameFormat.FULL))
-        assertEquals(FrameFormat.OFF, FrameFormat.next(FrameFormat.WHITE))
-        // 白边相框必须在循环里可达：从任意档出发，最多点三下一定能选到
-        var f = FrameFormat.OFF
-        repeat(3) { if (f != FrameFormat.WHITE) f = FrameFormat.next(f) }
-        assertEquals(FrameFormat.WHITE, f)
-    }
-
     @Test
     fun `三个档位的 key 都能往返还原`() {
         listOf(FrameFormat.OFF, FrameFormat.FULL, FrameFormat.WHITE).forEach { format ->

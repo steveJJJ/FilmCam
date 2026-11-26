@@ -191,21 +191,6 @@ class FrameBorderTest {
     }
 
     @Test
-    fun cycleGoesOffThenFullFrame() {
-        // v66：设置面板三档，关 → 全画幅 → 白边 → 关
-        assertEquals(FilmStockMapper.FrameFormat.FULL, FilmStockMapper.FrameFormat.next(
-            FilmStockMapper.FrameFormat.OFF
-        ))
-        assertEquals(FilmStockMapper.FrameFormat.WHITE, FilmStockMapper.FrameFormat.next(
-            FilmStockMapper.FrameFormat.FULL
-        ))
-        assertEquals(FilmStockMapper.FrameFormat.OFF, FilmStockMapper.FrameFormat.next(
-            FilmStockMapper.FrameFormat.WHITE
-        ))
-        assertEquals(3, FilmStockMapper.FrameFormat.values().size)
-    }
-
-    @Test
     fun whiteBorder_neverAsksTheEngineForAnOverscan() {
         val f = FilmStockMapper.FrameFormat.WHITE
         assertFalse("白边不能走引擎片框自检", f.isOn)

@@ -90,9 +90,6 @@ App 版本：%1$s (%2$d)
     <string name="style_print">印相</string>
     <string name="style_frontier">Frontier 扫描</string>
     <string name="style_noritsu">Noritsu 扫描</string>
-    <string name="set_frame">胶片相框</string>
-    <string name="frame_full">全画幅 3:2</string>
-    <string name="frame_white">白边相框</string>
     <string name="set_color">色彩浓度</string>
     <string name="set_raw">RAW 底片</string>
     <string name="set_flash">外闪灯管理</string>
@@ -103,7 +100,6 @@ App 版本：%1$s (%2$d)
     <string name="color_strength_soft">淡</string>
     <string name="color_strength_original">原始</string>
     <string name="color_strength_custom">自定义 %1$d%%</string>
-    <string name="set_frame_probe_failed">这一格片门引擎不认，冲洗时这一卷不会带片框；详情见机身外部存储 spektra_frame_probe.txt</string>
     <string name="set_slow">慢门</string>
     <string name="set_wb">白平衡</string>
     <string name="slow_off">关</string>

@@ -138,7 +138,12 @@ object EditRenderCore {
         val effective = dev.copy(paperOverride = resolved.paperId)
 
         val base = mother.recipeJson.ifBlank {
-            FilmStockMapper.buildParamsJson(rollInfo.filmStockId, mappedPrint, effective)
+            // 🔴extraEntries 空表封死默认分支（vc114）：无框/白边预览的兜底绝不能带 overscan
+            FilmStockMapper.buildParamsJson(
+                rollInfo.filmStockId, mappedPrint, effective,
+                includeStyleMark = false,
+                extraEntries = emptyList(),
+            )
         }
         val params = if (frame == EditsCodec.FRAME_FILM) {
             val gate = runCatching { ShotMeta.fromJson(mother.shotJson)?.gate }.getOrDefault(null)

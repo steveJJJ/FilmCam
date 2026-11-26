@@ -5,9 +5,9 @@ import app.spektralab.engine.JpegNormalizer
 import com.filmcam.app.camera.FilmExposure
 
 /**
- * 新装 / 清除数据后，设置面板里七项默认档位的**唯一口径**
- * （用户 2026-11-13 指定：白边相框 / 淡 / 失焦 2% / Frontier 店扫 / 慢门自然 /
- * 真实派轻随机 / 日期水印关）。
+ * 新装 / 清除数据后，设置面板默认档位的**唯一口径**
+ * （用户 2026-11-13 指定：淡 / 失焦 2% / Frontier 店扫 / 慢门自然 /
+ * 真实派轻随机 / 日期水印关；vc114 起「胶片相框」设置行移除，见下）。
  *
  * ## 为什么是「读时回落」而不是「首次启动写进 prefs」
  * 只在 `SharedPreferences` 里没有该键时生效，所以：
@@ -15,18 +15,22 @@ import com.filmcam.app.camera.FilmExposure
  *  - 清数据 / 新装 / 侧载测试包立刻看到新默认；
  *  - 工程师滑杆、机身设置面板、冲洗参数组装三处读的是同一批常量，不会各说各话。
  *
- * ⚠️ 引擎层（app.spektralab.engine）不能反向依赖 app 层，所以三项引擎默认
- * 定义在 [FilmStockMapper.DEFAULT_FRAME_FORMAT] / [FilmStockMapper.DEFAULT_OUTPUT_STYLE] /
- * [JpegNormalizer.DEFAULT_LEVEL_STRENGTH]，这里只是聚合引用；慢门两项同理放在
- * [FilmExposure.DEFAULT_MODE] / [FilmExposure.DEFAULT_TRIGGER]。
+ * ⚠️ 引擎层（app.spektralab.engine）不能反向依赖 app 层，所以引擎默认
+ * 定义在 [FilmStockMapper.DEFAULT_OUTPUT_STYLE] / [JpegNormalizer.DEFAULT_LEVEL_STRENGTH]，
+ * 这里只是聚合引用；慢门两项同理放在 [FilmExposure.DEFAULT_MODE] / [FilmExposure.DEFAULT_TRIGGER]。
  *
  * ⚠️ 模拟失焦的概率滑杆文案是「0% = 关闭」，滑杆 >0 时会同步把 `softFocus` 写 true。
  * 所以「默认 2%」必须同时把 [softFocusEnabled] 设为 true，否则面板显示 2% 却永远不会触发。
  */
 object DefaultSettings {
 
-    /** 胶片相框：白边相框（不下发 overscan_*，由 WhiteBorderRenderer 落盘前外扩）。 */
-    val frameFormat: FilmStockMapper.FrameFormat get() = FilmStockMapper.DEFAULT_FRAME_FORMAT
+    /**
+     * 胶片相框：vc114 起机身**钉死 OFF**——`FilmStockMapper.readFrameFormat` 不再读
+     * prefs（旧版 `filmcam_frame_border` 开关迁移会把 FULL 泄进母片参数，齿孔烤死，
+     * 一加 13 用户反馈的根因）。成片相框由暗房编辑页三档管理，
+     * 「白边为默认」由 EditsCodec.FrameEdit.frame = FRAME_WHITE 承担。
+     */
+    val frameFormat: FilmStockMapper.FrameFormat get() = FilmStockMapper.FrameFormat.OFF
 
     /** 色彩浓度：淡（滑杆满档）。0.7「标准」仍是三档之一，可手动切回。 */
     val colorStrength: Float get() = JpegNormalizer.DEFAULT_LEVEL_STRENGTH

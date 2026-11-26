@@ -1721,13 +1721,6 @@ class MainActivity : AppCompatActivity() {
         else -> getString(R.string.quality_full)
     }
 
-    /** 设置面板「胶片相框」当前档位：关 / 全画幅 3:2 / 白边 */
-    private fun frameBorderName(): String = when (FilmStockMapper.readFrameFormat(this)) {
-        FilmStockMapper.FrameFormat.FULL -> getString(R.string.frame_full)
-        FilmStockMapper.FrameFormat.WHITE -> getString(R.string.frame_white)
-        else -> getString(R.string.common_off)
-    }
-
     /** 设置面板「色彩浓度」当前档位：标准 / 淡 / 原始 / 自定义（工程师滑杆细调过） */
     private fun colorStrengthName(): String {
         val cs = com.filmcam.app.develop.ColorStrength
@@ -1778,67 +1771,6 @@ class MainActivity : AppCompatActivity() {
         return st.rollId != null &&
             st.phase != com.filmcam.app.develop.DevelopmentState.PHASE_DONE &&
             st.phase != com.filmcam.app.develop.DevelopmentState.PHASE_ERROR
-    }
-
-    @Volatile
-    private var frameGateProbing = false
-
-    /**
-     * 切到某个片框档位时，拿该档位片门比例的小图**真跑一遍**引擎，问清楚这机器认不认。
-     *
-     * 片门匹配是渲染期校验：参数会被爽快收下，冲到 solve 才抛
-     * `overscan: a 1440 x 1080 frame is not the 135 gate's shape (36 x 24)`。
-     * 冲洗前还有一次同样的自检（会退回另一格），这里只是让用户当场就知道结果。
-     * 引擎初始化偏慢，放后台线程，结果落盘（spektra_frame_probe.txt）便于拉回来查。
-     */
-    private fun probeFrameGate(format: FilmStockMapper.FrameFormat) {
-        if (frameGateProbing) return
-        frameGateProbing = true
-        Thread {
-            try {
-                val overscanFormat = format.overscanFormat ?: return@Thread
-                val json = FilmStockMapper.buildParamsJson(
-                    "kodak_portra_400", FilmStockMapper.DEFAULT_PRINT_FALLBACK,
-                    FilmStockMapper.DevSettings(frameFormat = format),
-                    includeStyleMark = false,
-                    extraEntries = FilmStockMapper.frameBorderEntries(
-                        "kodak_portra_400", 1, overscanFormat
-                    ),
-                )
-                // 横竖两个朝向各问一遍：竖拍走的是竖置片门，引擎未必认
-                val report = StringBuilder()
-                var anyOk = false
-                for (portrait in listOf(false, true)) {
-                    val aspect = format.gateAspectFor(portrait)
-                    val long = 96
-                    val w = if (portrait) (long * aspect).toInt() else long
-                    val h = if (portrait) long else (long / aspect).toInt()
-                    val err = SpektraProcessor.probeRenderOk(
-                        applicationContext, json, w.coerceAtLeast(1), h.coerceAtLeast(1)
-                    )
-                    report.append(if (portrait) "竖 ${w}x$h" else "横 ${w}x$h")
-                        .append(" -> ").append(err ?: "OK").append('\n')
-                    if (err == null) anyOk = true
-                }
-                // 同样是「给开发看的东西」：工程师模式关着就不落盘，日志照常
-                if (DevDump.enabled(this)) runCatching {
-                    val dir = getExternalFilesDir(null) ?: filesDir
-                    java.io.File(dir, "spektra_frame_probe.txt").writeText(
-                        "gate=${format.key}\n$report"
-                    )
-                }
-                Log.d("MainActivity", "片框自检 ${format.key}:\n$report")
-                if (!anyOk) {
-                    runOnUiThread {
-                        Toast.makeText(
-                            this, getString(R.string.set_frame_probe_failed), Toast.LENGTH_LONG
-                        ).show()
-                    }
-                }
-            } finally {
-                frameGateProbing = false
-            }
-        }.start()
     }
 
     /** 语言当前档位名：六档共用 LanguagePicker 口径（语言名用自名，不随界面语言翻译） */

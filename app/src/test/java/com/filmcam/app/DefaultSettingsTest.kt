@@ -38,7 +38,7 @@ class DefaultSettingsTest {
 
     @Test
     fun `七项默认值与用户指定一致`() {
-        assertEquals("白边相框", FilmStockMapper.FrameFormat.WHITE, DefaultSettings.frameFormat)
+        assertEquals("机身相框档位钉死 OFF（vc114），白边默认在编辑页", FilmStockMapper.FrameFormat.OFF, DefaultSettings.frameFormat)
         assertEquals("Frontier 店扫", FilmStockMapper.OutputStyle.FRONTIER, DefaultSettings.outputStyle)
         assertEquals("慢门自然", FilmExposure.Mode.NATURAL, DefaultSettings.slowMode)
         assertEquals("真实派 + 轻随机", FilmExposure.Trigger.REAL_MIX, DefaultSettings.slowTrigger)
@@ -59,7 +59,7 @@ class DefaultSettingsTest {
         assertEquals(ColorStrength.Level.SOFT, ColorStrength.levelOf(DefaultSettings.colorStrength))
 
         // 引擎域常量与聚合表同源
-        assertEquals(FilmStockMapper.DEFAULT_FRAME_FORMAT, DefaultSettings.frameFormat)
+        assertEquals(FilmStockMapper.FrameFormat.OFF, DefaultSettings.frameFormat)
         assertEquals(FilmStockMapper.DEFAULT_OUTPUT_STYLE, DefaultSettings.outputStyle)
         assertEquals(JpegNormalizer.DEFAULT_LEVEL_STRENGTH, DefaultSettings.colorStrength, 1e-6f)
         assertEquals(FilmExposure.DEFAULT_MODE, DefaultSettings.slowMode)
@@ -70,7 +70,7 @@ class DefaultSettingsTest {
     fun `自检摘要七项齐全`() {
         val m = DefaultSettings.summary()
         assertEquals(8, m.size)
-        assertEquals("white", m["frameFormat"])
+        assertEquals("off", m["frameFormat"])
         assertEquals("frontier", m["outputStyle"])
         assertEquals("NATURAL", m["slowMode"])
         assertEquals("REAL_MIX", m["slowTrigger"])

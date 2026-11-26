@@ -175,7 +175,13 @@ class EditExportService : Service() {
         // overscan layout"）。冲洗侧用 probeRenderOk 小图真跑挑版式，导出侧必须同样真跑，
         // 否则参数"预检通过"却在真正渲染时被拒 → 掉兜底 → 用户看不到片框、还慢。
         var params = mother.recipeJson.ifBlank {
-            FilmStockMapper.buildParamsJson(rollInfo.filmStockId, mappedPrint, effective)
+            // 🔴extraEntries 空表封死默认分支：这里构建的是「无框兜底」，绝不能被
+            // 全局相框档自动补 overscan（齿孔烤死则编辑页选无框也去不掉，vc114 根因）
+            FilmStockMapper.buildParamsJson(
+                rollInfo.filmStockId, mappedPrint, effective,
+                includeStyleMark = false,
+                extraEntries = emptyList(),
+            )
         }
         // 日期印字：交给**引擎**（`date_imprint_*`），不是 App 补画。
         // 🔴这决定了导出路径：引擎印字必须在渲染时发生，所以「日期开启」一律不能走

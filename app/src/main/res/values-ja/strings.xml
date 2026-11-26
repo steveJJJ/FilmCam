@@ -90,9 +90,6 @@ adb logcat の抜粋（任意。PC で adb logcat | findstr FILMCAM を実行し
     <string name="style_print">プリント</string>
     <string name="style_frontier">Frontier スキャン</string>
     <string name="style_noritsu">Noritsu スキャン</string>
-    <string name="set_frame">フィルム枠</string>
-    <string name="frame_full">フルフレーム 3:2</string>
-    <string name="frame_white">白枠</string>
     <string name="set_color">色の濃さ</string>
     <string name="set_raw">RAW ネガ</string>
     <string name="set_flash">外置フラッシュ管理</string>
@@ -103,7 +100,6 @@ adb logcat の抜粋（任意。PC で adb logcat | findstr FILMCAM を実行し
     <string name="color_strength_soft">淡</string>
     <string name="color_strength_original">オリジナル</string>
     <string name="color_strength_custom">カスタム %1$d%%</string>
-    <string name="set_frame_probe_failed">この片門はエンジンが認識しません。現像時はフィルム枠なしで仕上がります。詳細は外部ストレージの spektra_frame_probe.txt をご覧ください</string>
     <string name="set_slow">スローシャッター</string>
     <string name="set_wb">ホワイトバランス</string>
     <string name="slow_off">オフ</string>
